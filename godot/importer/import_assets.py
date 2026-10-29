@@ -12,6 +12,7 @@ It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
 """
 
 import argparse
+import concurrent.futures
 import json
 import os
 import shutil
@@ -49,12 +50,16 @@ def load_village(path):
 
 
 def needed_items(config, villages, export_all):
-	"Returns {img_name: item} for the items whose graphics must be exported."
+	"""Returns {img_name: item} for the items whose graphics must be exported.
+
+	By default these are the land, the store buildings and the items in the villages.
+	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
 		ids = items.keys()
 	else:
 		ids = set(TERRAIN_ITEM_IDS)
+		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) == "1")
 		for village in villages:
 			for game_map in village["maps"]:
 				ids.update(int(entry[0]) for entry in game_map["items"])
@@ -110,7 +115,8 @@ def main():
 	parser.add_argument("--out", required=True, help="output folder that the Godot port reads")
 	parser.add_argument("--jpexs", required=True, help="path to ffdec-cli.jar or the ffdec start script")
 	parser.add_argument("--village", action="append", default=[], help="village save to import (repeatable); default villages/initial.json")
-	parser.add_argument("--all", action="store_true", help="export the graphics of every item, not only those in the villages")
+	parser.add_argument("--all", action="store_true", help="export the graphics of every item, not only the land, the store buildings and the items in the villages")
+	parser.add_argument("--jobs", type=int, default=4, help="number of JPEXS processes that run at the same time (default 4)")
 	args = parser.parse_args()
 
 	source = os.path.abspath(args.source)
@@ -128,16 +134,23 @@ def main():
 	sprite_dir = os.path.join(source, "assets", "buildingsprites")
 	failed = []
 	items = needed_items(config, villages, args.all)
-	for count, img_name in enumerate(sorted(items), start=1):
+
+	def import_one(img_name):
 		swf_path = os.path.join(sprite_dir, f"{img_name}.swf")
 		if not os.path.exists(swf_path):
-			failed.append((img_name, "no SWF file"))
-			continue
+			return "no SWF file"
 		try:
 			import_sprite(args.jpexs, swf_path, img_name, out_dir)
 		except (SwfError, RuntimeError) as e:
-			failed.append((img_name, str(e)))
-		print(f"[{count}/{len(items)}] {img_name}", flush=True)
+			return str(e)
+		return None
+
+	with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+		results = pool.map(import_one, sorted(items))
+		for count, (img_name, error) in enumerate(zip(sorted(items), results), start=1):
+			if error is not None:
+				failed.append((img_name, error))
+			print(f"[{count}/{len(items)}] {img_name}", flush=True)
 
 	for img_name, reason in failed:
 		print(f"not imported: {img_name}: {reason}", file=sys.stderr)
