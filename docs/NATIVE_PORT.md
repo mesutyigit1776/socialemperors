@@ -39,7 +39,7 @@ Ship one app containing:
 
 Ruffle is licensed MIT or Apache-2.0, so it can be bundled ([README](https://github.com/ruffle-rs/ruffle)).
 
-- **Ruffle status:** only nightly builds are published, almost daily through October 2026 ([releases](https://github.com/ruffle-rs/ruffle/releases)). The project describes AS3 support as good, with "most games playable" ([FAQ](https://github.com/ruffle-rs/ruffle/wiki/Frequently-Asked-Questions-For-Users)). Secondary sources put it at about 90% of the AS3 language and 76–82% of the AS3 API; no current official figure was found.
+- **Ruffle status:** stable releases come out every few weeks (0.5.0 on 2026-08-03, 0.6.0 on 2026-09-06, 0.7.1 on 2026-10-07, per the npm package history), with nightly builds almost daily in between ([releases](https://github.com/ruffle-rs/ruffle/releases)). Stable builds exist for the web and for desktop on Windows, macOS and Linux. The project describes AS3 support as good, with "most games playable" ([FAQ](https://github.com/ruffle-rs/ruffle/wiki/Frequently-Asked-Questions-For-Users)). Secondary sources put it at about 90% of the AS3 language and 76–82% of the AS3 API; no current official figure was found.
 - **Desktop player:** `ruffle_desktop` is a native application that renders with wgpu, and raw sockets work in it ([Using Ruffle](https://github.com/ruffle-rs/ruffle/wiki/Using-Ruffle)). There is no built-in way to pack a SWF into an executable, so the launcher has to start it.
 - **ExternalInterface:** the client uses `ExternalInterface` for Facebook-style calls and for `templates/js/external_interface.js`. Ruffle desktop has no page JavaScript to answer those calls. There are two ways to handle this:
   1. Use a webview shell (Tauri or Electron) running Ruffle's web build. This keeps `ruffle.html` and the existing JavaScript bridge unchanged.
@@ -104,7 +104,8 @@ Decompile the client and convert it with as3hx, fixing the result by hand. OpenF
 
 **Phase 1: playable native build (about 1 month)**
 
-1. Pin Ruffle: include a specific nightly in the repo instead of loading it from unpkg.
+1. Pin Ruffle: include a specific stable release in the repo instead of loading it from unpkg.
+   Done: Ruffle `0.7.1` (web self-hosted build, released 2026-10-07) is in `templates/js/ruffle/`, and `templates/ruffle.html` loads it from there. In headless Chromium it loads the newest client (`SocialEmpires1.4.07sec_fixed.swf`), creates a new empire and reaches the tutorial, with the client sending commands to the server. The 2026-10-29 nightly gave the same result. Nothing past the first tutorial screen has been tested yet.
 2. Test the newest client (`SocialEmpires1.4.07sec_fixed.swf`) in Ruffle. Cover a full session: login, building, production, a quest, a PvP attack, Soul Mixer and a save/reload. Record each failure and report Ruffle bugs upstream.
 3. Fix the server bugs in `docs/AUDIT.md`, section 7, and make saves atomic.
 4. Build the desktop app: launcher, PyInstaller server, and Ruffle. Use a webview shell first, so the existing `ExternalInterface` JavaScript keeps working.
