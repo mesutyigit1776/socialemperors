@@ -53,7 +53,12 @@ Then open `http://127.0.0.1:5050/`. Saves go to `saves/<USERID>.save.json`, and 
 
 ### Legal
 
-The code and the art in `assets/` and in the Flash client belong to Socialpoint, which is part of Take-Two. Do not copy decompiled Social Point code into new code. Do not add more Social Point files to the repository unless the owner of this fork asks for it.
+The code and the art in `assets/` and in the Flash client belong to Socialpoint, which is part of Take-Two.
+
+- You may read decompiled client code to learn the game rules. Write the Godot code yourself. Do not copy or translate decompiled code line by line.
+- Keep decompiled output out of the repository.
+- The Godot port does not contain Social Point files. An import tool converts the art from the files that the user supplies.
+- Do not add more Social Point files to the repository unless the owner of this fork asks for it.
 
 ## Git
 

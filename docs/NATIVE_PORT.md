@@ -13,6 +13,12 @@ Decision (2026-10-29): do option A (section 2) first. When it is finished and wo
 
 Update (2026-10-29): option A is paused at about 20%. Ruffle 0.7.1 is bundled, and the server fixes in Phase 1, step 3 are done (atomic saves with a `.bak` copy). The desktop app, the full play test and the `ExternalInterface` question are still open. Work continues on option C, on a separate branch.
 
+Decisions for option C (2026-10-29):
+
+- The port contains only our own code. Users supply the original game files, and an import tool converts the art.
+- We may study the decompiled client to learn the rules for combat, units and other client-side logic. We write new code and do not translate the decompiled code. Note: section 6 explains that this makes the port a derived work, not a clean-room reimplementation.
+- The language is GDScript.
+
 ## 1. What the client contains
 
 Measured from `assets/flash/SocialEmpires1.4.07sec_fixed.swf`. Details are in `docs/AUDIT.md`, section 4.
