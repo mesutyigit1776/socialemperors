@@ -215,8 +215,7 @@ def load_friends(add_to_pvp = False):
 				migrate_loaded_save(village)
 				if __assign_avatars:
 					assign_random_avatar(village)
-				with open(os.path.join(FRIENDS_DIR, file), 'w') as f:
-					json.dump(village, f, indent='\t')
+				write_json_file(os.path.join(FRIENDS_DIR, file), village, backup=True)
 
 			__friend_info[USERID] = fb_friend_info(village["playerInfo"])
 			__friend_info_neighbor[USERID] = neighbor_data(village, 0)
@@ -250,8 +249,7 @@ def load_enemies(add_to_pvp = False):
 			if "version" in village:
 				log.info(f"migrating enemy file for {USERID}...")
 				migrate_loaded_save(village)
-				with open(os.path.join(ENEMIES_DIR, file), 'w') as f:
-					json.dump(village, f, indent='\t')
+				write_json_file(os.path.join(ENEMIES_DIR, file), village, backup=True)
 
 			if add_to_pvp:
 				pvp_pool_add(USERID, village, SESSION_ENEMY, 0)
@@ -841,12 +839,31 @@ def is_valid_village(save: dict):
 
 # Persistency
 
+def write_json_file(path: str, data, backup = False):
+	"Writes JSON to a temp file, then replaces path with it. A crash leaves the old file or the new file, never a partial one."
+	directory = os.path.dirname(path) or "."
+	tmp_path = os.path.join(directory, f".{os.path.basename(path)}.tmp")
+	with open(tmp_path, 'w') as f:
+		json.dump(data, f, indent='\t')
+		f.flush()
+		os.fsync(f.fileno())
+	if backup and os.path.exists(path):
+		backup_file(path)
+	os.replace(tmp_path, path)
+
+def backup_file(path: str):
+	"Keeps the previous version of path as path.bak."
+	bak_path = f"{path}.bak"
+	tmp_path = os.path.join(os.path.dirname(path) or ".", f".{os.path.basename(bak_path)}.tmp")
+	shutil.copy2(path, tmp_path)
+	os.replace(tmp_path, bak_path)
+
 def backup_session(USERID: str):
-	# TODO 
-	return
+	path = os.path.join(SAVES_DIR, f"{USERID}.save.json")
+	if os.path.exists(path):
+		backup_file(path)
 
 def save_session(USERID, write_ts = True):
-	# TODO 
 	file = f"{USERID}.save.json"
 	save = session(USERID)
 
@@ -854,11 +871,8 @@ def save_session(USERID, write_ts = True):
 	if write_ts:
 		save["playerInfo"]["last_logged_in"] = timestamp_now()
 
-	with open(os.path.join(SAVES_DIR, file), 'w') as f:
-		json.dump(save, f, indent='\t')
+	write_json_file(os.path.join(SAVES_DIR, file), save, backup=True)
 
 def save_session_path(USERID: str, save: dict, path: str):
-	# TODO
 	file = f"{USERID}.save.json"
-	with open(os.path.join(path, file), 'w') as f:
-		json.dump(save, f, indent='\t')
+	write_json_file(os.path.join(path, file), save, backup=True)
