@@ -3,6 +3,9 @@ extends RefCounted
 ## Item definitions from the game configuration that the importer writes (config.json).
 
 
+const CATEGORY_DECORATIONS := 4
+
+
 class ItemDef:
 	var id: int
 	var name: String
@@ -10,6 +13,12 @@ class ItemDef:
 	var img_name: String
 	var width: int  ## Footprint in tiles.
 	var height: int
+	var category_id: int
+	var in_store: bool
+	var cost: int
+	var cost_type: String  ## Resource code, see Village.RESOURCE_KEYS.
+	var xp: int  ## Experience that the player gets when buying the item.
+	var min_level: int
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -42,21 +51,38 @@ func get_item(id: int) -> ItemDef:
 	return _items.get(id)
 
 
+## Items that the store sells in a category, in configuration order.
+func store_items(category_id: int) -> Array[ItemDef]:
+	var result: Array[ItemDef] = []
+	for item: ItemDef in _items.values():
+		if item.in_store and item.category_id == category_id:
+			result.append(item)
+	return result
+
+
 static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
-	var id: Variant = _to_int(entry.get("id"))
-	var width: Variant = _to_int(entry.get("width", 1))
-	var height: Variant = _to_int(entry.get("height", 1))
-	if id == null or width == null or height == null or width < 1 or height < 1:
+	var numbers := {}
+	for key: String in ["id", "width", "height", "category_id", "in_store", "cost", "xp", "min_level"]:
+		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height"] else 0))
+		if numbers[key] == null:
+			return null
+	if numbers["width"] < 1 or numbers["height"] < 1 or numbers["cost"] < 0:
 		return null
 	var item := ItemDef.new()
-	item.id = id
+	item.id = numbers["id"]
 	item.name = str(entry.get("name", ""))
 	item.type = str(entry.get("type", ""))
 	item.img_name = str(entry.get("img_name", ""))
-	item.width = width
-	item.height = height
+	item.width = numbers["width"]
+	item.height = numbers["height"]
+	item.category_id = numbers["category_id"]
+	item.in_store = numbers["in_store"] == 1
+	item.cost = numbers["cost"]
+	item.cost_type = str(entry.get("cost_type", ""))
+	item.xp = numbers["xp"]
+	item.min_level = numbers["min_level"]
 	return item
 
 

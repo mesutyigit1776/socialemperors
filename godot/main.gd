@@ -8,6 +8,12 @@ extends Node2D
 ##   --screenshot <png>    save the first frames as an image and quit; used for checks
 
 var _options: Dictionary = {}
+var _config: GameConfig
+var _sprites: SpriteLibrary
+var _village: Village
+var _village_path: String
+var _view: VillageView
+var _hud: VillageHud
 
 
 func _ready() -> void:
@@ -15,23 +21,57 @@ func _ready() -> void:
 	var data_dir: String = _options.get("data", OS.get_environment("SE_DATA_DIR"))
 	if data_dir.is_empty():
 		data_dir = "user://imported"
-	var village_path: String = _options.get("village", data_dir.path_join("villages/initial.json"))
+	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 
-	var config := GameConfig.load_from_file(data_dir.path_join("config.json"))
-	var village := Village.load_from_file(village_path) if config != null else null
-	if village == null:
+	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
+	_village = Village.load_from_file(_village_path, _config) if _config != null else null
+	if _village == null:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	else:
-		var view := VillageView.new()
-		add_child(view)
-		view.show_village(village, config, SpriteLibrary.new(data_dir))
+		_sprites = SpriteLibrary.new(data_dir)
+		_view = VillageView.new()
+		add_child(_view)
+		_view.show_village(_village, _config, _sprites)
+		_view.placement_confirmed.connect(_on_placement_confirmed)
 		var camera := MapCamera.new()
-		camera.position = _start_position(village)
+		camera.position = _start_position(_village)
 		add_child(camera)
+		# Only decorations for now: the client limits the number of most other
+		# buildings, and the port does not have these limits yet.
+		var store_items: Array[GameConfig.ItemDef] = []
+		for item in _config.store_items(GameConfig.CATEGORY_DECORATIONS):
+			if _sprites.get_sprite(item.img_name) != null:
+				store_items.append(item)
+		_hud = VillageHud.new(store_items)
+		_hud.item_selected.connect(_on_item_selected)
+		add_child(_hud)
+		_hud.refresh(_village)
 
 	if _options.has("screenshot"):
 		await _save_screenshot(_options["screenshot"])
 		get_tree().quit()
+
+
+func _on_item_selected(item: GameConfig.ItemDef) -> void:
+	_view.begin_placement(item, _village, _sprites)
+	_hud.show_message("Place %s." % item.name)
+
+
+func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
+	var result := _village.buy(item, tile, int(Time.get_unix_time_from_system()))
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_view.end_placement()
+	_view.add_placed(_village.items.back(), _config, _sprites)
+	_hud.refresh(_village)
+	var error := _village.save_to_file(_village_path)
+	if error != OK:
+		var text := "Cannot save the village to %s: %s" % [_village_path, error_string(error)]
+		_hud.show_message(text)
+		push_error(text)
+		return
+	_hud.show_message("Built %s." % item.name)
 
 
 ## Centre of the owned land, or the map centre when the village owns no land.
