@@ -1,6 +1,7 @@
 import os
 import json
-import urllib
+import urllib.request
+import urllib.error
 import logging
 import asyncio
 
@@ -249,27 +250,32 @@ async def static_assets_loader(path):
 	# return send_from_directory(ASSETS_DIR, path)
 	if not os.path.exists(ASSETS_DIR + "/"+ path):
 		# File does not exists in provided assets
-		if not os.path.exists(f"{ASSETS_DIR}/../download_assets/assets/{path}"):
+		download_dir = os.path.abspath(f"{ASSETS_DIR}/../download_assets/assets")
+		download_path = os.path.abspath(os.path.join(download_dir, path))
+		# Do not write outside download_dir (e.g. "../" in path)
+		if os.path.commonpath([download_dir, download_path]) != download_dir:
+			return ("", 404)
+		if not os.path.exists(download_path):
 			# Download file from SP's CDN if it doesn't exist
 
 			# Make directory
-			directory = os.path.dirname(f"{ASSETS_DIR}/../download_assets/assets/{path}")
+			directory = os.path.dirname(download_path)
 			if not os.path.exists(directory):
 				os.makedirs(directory)
 
 			# Download File
 			URL = f"https://static.socialpointgames.com/static/socialempires/assets/{path}"
 			try:
-				response = urllib.request.urlretrieve(URL, f"{ASSETS_DIR}/../download_assets/assets/{path}")
-			except urllib.error.HTTPError:
+				response = urllib.request.urlretrieve(URL, download_path)
+			except urllib.error.URLError:
 				return ("", 404)
 
 			log.info(f"====== DOWNLOADED ASSET: {URL}")
-			return send_from_directory("{ASSETS_DIR}/../download_assets/assets", path)
+			return send_from_directory(download_dir, path)
 		else:
 			# Use downloaded CDN asset
 			log.info(f"====== USING EXTERNAL: download_assets/assets/{path}")
-			return send_from_directory("{ASSETS_DIR}/../download_assets/assets", path)
+			return send_from_directory(download_dir, path)
 	else:
 		# Use provided asset
 		return send_from_directory(ASSETS_DIR, path)
