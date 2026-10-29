@@ -11,6 +11,8 @@ A native version is possible, at two very different levels of effort:
 
 Decision (2026-10-29): do option A (section 2) first. When it is finished and working well, move on to option C. Option A gives a playable native build quickly and produces the test setup and documentation that option C needs. Decide the legal approach (section 6) before starting option C.
 
+Update (2026-10-29): option A is paused at about 20%. Ruffle 0.7.1 is bundled, and the server fixes in Phase 1, step 3 are done (atomic saves with a `.bak` copy). The desktop app, the full play test and the `ExternalInterface` question are still open. Work continues on option C, on a separate branch.
+
 ## 1. What the client contains
 
 Measured from `assets/flash/SocialEmpires1.4.07sec_fixed.swf`. Details are in `docs/AUDIT.md`, section 4.
@@ -116,7 +118,7 @@ Decompile the client and convert it with as3hx, fixing the result by hand. OpenF
 1. Choose between distributing the game files and requiring users to supply them (section 6).
 2. Write a specification of the server protocol and the game rules from `op.py`, `engine.py` and `config/`. This is useful for Phase 1 maintenance and is the starting point for a rewrite.
 
-**Phase 3: rewrite prototype (3 months, after Phase 1 is finished)**
+**Phase 3: rewrite prototype (3 months, now started before Phase 1 is finished)**
 
 1. In Godot 4, build an isometric map with one village, building placement, production, and a few animated units, using art baked from the SWFs.
 2. Measure the size of the baked art compared with the 1.3 GB of SWFs, and frame rate on large villages.
