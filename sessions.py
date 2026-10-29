@@ -325,7 +325,7 @@ def new_village(username, skip_tutorial = False, draggy = None, avatar = ""):
 
 def check_player_name(playername):
 	if len(playername) < 3 or len(playername) > 16:
-		return redirect("/")
+		return { "ok": False, "msg": "Player Name must be between 3 - 16 characters and contain only letters and numbers" }
 
 	name = playername.strip()
 	valid = re.match(r'^[A-Za-z0-9 ]+', name)
