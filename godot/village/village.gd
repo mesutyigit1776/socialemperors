@@ -17,14 +17,16 @@ enum Placement {
 	UNKNOWN_RESOURCE,
 }
 
-## Resource codes in item costs and where the save keeps each resource.
-## "map" values are in the map; "player" values are in playerInfo.
+## Resource codes in item costs and level rewards, and where the save keeps each
+## resource. "map" values are in the map, "player" values in playerInfo and
+## "private" values in privateState.
 const RESOURCE_KEYS := {
 	"g": ["map", "coins"],
 	"w": ["map", "wood"],
 	"s": ["map", "stone"],
 	"f": ["map", "food"],
 	"c": ["player", "cash"],
+	"m": ["private", "mana"],
 }
 
 
@@ -51,8 +53,8 @@ static func load_from_file(path: String, config: GameConfig, map_index: int = 0)
 		push_error("Cannot read village '%s' (%s)." % [path, error_string(FileAccess.get_open_error())])
 		return null
 	var data: Variant = JSON.parse_string(text)
-	if not (data is Dictionary and data.get("maps") is Array and data.get("playerInfo") is Dictionary):
-		push_error("Village '%s' is not a save: it has no maps or no playerInfo." % path)
+	if not (data is Dictionary and data.get("maps") is Array and data.get("playerInfo") is Dictionary and data.get("privateState") is Dictionary):
+		push_error("Village '%s' is not a save: it has no maps, playerInfo or privateState." % path)
 		return null
 	var maps: Array = data["maps"]
 	if map_index < 0 or map_index >= maps.size() or not maps[map_index] is Dictionary:
@@ -66,6 +68,9 @@ static func load_from_file(path: String, config: GameConfig, map_index: int = 0)
 		if not (game_map.get(key) is float or game_map.get(key) is int):
 			push_error("Map %d of village '%s' has no number '%s'." % [map_index, path, key])
 			return null
+	if int(game_map["level"]) < 1:
+		push_error("Map %d of village '%s' has level %d. The lowest level is 1." % [map_index, path, int(game_map["level"])])
+		return null
 
 	var village := Village.new()
 	village._document = data
@@ -93,13 +98,18 @@ func get_xp() -> int:
 	return int(_map["xp"])
 
 
+## The experience that the next level needs, or -1 at the highest level.
+func get_next_level_xp() -> int:
+	if get_level() >= _config.levels.size():
+		return -1
+	return _config.levels[get_level()].exp_required
+
+
 ## Returns -1 for a resource code that the save does not keep.
 func get_resource(code: String) -> int:
 	if not RESOURCE_KEYS.has(code):
 		return -1
-	var place: Array = RESOURCE_KEYS[code]
-	var source: Dictionary = _map if place[0] == "map" else _document["playerInfo"]
-	return int(source.get(place[1], 0))
+	return int(_resource_holder(code).get(RESOURCE_KEYS[code][1], 0))
 
 
 ## Checks only the location: the map edges, the owned land and the other items.
@@ -131,10 +141,8 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
 	if available < item.cost:
 		return Placement.NOT_ENOUGH_RESOURCES
 
-	var place: Array = RESOURCE_KEYS[item.cost_type]
-	var source: Dictionary = _map if place[0] == "map" else _document["playerInfo"]
-	source[place[1]] = available - item.cost
-	_map["xp"] = get_xp() + item.xp
+	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
+	_add_xp(item.xp)
 	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, store, attributes].
 	_map["items"].append([item.id, tile.x, tile.y, 0, timestamp, 0, [], {}])
 	var placed := PlacedItem.new()
@@ -162,6 +170,43 @@ func save_to_file(save_path: String) -> Error:
 		if error != OK:
 			return error
 	return DirAccess.rename_absolute(temp_path, path)
+
+
+## Raises the level while the experience reaches the next level, one level at a
+## time, as the client does when the player gets experience. The client then
+## sends "rt_level_up" for each level, and the server gives the reward of that
+## level and, from a configured level, mana. The client does not check the level
+## when it loads a save, so a save can keep more experience than its level needs.
+func _add_xp(amount: int) -> void:
+	_map["xp"] = get_xp() + amount
+	while get_next_level_xp() >= 0 and get_xp() >= get_next_level_xp():
+		var new_level := get_level() + 1
+		var reached := _config.levels[new_level - 1]
+		_add_resource(reached.reward_type, reached.reward_amount)
+		if new_level >= _config.start_level_mana_reward:
+			_add_resource("m", _config.mana_reward_per_level)
+		_map["level"] = new_level
+
+
+func _add_resource(code: String, amount: int) -> void:
+	if not RESOURCE_KEYS.has(code):
+		# The levels in the configuration give only g, w, s, f and c. The server
+		# also knows "p" (potions) and "all"; the port does not need them yet.
+		push_warning("Ignored a reward of %d with the unknown resource code '%s'." % [amount, code])
+		return
+	var key: String = RESOURCE_KEYS[code][1]
+	var holder := _resource_holder(code)
+	holder[key] = int(holder.get(key, 0)) + amount
+
+
+func _resource_holder(code: String) -> Dictionary:
+	match RESOURCE_KEYS[code][0]:
+		"map":
+			return _map
+		"player":
+			return _document["playerInfo"]
+		_:
+			return _document["privateState"]
 
 
 func _add(placed: PlacedItem) -> void:

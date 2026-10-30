@@ -49,7 +49,9 @@ func _init(store_items: Array[GameConfig.ItemDef]) -> void:
 
 ## Updates the resources and which items the player can buy.
 func refresh(village: Village) -> void:
-	var parts := ["Level %d" % village.get_level(), "XP %d" % village.get_xp()]
+	var parts := ["Level %d" % village.get_level()]
+	var next_level_xp := village.get_next_level_xp()
+	parts.append("XP %d/%d" % [village.get_xp(), next_level_xp] if next_level_xp >= 0 else "XP %d" % village.get_xp())
 	for code: String in RESOURCE_NAMES:
 		parts.append("%s %d" % [RESOURCE_NAMES[code].capitalize(), village.get_resource(code)])
 	_resources.text = "  ".join(parts)

@@ -2,11 +2,11 @@
 
 A new client for Social Empires, written in GDScript for Godot 4.7. It does not contain Social Point files. You import the graphics and the game configuration from your own copy of the socialemperors server.
 
-Status: the second milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
+Status: the third milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
 
-You can buy decorations from the store and place them on your own land. The port checks the map edges, the owned land, the other items (units also block a tile), the level and the resources. After each purchase it saves the village in the server format, with the previous version in `<save>.bak`. The server and the original client can load this save.
+You can buy decorations from the store and place them on your own land. The port checks the map edges, the owned land, the other items (units also block a tile), the level and the resources. When the experience reaches the next level, the level goes up and the player gets the reward of that level, as in the original game. After each purchase it saves the village in the server format, with the previous version in `<save>.bak`. The server and the original client can load this save.
 
-Not done yet: other building types (the client limits the number of most of them), level-up and its rewards, construction time, and moving or selling items.
+Not done yet: other building types (the client limits the number of most of them), construction time, and moving or selling items.
 
 ## Import the game files
 
@@ -33,11 +33,22 @@ The port reads the data folder from `--data`, then from the `SE_DATA_DIR` enviro
 
 The port writes purchases to the village file that it opened. To play a server save, give its path, for example `--village saves/<USERID>.save.json`. Do not run the server with the same save at the same time.
 
+## Check the rules
+
+`checks/village_check.gd` checks the placement rules, level-up and the save format without a window. It needs a data folder from an import of the unchanged socialemperors files, because the tiles and the expected values come from them. It writes its files to `user://checks/`.
+
+```bash
+godot --headless --path godot --script res://checks/village_check.gd -- --data <data folder>
+```
+
+The exit code is the number of failed checks. Run it after you change the village rules or the save code.
+
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `importer/` | Import tool. `swf_bounds.py` reads symbol bounds from SWF files, so the images keep the position of the original graphics. |
-| `game_data/` | Game configuration (item definitions) |
+| `game_data/` | Game configuration (item and level definitions) |
 | `village/` | Village save model and placement rules, map coordinates, map view, camera and screen interface |
 | `sprites/` | Loads the imported item graphics |
+| `checks/` | Headless checks of the village rules and the save format |

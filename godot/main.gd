@@ -58,6 +58,7 @@ func _on_item_selected(item: GameConfig.ItemDef) -> void:
 
 
 func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
+	var old_level := _village.get_level()
 	var result := _village.buy(item, tile, int(Time.get_unix_time_from_system()))
 	if result != Village.Placement.OK:
 		_hud.show_placement_result(result)
@@ -71,7 +72,14 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
 		_hud.show_message(text)
 		push_error(text)
 		return
-	_hud.show_message("Built %s." % item.name)
+	var text := "Built %s." % item.name
+	for level in range(old_level + 1, _village.get_level() + 1):
+		var reached := _config.levels[level - 1]
+		text += " Level %d, %s: you get %d %s" % [level, reached.name, reached.reward_amount, VillageHud.RESOURCE_NAMES.get(reached.reward_type, reached.reward_type)]
+		if level >= _config.start_level_mana_reward:
+			text += " and %d mana" % _config.mana_reward_per_level
+		text += "."
+	_hud.show_message(text)
 
 
 ## Centre of the owned land, or the map centre when the village owns no land.

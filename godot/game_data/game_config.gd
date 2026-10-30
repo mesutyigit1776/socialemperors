@@ -1,6 +1,6 @@
 class_name GameConfig
 extends RefCounted
-## Item definitions from the game configuration that the importer writes (config.json).
+## Item and level definitions from the game configuration that the importer writes (config.json).
 
 
 const CATEGORY_DECORATIONS := 4
@@ -24,6 +24,17 @@ class ItemDef:
 		return type == "u"
 
 
+class LevelDef:
+	var name: String
+	var exp_required: int  ## Total experience that the player needs for this level.
+	var reward_type: String  ## Resource code, see Village.RESOURCE_KEYS.
+	var reward_amount: int
+
+
+var levels: Array[LevelDef] = []  ## levels[n - 1] is level n.
+var start_level_mana_reward: int  ## From this level, each new level also gives mana.
+var mana_reward_per_level: int
+
 var _items: Dictionary = {}  # int -> ItemDef
 
 
@@ -44,6 +55,24 @@ static func load_from_file(path: String) -> GameConfig:
 			push_warning("Ignored an incorrect item in '%s': %s" % [path, str(entry).left(200)])
 			continue
 		config._items[item.id] = item
+	# A level cannot be skipped like an item, because the list index is the level.
+	for entry: Variant in data.get("levels", []):
+		var level := _parse_level(entry)
+		if level == null:
+			push_error("Game configuration '%s' has an incorrect level: %s" % [path, str(entry).left(200)])
+			return null
+		config.levels.append(level)
+	if config.levels.is_empty():
+		push_error("Game configuration '%s' has no levels." % path)
+		return null
+	var globals: Variant = data.get("globals")
+	var start_mana: Variant = _to_int(globals.get("START_LEVEL_MANA_REWARD")) if globals is Dictionary else null
+	var mana_per_level: Variant = _to_int(globals.get("MANA_REWARD_PER_LEVEL")) if globals is Dictionary else null
+	if start_mana == null or mana_per_level == null:
+		push_error("Game configuration '%s' has no level mana reward in globals." % path)
+		return null
+	config.start_level_mana_reward = start_mana
+	config.mana_reward_per_level = mana_per_level
 	return config
 
 
@@ -84,6 +113,21 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.xp = numbers["xp"]
 	item.min_level = numbers["min_level"]
 	return item
+
+
+static func _parse_level(entry: Variant) -> LevelDef:
+	if not entry is Dictionary:
+		return null
+	var exp_required: Variant = _to_int(entry.get("exp_required"))
+	var reward_amount: Variant = _to_int(entry.get("reward_amount"))
+	if exp_required == null or reward_amount == null:
+		return null
+	var level := LevelDef.new()
+	level.name = str(entry.get("name", ""))
+	level.exp_required = exp_required
+	level.reward_type = str(entry.get("reward_type", ""))
+	level.reward_amount = reward_amount
+	return level
 
 
 ## The configuration stores most numbers as strings, but patches add JSON numbers,

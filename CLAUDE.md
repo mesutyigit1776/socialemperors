@@ -45,6 +45,7 @@ Then open `http://127.0.0.1:5050/`. Saves go to `saves/<USERID>.save.json`, and 
 ### Checks
 
 - The project has no automated tests. Do not add CI.
+- On the Godot port branch, run `godot/checks/village_check.gd` after a change to the village rules or the save code. See `godot/README.md`. Run it locally; it is not CI.
 - To check a server change, run the server and play in a browser with the Ruffle runner, or use headless Chromium with Playwright. Report what you tested and what you could not test.
 
 ### Code style
