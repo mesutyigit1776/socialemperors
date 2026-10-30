@@ -14,6 +14,8 @@ var _village: Village
 var _village_path: String
 var _view: VillageView
 var _hud: VillageHud
+var _store: Store
+var _store_key := []  # Level and rotation period of the build menu; it changes with them.
 var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
 
 
@@ -25,7 +27,8 @@ func _ready() -> void:
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
-	_village = Village.load_from_file(_village_path, _config) if _config != null else null
+	_store = Store.load_from_file(data_dir.path_join("shop.json"), _config) if _config != null else null
+	_village = Village.load_from_file(_village_path, _config) if _store != null else null
 	if _village == null:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	else:
@@ -39,14 +42,7 @@ func _ready() -> void:
 		var camera := MapCamera.new()
 		camera.position = _start_position(_village)
 		add_child(camera)
-		var categories := []
-		for category_id in GameConfig.STORE_CATEGORIES:
-			var store_items: Array[GameConfig.ItemDef] = []
-			for item in _config.store_items(category_id, _village.race):
-				if _sprites.get_sprite(item.img_name) != null:
-					store_items.append(item)
-			categories.append([_config.category_names.get(category_id, str(category_id)), store_items])
-		_hud = VillageHud.new(categories)
+		_hud = VillageHud.new()
 		_hud.item_selected.connect(_on_item_selected)
 		_hud.move_requested.connect(_on_move_requested)
 		_hud.sell_confirmed.connect(_on_sell_confirmed)
@@ -55,9 +51,10 @@ func _ready() -> void:
 		_hud.hurry_requested.connect(func() -> void: _collect(_selected, true))
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
 		add_child(_hud)
-		_hud.refresh(_village)
+		_update_store()
 		var clock := Timer.new()
 		clock.timeout.connect(_update_production)
+		clock.timeout.connect(_update_store)
 		add_child(clock)
 		clock.start(1.0)
 		_update_production()
@@ -88,6 +85,28 @@ func _select(placed: Village.PlacedItem) -> void:
 	var item := _config.get_item(placed.item_id) if placed != null else null
 	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed))
 	_update_production()
+
+
+## Updates the resources and the build menu. The menu changes with the level
+## and at the end of each period of the store rotation.
+func _update_store() -> void:
+	var now := _now()
+	var key := [_village.get_level(), _store.rotation_end(now)]
+	if key != _store_key:
+		_store_key = key
+		var categories := []
+		for category_id in Store.CATEGORIES:
+			var offered: Array[GameConfig.ItemDef] = []
+			for item in _store.items(category_id, _village.race, _village.get_level(), now):
+				if _sprites.get_sprite(item.img_name) != null:
+					offered.append(item)
+			var name: String = _config.category_names.get(category_id, str(category_id))
+			if category_id == Store.CATEGORY_NEW:
+				var end := Time.get_datetime_dict_from_unix_time(_store.rotation_end(now) + Time.get_time_zone_from_system()["bias"] * 60)
+				name += " (until %04d-%02d-%02d %02d:%02d)" % [end["year"], end["month"], end["day"], end["hour"], end["minute"]]
+			categories.append([name, offered])
+		_hud.set_categories(categories)
+	_hud.refresh(_village)
 
 
 ## Updates the marks of the ready buildings and the production of the selected building.
@@ -124,7 +143,7 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 		_:
 			_hud.show_message("%s does not produce now." % item.name)
 			return
-	_hud.refresh(_village)
+	_update_store()
 	if not _save():
 		return
 	if result == Village.Production.FARM_REMOVED:
@@ -181,7 +200,7 @@ func _on_sell_confirmed() -> void:
 		return
 	_select(null)
 	_view.remove_placed(placed)
-	_hud.refresh(_village)
+	_update_store()
 	if _save():
 		_hud.show_message("Sold %s." % item.name)
 
@@ -194,7 +213,7 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_view.end_placement()
 	_view.add_placed(_village.items.back())
-	_hud.refresh(_village)
+	_update_store()
 	if not _save():
 		return
 	_hud.show_message("Built %s.%s" % [item.name, _level_up_text(old_level)])

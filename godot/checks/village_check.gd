@@ -1,11 +1,11 @@
 extends SceneTree
-## Checks the village rules and the save format without a window.
+## Checks the village rules, the store and the save format without a window.
 ##
 ##   godot --headless --path godot --script res://checks/village_check.gd -- --data <data folder>
 ##
-## It needs config.json and villages/initial.json from an import of the
-## unchanged socialemperors files: the tiles and the expected values below come
-## from them. It writes its files to user://checks/. The exit code is the number
+## It needs config.json, shop.json and villages/initial.json from an import of
+## the unchanged socialemperors files: the tiles and the expected values below
+## come from them. It writes its files to user://checks/. The exit code is the number
 ## of failed checks.
 
 const YELLOW_TREE := 100  # 225 gold, 23 XP
@@ -28,6 +28,9 @@ const VILLAGER := 500
 const RESTAURANT := 232  # collect building: 8 h, 570 gold
 const CHICHEN_ITZA := 52  # wonder without population: 6 h, 600 gold
 const SAINT_BASIL := 261  # wonder that does not produce
+const DRAGONS_STATUE := 1456  # decoration that the store shows from level 20
+const DIAMOND_CASTLE := 1234  # only for gold members
+const CASH_WONDER := 1299  # in the "New" category, not in the rotation
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
@@ -36,6 +39,7 @@ const HOUSE_TILE := Vector2i(44, 50)
 const TOWER_TILE := Vector2i(51, 47)
 
 var _config: GameConfig
+var _data_dir: String
 var _initial: Dictionary
 var _failures := 0
 
@@ -48,6 +52,7 @@ func _init() -> void:
 		quit(1)
 		return
 	var data_dir := args[index + 1]
+	_data_dir = data_dir
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
 	var initial: Variant = JSON.parse_string(FileAccess.get_file_as_string(data_dir.path_join("villages/initial.json")))
 	if _config == null or not initial is Dictionary:
@@ -59,7 +64,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -377,6 +382,56 @@ func _check_hurry() -> bool:
 	_expect("after the cash collections", village, {"c": cash % 2})
 	_check(village.hurry(mine, T + 20 + 3600) == Village.Production.OK and village.get_resource("c") == cash % 2, "a ready building needs no cash")
 	_check(village.save_to_file(path) == OK, "the village after the cash collections saves")
+	return true
+
+
+## The store categories and the "New" rotation, with the shop settings of the
+## unchanged server: 2 groups for 48 hours, and the Halloween group on 31 October.
+func _check_store() -> bool:
+	var store := Store.load_from_file(_data_dir.path_join("shop.json"), _config)
+	var shop: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_data_dir.path_join("shop.json")))
+	var groups: Dictionary = shop["factions"]
+	var ids := func(category: int, race: String, level: int, now: int) -> Array:
+		return store.items(category, race, level, now).map(func(item: GameConfig.ItemDef) -> int: return item.id)
+	var bias: int = Time.get_time_zone_from_system()["bias"] * 60
+	var local := func(year: int, month: int, day: int) -> int:
+		return Time.get_unix_time_from_datetime_dict({"year": year, "month": month, "day": day, "hour": 12, "minute": 0, "second": 0}) - bias
+	# The groups that are on sale completely, and the items on sale that are in no such group.
+	var chosen := func(on_sale: Dictionary) -> Array:
+		var names := groups.keys().filter(func(name: String) -> bool: return groups[name].all(func(id: float) -> bool: return on_sale.has(int(id))))
+		var covered := {}
+		for name: String in names:
+			for id: float in groups[name]:
+				covered[int(id)] = true
+		return [names, on_sale.keys().filter(func(id: int) -> bool: return not covered.has(id))]
+
+	var day: int = local.call(2027, 1, 15)
+	var on_sale := store.rotation(day)
+	var result: Array = chosen.call(on_sale)
+	_check(result[0].size() == 2 and result[1].is_empty() and not "Halloween" in result[0], "the rotation offers 2 complete groups: %s" % [result[0]])
+	_check(store.rotation(store.rotation_end(day) - 1) == on_sale, "the rotation stays the same until the end of its period")
+	var changed := false
+	for period in range(1, 6):
+		changed = changed or store.rotation(day + period * 48 * 3600) != on_sale
+	_check(changed, "the rotation changes in later periods")
+	result = chosen.call(store.rotation(local.call(2027, 10, 31)))
+	_check(result[0].size() == 2 and "Halloween" in result[0] and result[1].is_empty(), "on 31 October the rotation offers the Halloween group and one other group: %s" % [result[0]])
+	_check(not "Halloween" in chosen.call(store.rotation(local.call(2027, 10, 30)))[0], "on 30 October the rotation does not offer the Halloween group")
+
+	var offered_new: Array = ids.call(Store.CATEGORY_NEW, "h", 100, day)
+	var rotation_ids := {}
+	for name: String in groups:
+		for id: float in groups[name]:
+			rotation_ids[int(id)] = true
+	_check(offered_new.all(func(id: int) -> bool: return on_sale.has(id) or not rotation_ids.has(id)), "the \"New\" category offers only the rotation items on sale from the groups")
+	_check(CASH_WONDER in offered_new, "the \"New\" category also offers the items that are not in the groups")
+	var offered_to_trolls: Array = []
+	for category in Store.CATEGORIES:
+		offered_to_trolls.append_array(ids.call(category, "t", 100, day))
+	_check(not offered_to_trolls.any(func(id: int) -> bool: return rotation_ids.has(id)), "the rotation items are only for humans")
+	_check(CHICHEN_ITZA in ids.call(5, "h", 1, day) and not CHICHEN_ITZA in ids.call(5, "t", 1, day), "the wonders are in the store for humans")
+	_check(not DRAGONS_STATUE in ids.call(4, "h", 19, day) and DRAGONS_STATUE in ids.call(4, "h", 20, day), "the store shows an item from its store level")
+	_check(not DIAMOND_CASTLE in ids.call(2, "h", 100, day), "the store does not offer the items for gold members")
 	return true
 
 

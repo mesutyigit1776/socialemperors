@@ -51,8 +51,7 @@ var _hurry_button := Button.new()
 var _work_times := HBoxContainer.new()
 
 
-## categories: [name, Array[GameConfig.ItemDef]] for each store category.
-func _init(categories: Array) -> void:
+func _init() -> void:
 	var panel := PanelContainer.new()
 	panel.position = Vector2(10, 10)
 	var column := VBoxContainer.new()
@@ -103,6 +102,18 @@ func _init(categories: Array) -> void:
 	column.add_child(_work_times)
 	add_child(_sell_dialog)
 	add_child(panel)
+	_category.item_selected.connect(_show_category)
+
+
+## Replaces the items of the build menu and keeps the shown category. Call
+## refresh() after it. categories: [name, Array[GameConfig.ItemDef]] for each store category.
+func set_categories(categories: Array) -> void:
+	var shown := maxi(_category.selected, 0)
+	_category.clear()
+	for button: Button in _buttons.values():
+		button.queue_free()
+	_buttons.clear()
+	_button_category.clear()
 	for index in categories.size():
 		_category.add_item(categories[index][0])
 		for item: GameConfig.ItemDef in categories[index][1]:
@@ -112,8 +123,8 @@ func _init(categories: Array) -> void:
 			_menu.add_child(button)
 			_buttons[item] = button
 			_button_category[item] = index
-	_category.item_selected.connect(_show_category)
-	_show_category(0)
+	_category.select(mini(shown, categories.size() - 1))
+	_show_category(_category.selected)
 
 
 ## Updates the resources and which items the player can buy.

@@ -4,6 +4,7 @@ The port does not contain Social Point files. This tool reads them from a
 socialemperors server folder that the user supplies and writes:
 
   <out>/config.json                  game configuration, as the server sends it
+  <out>/shop.json                    item groups of the "New" store rotation and the shop settings of the server
   <out>/sprites/<img_name>/<n>.png   frame n of the item graphic (1-based)
   <out>/sprites/<img_name>/meta.json registration offset and frame count
   <out>/villages/<name>.json         village saves to display
@@ -41,6 +42,19 @@ def load_game_config(source):
 		os.chdir(previous_dir)
 
 
+def load_shop(source):
+	"""Returns the store rotation: {"factions": {name: [item ids]}, "settings": shop settings}.
+
+	The server offers some of these item groups at a time (get_game_config.apply_shop_rotation).
+	The port chooses the groups itself, with the same settings.
+	"""
+	with open(os.path.join(source, "config", "shop_rotation.json"), encoding='utf-8') as f:
+		factions = json.load(f)["factions"]
+	with open(os.path.join(source, "server_config.json"), encoding='utf-8') as f:
+		settings = json.load(f)["shop"]
+	return {"factions": factions, "settings": settings}
+
+
 def load_village(path):
 	with open(path, encoding='utf-8') as f:
 		village = json.load(f)
@@ -49,10 +63,11 @@ def load_village(path):
 	return village
 
 
-def needed_items(config, villages, export_all):
+def needed_items(config, villages, shop, export_all):
 	"""Returns {img_name: item} for the items whose graphics must be exported.
 
-	By default these are the land, the store buildings and the items in the villages.
+	By default these are the land, the store buildings, all items of the store
+	rotation and the items in the villages.
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
@@ -60,6 +75,8 @@ def needed_items(config, villages, export_all):
 	else:
 		ids = set(TERRAIN_ITEM_IDS)
 		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) != "0")
+		for group in shop["factions"].values():
+			ids.update(int(item_id) for item_id in group)
 		for village in villages:
 			for game_map in village["maps"]:
 				ids.update(int(entry[0]) for entry in game_map["items"])
@@ -125,15 +142,18 @@ def main():
 	villages = [load_village(path) for path in village_paths]
 
 	config = load_game_config(source)
+	shop = load_shop(source)
 	os.makedirs(os.path.join(out_dir, "villages"), exist_ok=True)
 	with open(os.path.join(out_dir, "config.json"), 'w', encoding='utf-8') as f:
 		json.dump(config, f)
+	with open(os.path.join(out_dir, "shop.json"), 'w', encoding='utf-8') as f:
+		json.dump(shop, f, indent='\t')
 	for path in village_paths:
 		shutil.copyfile(path, os.path.join(out_dir, "villages", os.path.basename(path)))
 
 	sprite_dir = os.path.join(source, "assets", "buildingsprites")
 	failed = []
-	items = needed_items(config, villages, args.all)
+	items = needed_items(config, villages, shop, args.all)
 
 	def import_one(img_name):
 		swf_path = os.path.join(sprite_dir, f"{img_name}.swf")

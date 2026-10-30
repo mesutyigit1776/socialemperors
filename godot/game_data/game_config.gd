@@ -3,11 +3,6 @@ extends RefCounted
 ## Item and level definitions from the game configuration that the importer writes (config.json).
 
 
-## Store categories that the port sells: village, defense, army buildings and decorations.
-## The wonders and the "New" category have special rules that the port does not have yet.
-const STORE_CATEGORIES: Array[int] = [1, 2, 3, 4]
-
-
 class ItemDef:
 	var id: int
 	var name: String
@@ -33,6 +28,7 @@ class ItemDef:
 	var collect_type: String  ## Resource code, see Village.RESOURCE_KEYS.
 	var collect_xp: int
 	var population: int  ## Population that the building gives. Wonders with population cannot hurry.
+	var store_level: int  ## The store shows the item from this level. 0: from the start.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -95,8 +91,8 @@ static func load_from_file(path: String) -> GameConfig:
 		push_error("Game configuration '%s' has no levels." % path)
 		return null
 	var globals: Variant = data.get("globals")
-	var start_mana: Variant = _to_int(globals.get("START_LEVEL_MANA_REWARD")) if globals is Dictionary else null
-	var mana_per_level: Variant = _to_int(globals.get("MANA_REWARD_PER_LEVEL")) if globals is Dictionary else null
+	var start_mana: Variant = to_int(globals.get("START_LEVEL_MANA_REWARD")) if globals is Dictionary else null
+	var mana_per_level: Variant = to_int(globals.get("MANA_REWARD_PER_LEVEL")) if globals is Dictionary else null
 	if start_mana == null or mana_per_level == null:
 		push_error("Game configuration '%s' has no level mana reward in globals." % path)
 		return null
@@ -108,20 +104,20 @@ static func load_from_file(path: String) -> GameConfig:
 		push_error("Game configuration '%s' has no TOWNHALL_HOUSE_LIMIT in globals." % path)
 		return null
 	for key: Variant in house_limits:
-		var townhall_id: Variant = _to_int(key)
-		var limit: Variant = _to_int(house_limits[key])
+		var townhall_id: Variant = to_int(key)
+		var limit: Variant = to_int(house_limits[key])
 		if townhall_id == null or limit == null:
 			push_error("Game configuration '%s' has an incorrect TOWNHALL_HOUSE_LIMIT." % path)
 			return null
 		config.townhall_house_limit[townhall_id] = limit
 	for key in ["ALLIES_BUILDING", "ALLIES_MARKET", "ALLIES_MARKET_TROLLS", "RECRUITMENT_PRIZE"]:
-		var id: Variant = _to_int(globals.get(key))
+		var id: Variant = to_int(globals.get(key))
 		if id == null:
 			push_error("Game configuration '%s' has no %s in globals." % [path, key])
 			return null
 		config.allies_item_ids.append(id)
 	for entry: Variant in data.get("social_items", []):
-		var id: Variant = _to_int(entry.get("id")) if entry is Dictionary else null
+		var id: Variant = to_int(entry.get("id")) if entry is Dictionary else null
 		if id == null:
 			push_error("Game configuration '%s' has an incorrect social item: %s" % [path, str(entry).left(200)])
 			return null
@@ -131,7 +127,7 @@ static func load_from_file(path: String) -> GameConfig:
 		push_error("Game configuration '%s' has no COLLECT_VARIABLE_IDS in globals." % path)
 		return null
 	for entry: Variant in variable_ids:
-		var id: Variant = _to_int(entry)
+		var id: Variant = to_int(entry)
 		if id == null:
 			push_error("Game configuration '%s' has an incorrect COLLECT_VARIABLE_IDS." % path)
 			return null
@@ -139,8 +135,8 @@ static func load_from_file(path: String) -> GameConfig:
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
-			if entry is Dictionary and _to_int(entry.get("id")) != null:
-				config.category_names[_to_int(entry["id"])] = str(entry.get("name", ""))
+			if entry is Dictionary and to_int(entry.get("id")) != null:
+				config.category_names[to_int(entry["id"])] = str(entry.get("name", ""))
 	return config
 
 
@@ -148,12 +144,10 @@ func get_item(id: int) -> ItemDef:
 	return _items.get(id)
 
 
-## Buildings that the store sells to a race in a category, in configuration order.
-func store_items(category_id: int, race: String) -> Array[ItemDef]:
+## All items in configuration order.
+func items() -> Array[ItemDef]:
 	var result: Array[ItemDef] = []
-	for item: ItemDef in _items.values():
-		if not item.is_unit() and item.is_sold_to(race) and item.category_id == category_id:
-			result.append(item)
+	result.assign(_items.values())
 	return result
 
 
@@ -161,8 +155,8 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population"]:
-		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level"]:
+		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
 	if numbers["width"] < 1 or numbers["height"] < 1 or numbers["max_frame"] < 1 or numbers["cost"] < 0 or numbers["collect"] < 0:
@@ -190,14 +184,15 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.collect_type = str(entry.get("collect_type", ""))
 	item.collect_xp = numbers["collect_xp"]
 	item.population = numbers["population"]
+	item.store_level = numbers["store_level"]
 	return item
 
 
 static func _parse_level(entry: Variant) -> LevelDef:
 	if not entry is Dictionary:
 		return null
-	var exp_required: Variant = _to_int(entry.get("exp_required"))
-	var reward_amount: Variant = _to_int(entry.get("reward_amount"))
+	var exp_required: Variant = to_int(entry.get("exp_required"))
+	var reward_amount: Variant = to_int(entry.get("reward_amount"))
 	if exp_required == null or reward_amount == null:
 		return null
 	var level := LevelDef.new()
@@ -210,7 +205,7 @@ static func _parse_level(entry: Variant) -> LevelDef:
 
 ## The configuration stores most numbers as strings, but patches add JSON numbers,
 ## which Godot reads as floats. Returns null when the value is not a whole number.
-static func _to_int(value: Variant) -> Variant:
+static func to_int(value: Variant) -> Variant:
 	if value is String and value.is_valid_int():
 		return value.to_int()
 	if (value is float or value is int) and value == floorf(value):
