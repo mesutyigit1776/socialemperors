@@ -19,6 +19,7 @@ const SPEARMAN := 509
 const LIGHT_ARCHER := 516  # The starting village has 2.
 const WALLACE := 555
 const TREASURE := 82
+const SUMMONED_GOLEM := 630
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 const NEUTRAL := BattleFighter.Team.NEUTRAL
@@ -44,7 +45,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -254,6 +255,27 @@ func _check_water() -> bool:
 	_check(on_water.is_empty(), "no item stands on water")
 	var unit: BattleFighter = quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == PLAYER).front()
 	_check(not quest.sim.walk(unit, water), "a unit cannot walk into the water")
+	return true
+
+
+## Summoned units give no experience and do not keep the player in the quest.
+func _check_summoned() -> bool:
+	var quest := _quest(TROLLS_1, {SPEARMAN: 1}, 0)
+	quest.start(1)
+	var golem := quest.sim.summon(_config.get_item(SUMMONED_GOLEM), Vector2i(10, 10), PLAYER, 4000)
+	var enemy_golem := quest.sim.summon(_config.get_item(SUMMONED_GOLEM), Vector2i(12, 10), ENEMY, 4000)
+	quest.sim.kill(enemy_golem)
+	quest.sim.kill(golem)
+	_check(quest.xp == 0 and quest.enemies_left() == 6 and not quest.result()["units"].any(func(entry: Array) -> bool: return entry[0] == SUMMONED_GOLEM), "summoned units give no experience and are not in the result")
+	var lost := _quest(TROLLS_1, {SPEARMAN: 1}, 0)
+	lost.start(1)
+	var helper := lost.sim.summon(_config.get_item(SUMMONED_GOLEM), Vector2i(10, 10), PLAYER, 4000)
+	var spearman: BattleFighter = lost.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == PLAYER and item.def.id == SPEARMAN).front()
+	lost.sim.kill(spearman)
+	for i in QuestBattle.END_DELAY_FRAMES:
+		lost.sim.step()
+		lost.update()
+	_check(lost.is_finished() and not lost.is_won() and not helper.dead, "the player loses with only a summoned golem left")
 	return true
 
 

@@ -9,9 +9,12 @@ extends RefCounted
 ## fight back and call their neighbours for help. Towers and castles shoot at
 ## enemies in their range. Healers heal the units of their side.
 ##
-## Not here yet: spells and magic shields, the special attacks of most units,
-## the scripts of the quests, and the rules of the game modes (what a dead unit or
-## building gives or costs). The signals tell the other parts what happens.
+## Spells and abilities can stun, freeze, poison, enlarge and swallow fighters,
+## protect an area with a shield, and summon units; see stun() and the functions
+## after it. Not here yet: the spells themselves, the special attacks of most
+## units, the scripts of the quests, and the rules of the game modes (what a
+## dead unit or building gives or costs). The signals tell the other parts what
+## happens.
 
 ## target lost damage points. critical: the attack was a critical hit.
 signal hit(target: BattleFighter, attacker: BattleFighter, damage: int, critical: bool)
@@ -23,6 +26,8 @@ signal died(fighter: BattleFighter, killer: BattleFighter)
 ## The fighter left the map: a dead unit after DEAD_UNIT_FRAMES, or a destroyed building.
 signal removed(fighter: BattleFighter)
 signal added(fighter: BattleFighter)  ## An item came on the map after the start, see add_item().
+## A state of the fighter changed, for example BattleFighter.frozen.
+signal state_changed(fighter: BattleFighter)
 
 ## A unit checks its attack every ATTACK_CHECK_FRAMES frames, and attacks when
 ## the frame is also a multiple of its attack interval.
@@ -72,6 +77,15 @@ const CLOSE_FIGHTERS: Array[int] = [538, 545, 650, 702]
 ## Units that keep a unit of their own side as target: healers and the engineer.
 const SUPPORT_UNITS: Array[int] = [502, 570, 590, 866, 886]
 
+const SUBCAT_BOSS := 84
+## A stunned unit jumps for 1 second and stays down for 1.5 seconds.
+const STUN_FRAMES := 75
+const STUN_POPULATION_LIMIT := 4  ## Only units with less population can be stunned.
+const POISON_TICK_FRAMES := 90  ## Poison hurts every 3 seconds.
+const SWALLOW_FRAMES := 15  ## A swallowed item shrinks for 0.5 seconds, then dies.
+const SWALLOW_MAX_LIFE := 500
+const ENLARGED_ATTACK := 1.5
+
 var rng: RandomNumberGenerator
 var frame := 0
 var fighters: Array[BattleFighter] = []  ## In the order in which they act in each frame.
@@ -81,6 +95,9 @@ var _tiles := {}  # Vector2i -> BattleFighter on the tile, like the tile array o
 var _blocked := {}  # Vector2i -> true for tiles that walking units go around.
 var _water := {}  # Vector2i -> true for the water of a quest island, see add_water().
 var _towers := 0
+var _timers: Array[Array] = []  # [frame, Callable], in the order in which they were set.
+var _shields := {}  # Shield id -> [Rect2i of the protected tiles, part of the damage that passes].
+var _last_shield_id := 0
 
 
 func _init(random: RandomNumberGenerator) -> void:
@@ -105,6 +122,7 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 	item.position = IsoGrid.tile_to_map(tile)
 	item.face_point = item.position
 	item.health = def.life
+	item.max_health = def.life
 	item.attack = def.attack
 	item.defense = def.defense
 	item.attack_interval = def.attack_interval
@@ -149,6 +167,9 @@ func is_free(tile: Vector2i) -> bool:
 
 ## Runs one frame.
 func step() -> void:
+	for timer: Array in _timers.filter(func(timer: Array) -> bool: return timer[0] <= frame):
+		_timers.erase(timer)
+		timer[1].call()
 	for item: BattleFighter in fighters.duplicate():
 		if item.dead and item.is_unit():
 			item.remove_frames -= 1
@@ -210,7 +231,7 @@ func fighter_at(tile: Vector2i) -> BattleFighter:
 
 ## The unit attacks target; it walks next to it when it is out of range.
 func attack(unit: BattleFighter, target: BattleFighter) -> void:
-	if unit.dead:
+	if unit.dead or unit.incapacitated:
 		return
 	unit.attacking = true
 	set_target(unit, target)
@@ -223,7 +244,7 @@ func attack(unit: BattleFighter, target: BattleFighter) -> void:
 
 ## The unit walks to tile. Returns false when it cannot get there.
 func walk(unit: BattleFighter, tile: Vector2i) -> bool:
-	if unit.dead:
+	if unit.dead or unit.incapacitated:
 		return false
 	var nodes: Array[Vector2i] = []
 	if unit.flying:
@@ -320,6 +341,8 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	if amount == 0 or target.dead:
 		return
 	var points := float(amount)
+	if attacker != null and attacker.enlarged:
+		points *= ENLARGED_ATTACK
 	if attacker != null and attacker.is_unit() and target.is_unit():
 		if attacker.def.subcat_functional == SUBCAT_SIEGE:
 			points = ceilf(points * SIEGE_DAMAGE_DONE)
@@ -328,6 +351,7 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var critical := rng.randf() * 100 < CRITICAL_PERCENT
 	var variance := rng.randf() * DAMAGE_VARIANCE - DAMAGE_VARIANCE / 2
 	points = (points + absf(variance)) * CRITICAL_MULTIPLIER if critical else points + variance
+	points -= floorf(points - points * shield_factor(target.tile) + 0.5)
 	var damage := maxi(floori(points - target.defense + 0.5), 1)
 	target.health -= damage
 	hit.emit(target, attacker, damage, critical)
@@ -344,6 +368,169 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	_call_for_help(target, attacker)
 
 
+## Runs action after this number of frames, at the start of a frame. The
+## client times states in milliseconds with timers that run beside the frames;
+## the port counts them in frames at 30 frames per second.
+func after(frames: int, action: Callable) -> void:
+	_timers.append([frame + frames, action])
+
+
+## Up to count items of team within radius tiles of tile that pass filter,
+## nearest first, as the client finds units and buildings for spells and
+## abilities. The distance is measured to the anchor tile of an item. Without
+## with_centre, an item on tile is not included.
+func items_near(tile: Vector2i, radius: int, count: int, team: BattleFighter.Team, with_centre: bool, filter: Callable) -> Array[BattleFighter]:
+	var found: Array[BattleFighter] = []
+	var squares := {}
+	for item in fighters:
+		var offset := item.tile - tile
+		var squared := offset.x * offset.x + offset.y * offset.y
+		if item.team == team and squared <= radius * radius and (with_centre or item.tile != tile) and filter.call(item):
+			found.append(item)
+			squares[item] = squared
+	# The order of the items is the order in which they came on the map; the
+	# sort keeps it among items at the same distance.
+	var order := {}
+	for i in found.size():
+		order[found[i]] = i
+	found.sort_custom(func(a: BattleFighter, b: BattleFighter) -> bool: return squares[a] < squares[b] or (squares[a] == squares[b] and order[a] < order[b]))
+	return found.slice(0, count)
+
+
+## Kills item without a killer, for example a unit that a spell swallowed.
+func kill(item: BattleFighter) -> void:
+	if not item.dead:
+		item.health = 0
+		_kill(item, null)
+
+
+## The unit cannot walk or attack for STUN_FRAMES. Bosses, enlarged units,
+## units that are already stunned or frozen, and units with population_limit
+## or more population are not stunned.
+func stun(unit: BattleFighter, population_limit: int = STUN_POPULATION_LIMIT) -> void:
+	if not unit.is_unit() or unit.dead or unit.enlarged or unit.incapacitated or unit.def.subcat_functional == SUBCAT_BOSS or unit.def.population >= population_limit:
+		return
+	unit.incapacitated = true
+	unit.stunned = true
+	unit.animation = BattleFighter.Pose.DYING
+	state_changed.emit(unit)
+	after(STUN_FRAMES, func() -> void:
+		unit.stunned = false
+		_end_incapacity(unit))
+
+
+## The unit stops and cannot walk or attack for the number of frames. The
+## client uses one state for stunned and frozen units: a stun that ends during a
+## freeze also ends the freeze, and the same is true the other way round.
+func freeze(unit: BattleFighter, frames: int) -> void:
+	if not unit.is_unit() or unit.dead:
+		return
+	unit.walk_point = null
+	unit.path.clear()
+	unit.moving = false
+	unit.incapacitated = true
+	unit.frozen = true
+	state_changed.emit(unit)
+	after(frames, func() -> void:
+		unit.frozen = false
+		_end_incapacity(unit))
+
+
+## The unit loses damage points (an attack, see receive_attack()) every
+## POISON_TICK_FRAMES, ticks times. At each tick it can pass the poison to the
+## nearest units within 1 tile on the side that attacker attacks: up to
+## infects units, the poisoned unit included, so it passes the poison to
+## infects - 1 others. They get ticks - 1 ticks of the first poison, also when
+## they get it later. Without ticks the client's timer does not stop: such a
+## unit stays poisoned until it dies.
+func poison(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker: BattleFighter) -> void:
+	if not unit.is_unit() or unit.dead or unit.poisoned:
+		return
+	unit.poisoned = true
+	state_changed.emit(unit)
+	_poison_tick(unit, damage, ticks, infects, attacker, ticks)
+
+
+## The unit does ENLARGED_ATTACK times its damage for the number of frames,
+## and cannot be stunned. An enlarged unit does not get the state again.
+func enlarge(unit: BattleFighter, frames: int) -> void:
+	if not unit.is_unit() or unit.dead or unit.enlarged:
+		return
+	unit.enlarged = true
+	state_changed.emit(unit)
+	after(frames, func() -> void:
+		unit.enlarged = false
+		state_changed.emit(unit))
+
+
+## The item shrinks into a hole and dies after SWALLOW_FRAMES, unless it is a
+## unit with SWALLOW_MAX_LIFE or more life.
+func swallow(item: BattleFighter) -> void:
+	if item.dead or item.swallowed or not item.can_be_swallowed():
+		return
+	item.swallowed = true
+	state_changed.emit(item)
+	after(SWALLOW_FRAMES, kill.bind(item))
+
+
+## A unit that a spell or an ability brings, with this life.
+func summon(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team, life: int) -> BattleFighter:
+	var unit := add_item(def, tile, team)
+	unit.summoned = true
+	unit.health = life
+	unit.max_health = life
+	return unit
+
+
+## Protects the square of area tiles with corner as its tile of largest x and
+## y: an item on these tiles takes only factor of the damage, on all sides.
+## Returns the id for remove_shield(). With an area of 0 the shield protects
+## no tile.
+func add_shield(corner: Vector2i, area: int, factor: float) -> int:
+	_last_shield_id += 1
+	_shields[_last_shield_id] = [Rect2i(corner - Vector2i(area - 1, area - 1), Vector2i(area, area)), factor]
+	return _last_shield_id
+
+
+func remove_shield(shield_id: int) -> void:
+	_shields.erase(shield_id)
+
+
+## The part of the damage that passes to an item on tile: the factor of the
+## first shield that protects it, or 1. Shields do not add up.
+func shield_factor(tile: Vector2i) -> float:
+	for shield: Array in _shields.values():
+		if shield[0].has_point(tile):
+			return shield[1]
+	return 1.0
+
+
+func _poison_tick(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker: BattleFighter, left: int) -> void:
+	after(POISON_TICK_FRAMES, func() -> void:
+		if unit.dead:
+			unit.poisoned = false
+			return
+		receive_attack(unit, damage, attacker)
+		# The client also passes the poison on when this tick kills the unit.
+		if infects > 0:
+			var side := BattleFighter.Team.PLAYER if attacker != null and attacker.team == BattleFighter.Team.ENEMY else BattleFighter.Team.ENEMY
+			for other in items_near(unit.tile, 1, infects, side, true, func(item: BattleFighter) -> bool: return item.is_unit() and not item.dead):
+				poison(other, damage, ticks - 1, infects, attacker)
+		if left == 1:
+			unit.poisoned = false
+			state_changed.emit(unit)
+		elif not unit.dead:
+			_poison_tick(unit, damage, ticks, infects, attacker, left - 1))
+
+
+## When a unit can act again, the client drops its target.
+func _end_incapacity(unit: BattleFighter) -> void:
+	unit.incapacitated = false
+	if not unit.dead:
+		set_target(unit, null)
+	state_changed.emit(unit)
+
+
 func _update_unit(unit: BattleFighter) -> void:
 	if unit.dead:
 		if frame % ANIMATION_FRAMES == 0:
@@ -352,6 +539,9 @@ func _update_unit(unit: BattleFighter) -> void:
 	if frame % BattleAI.UPDATE_INTERVAL == 0:
 		_tidy(unit)
 		unit.ai.update(self, unit)
+	# The AI still runs, but a stunned or frozen unit refuses its orders.
+	if unit.incapacitated:
+		return
 	if unit.attacking and (frame + unit.attack_delay) % ATTACK_CHECK_FRAMES == 0:
 		_update_attack(unit)
 	_update_walk(unit)

@@ -17,6 +17,7 @@ var frame := 0  ## The direction of the graphic of a building, as in a save.
 ## The shot points of the graphic, or null: shots start and aim at the position.
 var graphic: BattleGraphic
 var health: int
+var max_health: int  ## The life of the item, or the life that a summoning spell gives.
 var attack: int
 var defense: int
 var attack_interval: int
@@ -29,6 +30,15 @@ var ability: BattleAbility
 var target: BattleFighter
 var targeted_by: Array[BattleFighter] = []
 var dead := false
+## A spell or an ability brought the unit. Quests do not count it, see QuestBattle.
+var summoned := false
+## States that spells and abilities give, see BattleSim.stun() and the functions after it.
+var incapacitated := false  ## Stunned or frozen: the unit does not walk or attack.
+var stunned := false
+var frozen := false
+var poisoned := false
+var enlarged := false  ## The unit does 1.5 times the damage and cannot be stunned.
+var swallowed := false  ## The unit or building goes into a hole and dies soon.
 
 # Units only.
 var ai: BattleAI
@@ -53,7 +63,12 @@ func is_unit() -> bool:
 
 
 func max_life() -> int:
-	return def.life
+	return max_health
+
+
+## Units with BattleSim.SWALLOW_MAX_LIFE or more life are too big to swallow.
+func can_be_swallowed() -> bool:
+	return not is_unit() or max_health < BattleSim.SWALLOW_MAX_LIFE
 
 
 func footprint() -> Rect2i:

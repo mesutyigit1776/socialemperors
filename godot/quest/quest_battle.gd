@@ -27,6 +27,8 @@ extends RefCounted
 ##   the free units of the island as units of the player, also when the island
 ##   does not have them (the Viking island counts one advanced catapult), so on
 ##   such an island the player cannot lose this way; the port does the same.
+## - Units that spells summon do not count: they give no gold or experience,
+##   and the player does not lose them.
 ## The quest ends END_DELAY_FRAMES after a win or a loss, or at once when the
 ## player retreats. Then a part of the dead units comes back, see result().
 
@@ -276,7 +278,8 @@ func _pays_gold(item: Variant) -> bool:
 
 
 func _on_died(item: BattleFighter, _killer: BattleFighter) -> void:
-	if _finished:
+	# Summoned units do not count: no gold, no experience, no loss of the player.
+	if _finished or item.summoned:
 		return
 	match item.team:
 		BattleFighter.Team.PLAYER:

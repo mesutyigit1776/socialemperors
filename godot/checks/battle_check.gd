@@ -18,6 +18,8 @@ const LIGHTNING_TOWER := 214  # timed shots that fly straight, every 15 frames
 const HOUSE := 1  # 2x2, no attack: not a target
 const MILL := 300  # 2x2, produces: a target
 const TOWN_HALL := 26  # 4x4, no attack
+const WAR_TROLL := 529  # population 4, life 200
+const STONE_GOLEM := 538  # boss, life 6500
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 
@@ -39,7 +41,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -480,6 +482,162 @@ func _check_fights() -> bool:
 		_run_until(again, func() -> bool: return a.dead or b.dead, 5000)
 		replay.append([again.frame, a.health, b.health])
 	_check(replay[0] == replay[1], "the same seed gives the same battle: %s" % [replay[0]])
+	return true
+
+
+## A stunned unit cannot walk or attack for 75 frames and then drops its
+## target. Frozen units stop at once. Stun and freeze share one state.
+func _check_stun_and_freeze() -> bool:
+	var sim := _sim(21)
+	var unit := sim.add_item(_config.get_item(SPEARMAN), Vector2i(30, 30), PLAYER)
+	var enemy := sim.add_item(_config.get_item(SPEARMAN), Vector2i(31, 30), ENEMY)
+	enemy.health = 100000
+	sim.attack(unit, enemy)
+	var attacks := [0]
+	sim.hit.connect(func(_t: BattleFighter, a: BattleFighter, _d: int, _c: bool) -> void:
+		if a == unit:
+			attacks[0] += 1)
+	sim.stun(unit)
+	_check(unit.incapacitated and unit.stunned and unit.animation == BattleFighter.Pose.DYING, "a stunned unit falls down")
+	_check(not sim.walk(unit, Vector2i(35, 35)), "a stunned unit refuses to walk")
+	for i in 75:
+		sim.step()
+	_check(attacks[0] == 0 and unit.incapacitated, "a stunned unit does not attack for 75 frames")
+	sim.step()
+	_check(not unit.incapacitated and not unit.stunned and unit.target == null, "after the stun the unit can act and has no target")
+	var troll := sim.add_item(_config.get_item(WAR_TROLL), Vector2i(40, 40), ENEMY)
+	var golem := sim.add_item(_config.get_item(STONE_GOLEM), Vector2i(45, 45), ENEMY)
+	sim.stun(troll)
+	sim.stun(golem)
+	_check(not troll.incapacitated and not golem.incapacitated, "units with a population of 4 and bosses are not stunned")
+	sim.enlarge(unit, 300)
+	sim.stun(unit)
+	_check(not unit.incapacitated, "an enlarged unit is not stunned")
+
+	var walker := sim.add_item(_config.get_item(SPEARMAN), Vector2i(20, 20), PLAYER)
+	sim.walk(walker, Vector2i(26, 20))
+	for i in 10:
+		sim.step()
+	sim.freeze(walker, 450)
+	var position := walker.position
+	for i in 100:
+		sim.step()
+	_check(walker.frozen and walker.position == position and walker.path.is_empty(), "a frozen unit stops at once and stays")
+	sim.stun(walker)
+	_check(not walker.stunned, "a frozen unit is not stunned")
+	for i in 351:
+		sim.step()
+	_check(not walker.frozen and not walker.incapacitated, "the freeze ends after its frames")
+	var both := sim.add_item(_config.get_item(SPEARMAN), Vector2i(60, 60), PLAYER)
+	sim.stun(both)
+	sim.freeze(both, 450)
+	for i in 76:
+		sim.step()
+	_check(both.frozen and not both.incapacitated, "as in the client, the end of a stun also ends a freeze")
+	return true
+
+
+## Poison hurts every 90 frames. With infects 2 it passes to the nearest other
+## unit within 1 tile (the first on the map among equal ones), with one tick
+## less; with infects 1 to no other unit.
+func _check_poison() -> bool:
+	var sim := _sim(22)
+	var units: Array[BattleFighter] = []
+	for x in 3:
+		var unit := sim.add_item(_config.get_item(SPEARMAN), Vector2i(30 + x, 30), ENEMY)
+		unit.health = 100000
+		unit.ai.condition = BattleAI.Condition.PASSIVE
+		units.append(unit)
+	var hits := {}
+	sim.hit.connect(func(t: BattleFighter, _a: BattleFighter, _d: int, _c: bool) -> void:
+		hits[t] = hits.get(t, []) + [sim.frame])
+	sim.poison(units[0], 20, 5, 1, null)
+	for i in 1000:
+		sim.step()
+	_check(hits.get(units[0]) == [90, 180, 270, 360, 450], "poison hurts 5 times, every 90 frames: %s" % [hits.get(units[0])])
+	_check(not hits.has(units[1]) and not units[0].poisoned, "with infects 1 the poison does not pass on, and it ends")
+	hits.clear()
+	var start := sim.frame
+	sim.poison(units[1], 20, 3, 2, null)
+	for i in 91:
+		sim.step()
+	# The units draw random numbers while they wait, so the check takes the range of an attack of 20.
+	var lost: int = 100000 - units[1].health
+	_check(lost >= 16 - units[1].defense and lost <= 36 - units[1].defense, "a tick is an attack of the poison damage (%d)" % lost)
+	for i in 1000:
+		sim.step()
+	_check(hits[units[1]].slice(0, 3) == [start + 90, start + 180, start + 270], "the first unit gets its ticks")
+	_check(hits.has(units[0]) and hits[units[0]][0] == start + 180 and not hits.has(units[2]), "the poison passes to one neighbour at the next tick")
+	var endless := sim.add_item(_config.get_item(SPEARMAN), Vector2i(50, 50), ENEMY)
+	endless.health = 100000
+	endless.ai.condition = BattleAI.Condition.PASSIVE
+	hits.clear()
+	sim.poison(endless, 20, 0, 0, null)
+	for i in 1800:
+		sim.step()
+	_check(hits[endless].size() == 19 and endless.poisoned, "as in the client, a poison without ticks does not end")
+	return true
+
+
+## An enlarged unit does 1.5 times its damage. A shield lets only its factor
+## of the damage through on its tiles, on both sides; shields do not add up.
+func _check_enlarge_and_shield() -> bool:
+	var sim := _sim(23)
+	var attacker := sim.add_item(_config.get_item(SPEARMAN), Vector2i(30, 30), PLAYER)
+	var target := sim.add_item(_config.get_item(SPEARMAN), Vector2i(31, 30), ENEMY)
+	target.health = 100000
+	var damages: Array[int] = []
+	sim.hit.connect(func(_t: BattleFighter, _a: BattleFighter, damage: int, _c: bool) -> void: damages.append(damage))
+	var copy := RandomNumberGenerator.new()
+	copy.seed = 5
+	sim.rng.seed = 5
+	sim.enlarge(attacker, 60)
+	sim.receive_attack(target, 8, attacker)
+	_check(damages[0] == _expected_damage(copy, 12, target.defense), "an enlarged unit does 1.5 times its attack")
+	for i in 61:
+		sim.step()
+	_check(not attacker.enlarged, "the unit gets its normal size after its frames")
+
+	var shield := sim.add_shield(Vector2i(31, 30), 7, 0.7)
+	_check(sim.shield_factor(Vector2i(31, 30)) == 0.7 and sim.shield_factor(Vector2i(25, 24)) == 0.7, "the shield covers 7 tiles up to its corner")
+	_check(sim.shield_factor(Vector2i(32, 30)) == 1.0 and sim.shield_factor(Vector2i(24, 30)) == 1.0, "the shield ends at its area")
+	sim.add_shield(Vector2i(31, 30), 5, 0.4)
+	_check(sim.shield_factor(Vector2i(31, 30)) == 0.7, "the first shield counts; shields do not add up")
+	damages.clear()
+	copy.seed = 6
+	sim.rng.seed = 6
+	sim.receive_attack(target, 40, null)
+	var critical := copy.randf() * 100 < 10
+	var variance := copy.randf() * 8 - 4
+	var points := (40 + absf(variance)) * 1.5 if critical else 40 + variance
+	points -= floorf(points - points * 0.7 + 0.5)
+	_check(damages[0] == maxi(floori(points - target.defense + 0.5), 1), "an enemy on the shield also takes less damage")
+	sim.remove_shield(shield)
+	_check(sim.shield_factor(Vector2i(25, 24)) == 1.0, "a removed shield protects no more")
+	sim.add_shield(Vector2i(10, 10), 0, 0.4)
+	_check(sim.shield_factor(Vector2i(10, 10)) == 1.0, "a shield with an area of 0 protects no tile")
+	return true
+
+
+## A swallowed item dies after 15 frames, without a killer. Units with 500
+## life or more cannot be swallowed. A summoned unit has the life of the spell.
+func _check_swallow_and_summon() -> bool:
+	var sim := _sim(24)
+	var unit := sim.add_item(_config.get_item(SPEARMAN), Vector2i(30, 30), ENEMY)
+	var house := sim.add_item(_config.get_item(MILL), Vector2i(40, 40), ENEMY)
+	var golem := sim.add_item(_config.get_item(STONE_GOLEM), Vector2i(50, 50), ENEMY)
+	var deaths := {}
+	sim.died.connect(func(item: BattleFighter, killer: BattleFighter) -> void: deaths[item] = [sim.frame, killer])
+	sim.swallow(unit)
+	sim.swallow(house)
+	sim.swallow(golem)
+	_check(unit.swallowed and not golem.swallowed, "a unit with 6500 life cannot be swallowed")
+	for i in 16:
+		sim.step()
+	_check(deaths.has(unit) and deaths[unit][0] == 15 and deaths[unit][1] == null, "a swallowed unit dies after 15 frames, without a killer")
+	_check(deaths.has(house) and not house in sim.fighters, "a swallowed building is destroyed")
+	var summoned := sim.summon(_config.get_item(630), Vector2i(60, 60), PLAYER, 5000)
+	_check(summoned.summoned and summoned.health == 5000 and summoned.max_life() == 5000, "a summoned golem has the life of the spell")
 	return true
 
 

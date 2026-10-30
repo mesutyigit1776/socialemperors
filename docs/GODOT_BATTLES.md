@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 3 done. Branch `godot-port`.
+Status: stages 1 to 3 done; stage 4 in progress (4a and 4b done). Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -145,6 +145,29 @@ Not exact yet:
 
 Also in this stage: the client puts the registration point of a building graphic half the width of the frame left of the position and the height of the frame above it. Stage 2 also moved it by the top-left corner of the frame, which put the shots of such buildings in the wrong place; `BattleGraphic` now follows the client. The land of a quest island keeps the place of the first frame of the land graphic for all frames, as the client does, so that the coasts meet.
 
+### Stage 4 progress
+
+Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a and 4b are done.
+
+| File | Contents |
+|---|---|
+| `game_data/game_config.gd` | `SpellDef` and the spells of the configuration ("magics"), the mana prices and the casts for spell levels 2 and 3. |
+| `village/village.gd` | `spell_uses()`, `buy_mana()`, `buy_spell()`, `use_spell()`: the save changes of `buy_mana_new`, `buy_magic` and `use_magic`. |
+| `battle/battle_sim.gd` | Timers in frames, `items_near()`, and the states: `stun()`, `freeze()`, `poison()`, `enlarge()`, `swallow()`, `summon()`, shields. |
+| `quest/quest_battle.gd` | Summoned units do not count in a quest. |
+| `checks/spell_check.gd` | Checks of the spell rules of the save. |
+
+The rules come from the client:
+
+- 5 mana cost 20000 gold or 1 cash. A spell costs gold or cash once and gives the mana of one cast. The server does not check the level of a spell; the client offers it only from that level, so the port checks the level. A cast costs mana and counts. The client counts the cast before it reads the level, so the 25th cast already has level 2 and the 50th level 3.
+- A stunned unit cannot walk or attack for 2.5 seconds and then drops its target. Bosses, enlarged units and units with a population of 4 or more are not stunned. A frozen unit stops at once. The client keeps one state for both, so the end of one also ends the other.
+- Poison hurts every 3 seconds and can pass to the nearest units within 1 tile, with one tick less. The poisoned unit counts in the number of units that it can poison, so it passes the poison to one unit less than the number. A unit that gets the poison with no ticks left stays poisoned until it dies, because the timer of the client then does not stop. Two units next to each other pass the poison back and forth until this happens.
+- An enlarged unit does 1.5 times its damage. A shield lets only its factor of the damage through to all items on its tiles, also to enemies; the first shield counts, and shields do not add up.
+- A swallowed unit or building dies after 0.5 seconds, without a killer. Units with 500 life or more cannot be swallowed.
+- Summoned units do not count in a quest: they give no gold or experience, are not in the result, and do not keep the player in the quest.
+
+The port counts the timers of the client in frames at 30 frames per second.
+
 ## How to check the result
 
 - Headless checks with a fixed seed for the rules.
@@ -158,3 +181,6 @@ Also in this stage: the client puts the registration point of a building graphic
 3. Survival and tournament are ported where they work without other players.
 4. The limit of quests in a row uses 2 hours instead of 6, and the code makes it easy to change or remove.
 5. Islands that the port does not have yet are locked, with a "not in the port" sign in the style of the game, until their quest is ported.
+6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. A switch in the code will turn on a correction later.
+7. Instant Limit is locked with the "not in the port" sign until units have their limit bars (stages 5 and 6).
+8. The player can cast spells in the own village, as in the client.
