@@ -134,7 +134,7 @@ Decompile the client and convert it with as3hx, fixing the result by hand. OpenF
 
 Port the economy and quests, then combat and the remaining systems. Check each system against the original game running in Phase 1's build. Add Android and iOS builds at the end.
 
-Update (2026-10-30): the prototype became the port on branch `godot-port`. It has the village economy, the special buildings, the battle rules, and the battle screen with the unit controls. The roadmap below replaces the order of Phase 4. Step 1 of the roadmap is done: 12 campaign islands can be played.
+Update (2026-10-30): the prototype became the port on branch `godot-port`. It has the village economy, the special buildings, the battle rules, and the battle screen with the unit controls. The roadmap below replaces the order of Phase 4. Step 1 of the roadmap is done: 12 campaign islands can be played. The owner moved the desktop build to step 6, so that the work continues with the port.
 
 ## 4a. Roadmap of the Godot port
 
@@ -146,17 +146,16 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 2. Campaign quests: the island list, open islands, the limit of quests in a row, the army, the map, the goals of the troll and civilisation islands (12 islands), and the end of the quest as `end_quest` writes it: gold, experience, honour, stars and lost units (battle stage 3). The windows of the quests use the art and the fonts of the client.
 3. Let the loader read the quest maps `100000053` and `100000054`, which store the level as text.
 
-**2. A build for tests by hand**
+**2. Spells and the first comparison**
 
-1. A desktop build, so that the owner can play without the command line.
+1. Spells: mana, buying and using spells, shields (battle stage 4).
 2. An import that continues after a stop. The full import of all graphics takes several hours.
-3. The first comparison with the original game: the same quest in Ruffle and in the port, for targets, duration and losses. This also shows if Ruffle can run the game far enough to be the reference. Until now, the port is checked only against the rules in the client code, so this comparison comes early.
+3. The first comparison with the original game: the same quest in Ruffle and in the port, for targets, duration and losses. This also shows if Ruffle can run the game far enough to be the reference. Until now, the port is checked only against the rules in the client code, so this comparison comes before the quests of step 3.
 
 **3. The campaign, one quest at a time**
 
-1. Spells: mana, buying and using spells, shields (battle stage 4).
-2. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). The 24 islands without a port show a "not in the port" sign until then.
-3. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6).
+1. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). The 24 islands without a port show a "not in the port" sign until then.
+2. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6).
 
 **4. The rest of the single-player game**
 
@@ -173,7 +172,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 **6. Release**
 
 1. A comparison of the whole game with the original, and the fixes that it finds.
-2. Builds for Windows, macOS and Linux, and for mobile if the owner decides so.
+2. Builds for Windows, macOS and Linux, and for mobile if the owner decides so. Until then the port runs from the Godot editor or the command line.
 
 Open decisions of the owner: mobile builds (touch changes the unit control in battles), the mini-games of the nests and the Rider Academy (the port counts them as won), and neighbours.
 
