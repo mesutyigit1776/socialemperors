@@ -14,7 +14,7 @@ extends VillageUnits
 ##
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
 ## graveyards, Soul Mixer), the free buildings of the client, the collections,
-## the item store, and the save changes of the campaign quests.
+## the item store, and the save changes of the campaign quests and the spells.
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
 const SUBCAT_DECORATION := 411
@@ -663,6 +663,64 @@ func end_quest(result: Dictionary) -> void:
 		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):
 			_remove(placed)
 			_bury(placed.item_id)
+
+
+## The spells that the player bought: spell id -> number of casts. The server
+## keeps them in privateState "magics" with the id as text.
+func spell_uses() -> Dictionary:
+	var uses := {}
+	var learned: Variant = _document["privateState"].get("magics")
+	for key: Variant in learned if learned is Dictionary else {}:
+		var id: Variant = GameConfig.to_int(key)
+		var count: Variant = learned[key]
+		if id != null and (count is int or count is float):
+			uses[id] = int(count)
+	return uses
+
+
+## Buys GameConfig.mana_per_purchase mana for gold or cash, as "buy_mana_new" does.
+func buy_mana(with_cash: bool) -> Placement:
+	var code := "c" if with_cash else "g"
+	var price := _config.mana_price_cash if with_cash else _config.mana_price_gold
+	if get_resource(code) < price:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource(code, -price)
+	_add_resource("m", _config.mana_per_purchase)
+	return Placement.OK
+
+
+## Buys a spell for gold or cash, as "buy_magic" does. The spell also gives
+## its mana of one cast. The server does not check the level; the client
+## offers a spell only from its level, so the port checks it here.
+func buy_spell(spell: GameConfig.SpellDef, with_cash: bool) -> Placement:
+	if spell_uses().has(spell.id):
+		return Placement.NOT_ALLOWED
+	if get_level() < spell.level:
+		return Placement.LEVEL_TOO_LOW
+	var code := "c" if with_cash else "g"
+	var price := spell.cash if with_cash else spell.gold
+	if get_resource(code) < price:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource(code, -price)
+	if not _document["privateState"].get("magics") is Dictionary:
+		_document["privateState"]["magics"] = {}
+	_document["privateState"]["magics"][str(spell.id)] = 0
+	_add_resource("m", spell.mana)
+	return Placement.OK
+
+
+## Pays the mana of a cast and counts the cast, as "use_magic" does. Returns
+## the level of the spell for this cast: the client counts the cast first, so
+## the cast that reaches GameConfig.spell_uses_level2 already has level 2.
+## Returns 0 when the player does not have the spell or the mana.
+func use_spell(spell: GameConfig.SpellDef) -> int:
+	var uses := spell_uses()
+	if not uses.has(spell.id) or get_resource("m") < spell.mana:
+		return 0
+	_add_resource("m", -spell.mana)
+	var count: int = uses[spell.id] + 1
+	_document["privateState"]["magics"][str(spell.id)] = count
+	return _config.spell_level(count)
 
 
 ## Puts a unit that died in the graveyard, as the server does after a battle:

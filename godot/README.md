@@ -84,7 +84,13 @@ godot --headless --path godot --script res://checks/battle_check.gd -- --data <d
 godot --headless --path godot --script res://checks/quest_check.gd -- --data <data folder>
 ```
 
-The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, the battle check after you change the battle rules or the path search, and the quest check after you change the quests.
+`checks/spell_check.gd` checks the spell rules of the save: mana, buying spells and casts. It needs the same data folder.
+
+```bash
+godot --headless --path godot --script res://checks/spell_check.gd -- --data <data folder>
+```
+
+The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, the battle check after you change the battle rules or the path search, the quest check after you change the quests, and the spell check after you change the spells.
 
 ## Layout
 
@@ -97,4 +103,4 @@ The exit code is the number of failed checks. Run the village check after you ch
 | `sprites/` | Loads the imported graphics of the items and of the shots and effects. `clip_sprite.gd` plays the animation of a frame; `unit_sprite.gd` chooses the frame of a unit from its action and direction. |
 | `quest/` | Campaign quests: the islands, the island list rules, the quest battle with its goals and result, and the windows of the quests |
 | `ui/` | Shows the windows of the client that the importer exported (`ui_import.py`): their images, buttons, stars and text fields |
-| `checks/` | Headless checks of the village rules, the save format, the battle rules and the quests |
+| `checks/` | Headless checks of the village rules, the save format, the battle rules, the quests and the spells |

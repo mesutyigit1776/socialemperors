@@ -61,6 +61,22 @@ class ItemDef:
 		return false
 
 
+const SPELL_LEVELS := 3
+
+## A spell of the spell book ("magics" in the configuration).
+class SpellDef:
+	var id: int
+	var name: String
+	var description: String
+	var mana: int  ## Mana of one cast. Buying the spell also gives this mana.
+	var areas: Array[int] = []  ## Side of the square area in tiles, for spell levels 1 to 3.
+	var level: int  ## The player can buy the spell from this level.
+	var gold: int  ## Price in gold or in cash.
+	var cash: int
+	var img_name: String  ## Graphic of the spell, and of its picture in the spell book.
+	var target: int  ## The side that the area marks: 0 none, 1 the player, 2 the enemy.
+
+
 class LevelDef:
 	var name: String
 	var exp_required: int  ## Total experience that the player needs for this level.
@@ -114,6 +130,14 @@ var quest_units_back_percent: int  ## The part of the dead units that come back 
 var quest_honour: Array[int] = []  ## For a win with 1, 2 and 3 stars.
 var quest_honour_first: Array[int] = []  ## For the first win with these stars.
 var quest_honour_lost: int
+var spells: Array[SpellDef] = []  ## In configuration order.
+## The mana that the player buys: mana_per_purchase for mana_price_gold gold or mana_price_cash cash.
+var mana_per_purchase: int
+var mana_price_gold: int
+var mana_price_cash: int
+## A spell gets level 2 and level 3 after this number of casts.
+var spell_uses_level2: int
+var spell_uses_level3: int
 var _texts: Dictionary = {}  # Language text name, for example "COLECCION_ROSA_ROJA" -> text.
 
 var _items: Dictionary = {}  # int -> ItemDef
@@ -204,6 +228,9 @@ static func load_from_file(path: String) -> GameConfig:
 	if not _parse_quest_globals(config, globals):
 		push_error("Game configuration '%s' has no correct quest settings in globals (ISLE_ORDER, QUEST_GOLD_REWARD, HONOR_POINT_QUEST and others)." % path)
 		return null
+	if not _parse_spells(config, data.get("magics"), globals):
+		push_error("Game configuration '%s' has no correct spells (magics) or mana settings in globals." % path)
+		return null
 	for entry: Variant in data.get("localization_strings", []):
 		if entry is Dictionary and entry.get("name") is String:
 			config._texts[entry["name"]] = str(entry.get("text", ""))
@@ -217,6 +244,21 @@ static func load_from_file(path: String) -> GameConfig:
 
 func get_item(id: int) -> ItemDef:
 	return _items.get(id)
+
+
+## The spell with this id, or null.
+func get_spell(id: int) -> SpellDef:
+	for spell in spells:
+		if spell.id == id:
+			return spell
+	return null
+
+
+## The level of a spell that the player cast this number of times: 1 to SPELL_LEVELS.
+func spell_level(uses: int) -> int:
+	if uses >= spell_uses_level3:
+		return 3
+	return 2 if uses >= spell_uses_level2 else 1
 
 
 ## The language text with this name, or the name when the configuration has no such text.
@@ -384,6 +426,42 @@ static func _parse_quest_globals(config: GameConfig, globals: Dictionary) -> boo
 	config.quest_units_back_percent = numbers[1]
 	config.quest_honour_lost = numbers[2]
 	return config.quest_gold_multipliers.size() == QuestBook.MAX_STARS and config.quest_honour.size() == QuestBook.MAX_STARS and config.quest_honour_first.size() == QuestBook.MAX_STARS
+
+
+## Reads the spells and the mana globals. Returns false when one is missing or not correct.
+static func _parse_spells(config: GameConfig, entries: Variant, globals: Dictionary) -> bool:
+	var numbers := [to_int(globals.get("MANA_PER_PURCHASE")), to_int(globals.get("COST_MANA_GOLD")), to_int(globals.get("COST_MANA_CASH")), to_int(globals.get("NUM_SPELL_USES_LVL2")), to_int(globals.get("NUM_SPELL_USES_LVL3"))]
+	if null in numbers or not entries is Array:
+		return false
+	config.mana_per_purchase = numbers[0]
+	config.mana_price_gold = numbers[1]
+	config.mana_price_cash = numbers[2]
+	config.spell_uses_level2 = numbers[3]
+	config.spell_uses_level3 = numbers[4]
+	for entry: Variant in entries:
+		if not entry is Dictionary:
+			return false
+		var values := [to_int(entry.get("id")), to_int(entry.get("mana")), to_int(entry.get("level")), to_int(entry.get("gold")), to_int(entry.get("cash")), to_int(entry.get("target"))]
+		# The configuration stores the areas as JSON text, for example "[5,7,9]".
+		var areas: Variant = JSON.parse_string(str(entry.get("area", "")))
+		if null in values or not areas is Array or areas.size() != SPELL_LEVELS:
+			return false
+		var spell := SpellDef.new()
+		for area: Variant in areas:
+			if to_int(area) == null or to_int(area) < 1:
+				return false
+			spell.areas.append(to_int(area))
+		spell.id = values[0]
+		spell.mana = values[1]
+		spell.level = values[2]
+		spell.gold = values[3]
+		spell.cash = values[4]
+		spell.target = values[5]
+		spell.name = str(entry.get("name", ""))
+		spell.description = str(entry.get("description", ""))
+		spell.img_name = str(entry.get("img_name", ""))
+		config.spells.append(spell)
+	return not config.spells.is_empty()
 
 
 static func _parse_level(entry: Variant) -> LevelDef:
