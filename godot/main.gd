@@ -17,6 +17,8 @@ var _hud: VillageHud
 var _store: Store
 var _store_key := []  # Level and rotation period of the build menu; it changes with them.
 var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
+var _orders: UnitOrders
+var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again.
 
 
 func _ready() -> void:
@@ -38,7 +40,11 @@ func _ready() -> void:
 		_view.show_village(_village, _config, _sprites)
 		_view.placement_confirmed.connect(_on_placement_confirmed)
 		_view.move_confirmed.connect(_on_move_confirmed)
-		_view.item_clicked.connect(_on_item_clicked)
+		_view.map_clicked.connect(_on_map_clicked)
+		_orders = UnitOrders.new(_village, _view, _config)
+		_orders.village_changed.connect(_on_units_changed)
+		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
+		add_child(_orders)
 		var camera := MapCamera.new()
 		camera.position = _start_position(_village)
 		add_child(camera)
@@ -50,11 +56,12 @@ func _ready() -> void:
 		_hud.collect_requested.connect(func() -> void: _collect(_selected))
 		_hud.hurry_requested.connect(func() -> void: _collect(_selected, true))
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
+		_hud.train_requested.connect(_on_train_requested)
+		_hud.unit_out_requested.connect(_on_unit_out_requested)
 		add_child(_hud)
 		_update_store()
 		var clock := Timer.new()
-		clock.timeout.connect(_update_production)
-		clock.timeout.connect(_update_store)
+		clock.timeout.connect(_on_clock)
 		add_child(clock)
 		clock.start(1.0)
 		_update_production()
@@ -70,8 +77,17 @@ func _on_item_selected(item: GameConfig.ItemDef) -> void:
 	_hud.show_message("Place %s." % item.name)
 
 
-## A click on a ready building collects from it, as in the original game.
-func _on_item_clicked(placed: Village.PlacedItem) -> void:
+## With a unit selected, a click sends the unit to a free tile, into a building
+## or to a resource that it can use. Otherwise a click on a ready building collects from it, as in the
+## original game, and a click on an item selects it.
+func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
+	if _selected != null and _village.is_own_unit(_selected) and placed != _selected \
+			and (placed == null or _village.can_enter(_selected, placed) or _village.can_harvest(_selected, placed)):
+		var error := _orders.order(_selected, tile, placed)
+		_hud.show_message(error)
+		if error.is_empty():
+			_select(null)
+		return
 	if placed != null and _village.seconds_to_ready(placed, _now()) == 0:
 		_collect(placed)
 		if placed not in _village.items:
@@ -84,7 +100,78 @@ func _select(placed: Village.PlacedItem) -> void:
 	_view.show_selection(placed)
 	var item := _config.get_item(placed.item_id) if placed != null else null
 	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed))
+	var names: Array[String] = []
+	if placed != null:
+		for id in _village.units_in(placed):
+			names.append(_config.get_item(id).name)
+	_hud.show_units(names)
+	if placed != null and _village.is_own_unit(placed):
+		_hud.show_message("%s: click a place to walk, a building to work in it, or a tree, stone or gold to harvest it." % item.name)
 	_update_production()
+
+
+func _on_clock() -> void:
+	var now := _now()
+	var changed := false
+	for placed in _village.items.duplicate():
+		var unit := _village.complete_training(placed, now)
+		while unit != null:
+			changed = true
+			_view.add_placed(unit)
+			_hud.show_message("%s is trained." % _config.get_item(unit.item_id).name)
+			unit = _village.complete_training(placed, now)
+	for change: Array in _village.regrow(now, _rng):
+		changed = true
+		_view.remove_placed(change[0])
+		_view.add_placed(change[1])
+	if changed:
+		_save()
+	_update_production()
+	_update_store()
+
+
+## A unit arrived, went into a building or finished a harvest.
+func _on_units_changed(message: String, old_level: int) -> void:
+	if _selected != null and _selected not in _village.items:
+		_select(null)
+	elif _selected != null:
+		_select(_selected)
+	_update_store()
+	if _save() and not message.is_empty():
+		_hud.show_message(message + _level_up_text(old_level))
+
+
+func _on_train_requested() -> void:
+	if _selected == null:
+		return
+	var unit := _village.trained_unit(_selected)
+	var result := _village.train(_selected, _now())
+	var texts := {
+		Village.Training.QUEUE_FULL: "The training queue is full (%d units)." % Village.MAX_QUEUE,
+		Village.Training.POPULATION_FULL: "The population is full. Build houses for more population.",
+		Village.Training.UNIT_LIMIT_REACHED: "You have the maximum number of this unit.",
+		Village.Training.NOT_ENOUGH_RESOURCES: "You do not have enough resources.",
+	}
+	if result != Village.Training.OK:
+		_hud.show_message(texts.get(result, ""))
+		return
+	_update_store()
+	_update_production()
+	if _save():
+		_hud.show_message("%s is in training." % unit.name)
+
+
+func _on_unit_out_requested(index: int) -> void:
+	if _selected == null:
+		return
+	var unit := _village.pop_unit(_selected, index, _now())
+	if unit == null:
+		_hud.show_message("There is no free place for the unit.")
+		return
+	_view.add_placed(unit)
+	_select(_selected)
+	if _save():
+		_hud.show_message("%s came out." % _config.get_item(unit.item_id).name)
 
 
 ## Updates the resources and the build menu. The menu changes with the level
@@ -114,9 +201,14 @@ func _update_production() -> void:
 	var now := _now()
 	_view.update_production(now)
 	if _selected == null or not _village.is_producer(_selected):
-		_hud.show_production(null, 0, 0, 0, false)
+		_hud.show_production(null, 0, 0, 0, false, false)
 	else:
-		_hud.show_production(_config.get_item(_selected.item_id), _village.seconds_to_ready(_selected, now), _village.collect_amount(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now))
+		_hud.show_production(_config.get_item(_selected.item_id), _village.seconds_to_ready(_selected, now), _village.collect_amount(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), _village.needs_units(_selected))
+	var unit := _village.trained_unit(_selected) if _selected != null else null
+	if unit == null:
+		_hud.show_training(null, {}, 0, -1)
+	else:
+		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now))
 
 
 ## With hurry, the player pays cash to collect before the building is ready.
@@ -136,6 +228,9 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 			_view.remove_placed(placed)
 		Village.Production.NOT_READY:
 			_hud.show_message("%s is not ready." % item.name)
+			return
+		Village.Production.NO_UNITS:
+			_hud.show_message("%s works only with a unit in it." % item.name)
 			return
 		Village.Production.NOT_ENOUGH_CASH:
 			_hud.show_message("You need %d cash to finish %s now." % [Village.HURRY_COST, item.name])

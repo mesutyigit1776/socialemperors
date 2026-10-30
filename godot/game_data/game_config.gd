@@ -7,6 +7,7 @@ class ItemDef:
 	var id: int
 	var name: String
 	var type: String  ## "u" is a unit; other types are buildings and decorations.
+	var race: String  ## "h", "t" or another value for items of all races.
 	var img_name: String
 	var width: int  ## Footprint in tiles.
 	var height: int
@@ -29,6 +30,11 @@ class ItemDef:
 	var collect_xp: int
 	var population: int  ## Population that the building gives. Wonders with population cannot hurry.
 	var store_level: int  ## The store shows the item from this level. 0: from the start.
+	var unit_capacity: int  ## Number of units that can be in the building.
+	var trains: int  ## The unit that the building trains, or 0.
+	var units_limit: int  ## Maximum number of this unit on a map, or 0 for no limit.
+	var training_time: int  ## Seconds to train this unit.
+	var velocity: int  ## Walking speed of a unit.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -155,7 +161,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -168,6 +174,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.id = numbers["id"]
 	item.name = str(entry.get("name", ""))
 	item.type = str(entry.get("type", ""))
+	item.race = str(entry.get("race", ""))
 	item.img_name = str(entry.get("img_name", ""))
 	item.width = numbers["width"]
 	item.height = numbers["height"]
@@ -185,6 +192,11 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.collect_xp = numbers["collect_xp"]
 	item.population = numbers["population"]
 	item.store_level = numbers["store_level"]
+	item.unit_capacity = numbers["unit_capacity"]
+	item.trains = numbers["trains"]
+	item.units_limit = numbers["units_limit"]
+	item.training_time = numbers["training_time"]
+	item.velocity = numbers["velocity"]
 	return item
 
 

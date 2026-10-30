@@ -15,6 +15,10 @@ signal collect_requested
 signal hurry_requested
 ## The player chose Village.WORK_MINUTES[work_time] for the selected mill or mine.
 signal work_time_chosen(work_time: int)
+## The player wants to train a unit in the selected building.
+signal train_requested
+## The player wants to take Village.units_in(selected)[index] out of the selected building.
+signal unit_out_requested(index: int)
 
 const PANEL_WIDTH := 340
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash"}
@@ -49,6 +53,10 @@ var _production_text := Label.new()
 var _collect_button := Button.new()
 var _hurry_button := Button.new()
 var _work_times := HBoxContainer.new()
+var _units := HFlowContainer.new()
+var _training := HBoxContainer.new()
+var _training_text := Label.new()
+var _train_button := Button.new()
 
 
 func _init() -> void:
@@ -100,6 +108,15 @@ func _init() -> void:
 		_work_times.add_child(button)
 	_work_times.visible = false
 	column.add_child(_work_times)
+	_units.visible = false
+	column.add_child(_units)
+	_training_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_training_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_train_button.pressed.connect(func() -> void: train_requested.emit())
+	_training.add_child(_training_text)
+	_training.add_child(_train_button)
+	_training.visible = false
+	column.add_child(_training)
 	add_child(_sell_dialog)
 	add_child(panel)
 	_category.item_selected.connect(_show_category)
@@ -134,6 +151,7 @@ func refresh(village: Village) -> void:
 	parts.append("XP %d/%d" % [village.get_xp(), next_level_xp] if next_level_xp >= 0 else "XP %d" % village.get_xp())
 	for code: String in RESOURCE_NAMES:
 		parts.append("%s %d" % [RESOURCE_NAMES[code].capitalize(), village.get_resource(code)])
+	parts.append("Population %d/%d" % [village.population(), village.max_population()])
 	_resources.text = "  ".join(parts)
 	for item: GameConfig.ItemDef in _buttons:
 		var button: Button = _buttons[item]
@@ -170,16 +188,19 @@ func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, ca
 
 
 ## Shows the production of the selected building. item is null when the
-## selection does not produce. seconds_left is -1 when a mill or mine needs a work time.
-func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int, wood_cost: int, can_hurry: bool) -> void:
+## selection does not produce. seconds_left is -1 when the building needs a
+## unit (needs_units) or a work time.
+func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int, wood_cost: int, can_hurry: bool, needs_units: bool) -> void:
 	_production.visible = item != null
-	_work_times.visible = item != null and seconds_left < 0
+	_work_times.visible = item != null and seconds_left < 0 and not needs_units
 	if item == null:
 		return
 	var resource: String = RESOURCE_NAMES.get(item.collect_type, item.collect_type)
 	_collect_button.visible = seconds_left == 0
 	_hurry_button.visible = can_hurry
-	if seconds_left < 0:
+	if needs_units:
+		_production_text.text = "Works only with a unit in it. Select a unit, then click the building."
+	elif seconds_left < 0:
 		_production_text.text = "Choose a work time:"
 	elif seconds_left > 0:
 		_production_text.text = "%d %s in %s" % [amount, resource, _duration(seconds_left)]
@@ -187,6 +208,32 @@ func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int,
 		_production_text.text = "Ready: %d %s" % [amount, resource]
 	if wood_cost > 0 and seconds_left >= 0:
 		_production_text.text += ", costs %d wood" % wood_cost
+
+
+## Shows the units in the selected building, each with a button to take it out.
+## names is empty when the building has no units or the selection is not a building.
+func show_units(names: Array[String]) -> void:
+	for child in _units.get_children():
+		child.queue_free()
+	_units.visible = not names.is_empty()
+	for index in names.size():
+		var button := Button.new()
+		button.text = "Take out %s" % names[index]
+		button.pressed.connect(func() -> void: unit_out_requested.emit(index))
+		_units.add_child(button)
+
+
+## Shows the training of the selected building. unit is null when the building
+## does not train. seconds_left is -1 when the queue is empty.
+func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, seconds_left: float) -> void:
+	_training.visible = unit != null
+	if unit == null:
+		return
+	var prices := []
+	for code: String in costs:
+		prices.append("%d %s" % [costs[code], RESOURCE_NAMES.get(code, code)])
+	_train_button.text = "Train %s (%s)" % [unit.name, ", ".join(prices)]
+	_training_text.text = "No units in training." if queued == 0 else "%d in training, next in %s" % [queued, _duration(seconds_left)]
 
 
 static func _duration(seconds: float) -> String:

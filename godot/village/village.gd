@@ -22,9 +22,19 @@ enum Placement {
 	NOT_ALLOWED,  ## The player cannot move, turn or sell this item.
 }
 
+enum Training {
+	OK,
+	NOT_TRAINER,  ## The building does not train units.
+	QUEUE_FULL,
+	POPULATION_FULL,
+	UNIT_LIMIT_REACHED,
+	NOT_ENOUGH_RESOURCES,
+}
+
 enum Production {
 	OK,
 	NOT_PRODUCER,  ## The item does not produce a resource that the port supports.
+	NO_UNITS,  ## The building works only with a unit in it.
 	NOT_STARTED,  ## The building needs a work time first, see WORK_MINUTES.
 	ALREADY_STARTED,
 	NOT_READY,
@@ -66,6 +76,38 @@ const WORKER_BONUS := 0.2
 const HURRY_COST := 2
 const HURRY_SUBCATS: Array[int] = [121, 124, 138]
 const SUBCAT_WONDER := 511
+
+## Units of this race belong to the player on any map. Units of the map race
+## also belong to the player; units of other races are enemies or neutral.
+const RACE_ALL := "a"
+
+## Units that work in mines, mills and farms, and harvest trees and deposits.
+const SUBCAT_PEASANT := 71
+const PEASANT_BUILDING_SUBCATS: Array[int] = [121, 122, 124]
+const SUBCAT_RANCH := 123
+## Trees, stone and gold. A peasant harvests them, and then they go away.
+const HARVEST_SUBCATS: Array[int] = [125, 126, 127]
+const SUBCAT_GOLD := 127
+## The item that takes the place of a harvested stone or gold deposit, and the
+## first of the 4 deposits that can grow from it.
+const REGROWTH := {126: [81, 69], 127: [80, 73]}
+const DEPOSIT_KINDS := 4
+## Gold deposits give more gold at higher levels: [highest level, multiplier].
+const GOLD_MULTIPLIERS: Array[Array] = [[10, 1], [15, 2], [20, 3], [25, 4]]
+const GOLD_MULTIPLIER_MAX := 5
+
+## Training: the queue of a building holds this number of units. A unit that
+## does not cost food also costs food: its cost times FOOD_PER_COST.
+const MAX_QUEUE := 5
+const FOOD_PER_COST := 2
+const MAX_POPULATION := 175
+const CATEGORY_WONDER := 5
+## A blacksmith makes footmen, cavalry and archers cheaper; a university makes siege units cheaper.
+const TRAINING_DISCOUNT := 0.9
+const SUBCAT_BLACKSMITH := 131
+const SUBCAT_UNIVERSITY := 134
+const BLACKSMITH_UNIT_SUBCATS: Array[int] = [78, 79, 80]
+const UNIVERSITY_UNIT_SUBCATS: Array[int] = [81]
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -255,15 +297,7 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 
 
 	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
 	_add_xp(item.xp)
-	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, store, attributes].
-	var entry := [item.id, tile.x, tile.y, frame, timestamp, 0, [], _new_item_attributes(item)]
-	_map["items"].append(entry)
-	var placed := PlacedItem.new()
-	placed.item_id = item.id
-	placed.tile = tile
-	placed.frame = frame
-	placed._entry = entry
-	_add(placed)
+	_add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
 	return Placement.OK
 
 
@@ -362,8 +396,13 @@ func needs_work_time(placed: PlacedItem) -> bool:
 	return is_producer(placed) and placed.item_id in _config.variable_collect_ids
 
 
+## A building with room for units produces only with a unit in it.
+func needs_units(placed: PlacedItem) -> bool:
+	return is_producer(placed) and _config.get_item(placed.item_id).unit_capacity > 0 and units_in(placed).is_empty()
+
+
 ## Seconds until the player can collect: 0 when the building is ready, -1 when it
-## does not produce or has no work time.
+## does not produce, has no unit or has no work time.
 func seconds_to_ready(placed: PlacedItem, now: float) -> float:
 	var duration := _production_seconds(placed)
 	if duration < 0:
@@ -378,11 +417,7 @@ func collect_amount(placed: PlacedItem) -> int:
 	var amount: float = item.collect
 	if item.subcat_functional != SUBCAT_FARM and _work_time(placed) > 0:
 		amount *= WORK_MULTIPLIERS[_work_time(placed) - 1]
-	var workers := 0
-	for id: Variant in placed._entry[6]:
-		var unit := _config.get_item(int(id)) if id is int or id is float else null
-		if unit != null and unit.is_unit():
-			workers += 1
+	var workers := units_in(placed).size()
 	if workers > 1:
 		amount *= 1.0 + (workers - 1) * WORKER_BONUS
 	return int(amount)
@@ -399,6 +434,8 @@ func collect_cost(placed: PlacedItem) -> int:
 func start_work(placed: PlacedItem, work_time: int, now: int) -> Production:
 	if not needs_work_time(placed) or work_time < 0 or work_time >= WORK_MINUTES.size():
 		return Production.NOT_PRODUCER
+	if needs_units(placed):
+		return Production.NO_UNITS
 	if _work_time(placed) > 0:
 		return Production.ALREADY_STARTED
 	placed._entry[7]["cp"] = work_time + 1
@@ -413,6 +450,8 @@ func start_work(placed: PlacedItem, work_time: int, now: int) -> Production:
 func collect(placed: PlacedItem, now: int) -> Production:
 	if not is_producer(placed):
 		return Production.NOT_PRODUCER
+	if needs_units(placed):
+		return Production.NO_UNITS
 	var remaining := seconds_to_ready(placed, now)
 	if remaining < 0:
 		return Production.NOT_STARTED
@@ -434,6 +473,8 @@ func can_hurry(placed: PlacedItem, now: float) -> bool:
 func hurry(placed: PlacedItem, now: int) -> Production:
 	if not is_producer(placed):
 		return Production.NOT_PRODUCER
+	if needs_units(placed):
+		return Production.NO_UNITS
 	var remaining := seconds_to_ready(placed, now)
 	if remaining < 0:
 		return Production.NOT_STARTED
@@ -459,7 +500,298 @@ func _collect_now(placed: PlacedItem, now: int) -> Production:
 	placed._entry[4] = now
 	# The client then sends "activate" with 0, so that the mill or mine stops.
 	placed._entry[7].erase("cp")
+	# A ranch uses one animal for each collection; the client sends "pop_unit"
+	# without a tile, and the animal goes away.
+	if item.subcat_functional == SUBCAT_RANCH:
+		_take_unit(placed, 0)
 	return Production.OK
+
+
+## The units in a building, as item ids.
+func units_in(placed: PlacedItem) -> Array[int]:
+	var result: Array[int] = []
+	for id: Variant in placed._entry[6]:
+		var unit := _config.get_item(int(id)) if id is int or id is float else null
+		if unit != null and unit.is_unit():
+			result.append(unit.id)
+	return result
+
+
+## A tile that a unit can stand on: in the map and with no other item on it.
+func is_free(tile: Vector2i, ignored: PlacedItem = null) -> bool:
+	if not Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).has_point(tile):
+		return false
+	var others := _occupied[tile.y * IsoGrid.MAP_TILES + tile.x]
+	if ignored != null and _covered_tiles(ignored).has_point(tile):
+		others -= 1
+	return others == 0
+
+
+## The free tile nearest to the area, in rings around it, or ANY_TILE.
+func free_tile_around(area: Rect2i) -> Vector2i:
+	for ring in range(1, IsoGrid.MAP_TILES):
+		var around := area.grow(ring)
+		for y in range(around.position.y, around.end.y):
+			for x in range(around.position.x, around.end.x):
+				var on_edge := x == around.position.x or x == around.end.x - 1 or y == around.position.y or y == around.end.y - 1
+				if on_edge and is_free(Vector2i(x, y)):
+					return Vector2i(x, y)
+	return ANY_TILE
+
+
+## A unit that the player commands, as the client decides it from the race.
+func is_own_unit(placed: PlacedItem) -> bool:
+	var item := _config.get_item(placed.item_id)
+	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL)
+
+
+## Moves a unit to a free tile and gives it the direction frame (1 to 8), as the
+## server command "move" does. The view finds the path.
+func move_unit(unit: PlacedItem, tile: Vector2i, frame: int) -> Placement:
+	if not is_own_unit(unit):
+		return Placement.NOT_ALLOWED
+	if not is_free(tile, unit):
+		return Placement.OCCUPIED
+	_mark_occupied(unit, -1)
+	unit.tile = tile
+	unit._entry[1] = tile.x
+	unit._entry[2] = tile.y
+	_set_frame(unit, frame)
+	_mark_occupied(unit, 1)
+	return Placement.OK
+
+
+## Peasants of the player work in mines, mills and farms. The building must
+## have room. Animals are neutral: in the client they go into a ranch after a
+## unit of the player captures them, which the port does not have yet.
+func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
+	var unit_item := _config.get_item(unit.item_id)
+	var building_item := _config.get_item(building.item_id)
+	if not is_own_unit(unit) or building_item == null or building_item.is_unit():
+		return false
+	if units_in(building).size() >= building_item.unit_capacity:
+		return false
+	return unit_item.subcat_functional == SUBCAT_PEASANT and building_item.subcat_functional in PEASANT_BUILDING_SUBCATS
+
+
+## Puts the unit into the building, as the server command "push_unit" does. The
+## client starts the production time when the first unit comes in, so the port
+## sets the time of the building then. The server does not change it.
+func push_unit(unit: PlacedItem, building: PlacedItem, now: int) -> Placement:
+	if not can_enter(unit, building):
+		return Placement.NOT_ALLOWED
+	if units_in(building).is_empty():
+		building._entry[4] = now
+	building._entry[6].append(unit.item_id)
+	_remove(unit)
+	return Placement.OK
+
+
+## Takes the unit units_in(building)[index] out of the building to the nearest
+## free tile, as the server command "pop_unit" does. Returns the unit on the map,
+## or null when there is no free tile. When the last unit leaves a mill or mine,
+## its work time stops, as with the server command "activate" with 0.
+func pop_unit(building: PlacedItem, index: int, now: int) -> PlacedItem:
+	var tile := free_tile_around(_covered_tiles(building))
+	if tile == ANY_TILE or index < 0 or index >= units_in(building).size():
+		return null
+	var unit_id := _take_unit(building, index)
+	if units_in(building).is_empty() and _work_time(building) > 0:
+		building._entry[7].erase("cp")
+		building._entry[4] = now
+	_register_unit(unit_id)
+	return _add_entry(_config.get_item(unit_id), tile, 0, now, {})
+
+
+## A peasant can harvest trees, stone and gold.
+func can_harvest(unit: PlacedItem, resource: PlacedItem) -> bool:
+	var unit_item := _config.get_item(unit.item_id)
+	var resource_item := _config.get_item(resource.item_id)
+	return is_own_unit(unit) and resource_item != null and unit_item.subcat_functional == SUBCAT_PEASANT \
+			and resource_item.subcat_functional in HARVEST_SUBCATS
+
+
+## The seconds that the peasants need to harvest the resource.
+func harvest_seconds(resource: PlacedItem) -> float:
+	return _config.get_item(resource.item_id).activation
+
+
+## The amount that a harvest gives, as the server command "collect_new" computes
+## it. Gold deposits give more at higher levels.
+func harvest_amount(resource: PlacedItem, harvesters: int) -> int:
+	var item := _config.get_item(resource.item_id)
+	var amount: float = item.collect
+	if harvesters > 1:
+		amount *= 1.0 + (harvesters - 1) * WORKER_BONUS
+	var multiplier := GOLD_MULTIPLIER_MAX if item.subcat_functional == SUBCAT_GOLD else 1
+	if item.subcat_functional == SUBCAT_GOLD:
+		for step: Array in GOLD_MULTIPLIERS:
+			if get_level() <= step[0]:
+				multiplier = step[1]
+				break
+	return int(amount * multiplier)
+
+
+## Gives the resource and the experience of a harvest by the number of
+## peasants, then removes the resource, as the client does with the server
+## commands "collect_new" and "sell". A stone or gold deposit leaves an item that
+## grows into a new deposit, see regrow(). Returns that item, or null.
+func harvest(resource: PlacedItem, harvesters: int, now: int) -> PlacedItem:
+	var item := _config.get_item(resource.item_id)
+	if item == null or not item.subcat_functional in HARVEST_SUBCATS or harvesters < 1 or harvesters > item.unit_capacity:
+		push_error("Item %d cannot be harvested by %d units." % [resource.item_id, harvesters])
+		return null
+	_add_resource(item.collect_type, harvest_amount(resource, harvesters))
+	_add_xp(item.collect_xp)
+	_remove(resource)
+	if not REGROWTH.has(item.subcat_functional):
+		return null
+	# The client sends "buy" with direction 1 for the new item.
+	return _add_entry(_config.get_item(REGROWTH[item.subcat_functional][0]), resource.tile, 1, now, {})
+
+
+## Replaces each regrowth item whose time is over with a deposit of one of the
+## DEPOSIT_KINDS kinds, as the client does with the server commands "sell" and
+## "buy". Returns [old item, new item] for each change.
+func regrow(now: int, rng: RandomNumberGenerator) -> Array:
+	var changes := []
+	for placed: PlacedItem in items.duplicate():
+		var item := _config.get_item(placed.item_id)
+		if item == null or now - float(placed._entry[4]) < item.activation:
+			continue
+		for subcat: int in REGROWTH:
+			if REGROWTH[subcat][0] == placed.item_id:
+				_remove(placed)
+				var deposit := _config.get_item(REGROWTH[subcat][1] + rng.randi_range(0, DEPOSIT_KINDS - 1))
+				changes.append([placed, _add_entry(deposit, placed.tile, 1, now, {})])
+	return changes
+
+
+## The unit that the building trains, or null.
+func trained_unit(building: PlacedItem) -> GameConfig.ItemDef:
+	var item := _config.get_item(building.item_id)
+	var unit := _config.get_item(item.trains) if item != null and item.trains > 0 else null
+	return unit if unit != null and unit.is_unit() else null
+
+
+## The population of all units of the player: on the map, in buildings and in training queues.
+func population() -> int:
+	var total := 0
+	for placed in items:
+		var item := _config.get_item(placed.item_id)
+		if item == null:
+			continue
+		if is_own_unit(placed):
+			total += item.population
+		for id in units_in(placed):
+			total += _config.get_item(id).population
+	for queue: Dictionary in _queues().values():
+		var unit := _config.get_item(int(queue.get("unit", 0)))
+		if unit != null:
+			total += unit.population * int(queue.get("amount", 0))
+	return total
+
+
+## The population that the buildings allow, up to MAX_POPULATION. Wonders add
+## their population also above that limit.
+func max_population() -> int:
+	var total := 0
+	var wonders := 0
+	for placed in items:
+		var item := _config.get_item(placed.item_id)
+		if item != null and not item.is_unit():
+			total += item.population
+			if item.category_id == CATEGORY_WONDER:
+				wonders += item.population
+	return mini(total, MAX_POPULATION) + wonders
+
+
+## The costs of training the unit, as the server command "push_queue_unit" computes them.
+func training_costs(unit: GameConfig.ItemDef) -> Dictionary:
+	var cost := unit.cost
+	var discount_subcat := SUBCAT_BLACKSMITH if unit.subcat_functional in BLACKSMITH_UNIT_SUBCATS \
+			else SUBCAT_UNIVERSITY if unit.subcat_functional in UNIVERSITY_UNIT_SUBCATS else -1
+	if discount_subcat >= 0:
+		for placed in items:
+			var item := _config.get_item(placed.item_id)
+			if item != null and item.subcat_functional == discount_subcat:
+				cost = ceili(cost * TRAINING_DISCOUNT)
+				break
+	var costs := {unit.cost_type: cost}
+	if unit.cost_type != "f":
+		costs["f"] = cost * FOOD_PER_COST
+	return costs
+
+
+## Units in the training queue of the building.
+func queued_units(building: PlacedItem) -> int:
+	return int(_queue(building).get("amount", 0))
+
+
+## Pays for a unit and adds it to the training queue of the building, as the
+## server command "push_queue_unit" does.
+func train(building: PlacedItem, now: int) -> Training:
+	var unit := trained_unit(building)
+	if unit == null:
+		return Training.NOT_TRAINER
+	var queue := _queue(building)
+	if queued_units(building) >= MAX_QUEUE:
+		return Training.QUEUE_FULL
+	if population() + unit.population > max_population():
+		return Training.POPULATION_FULL
+	if unit.units_limit > 0:
+		var count := items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == unit.id).size()
+		for other: Dictionary in _queues().values():
+			if int(other.get("unit", 0)) == unit.id:
+				count += int(other.get("amount", 0))
+		if count >= unit.units_limit:
+			return Training.UNIT_LIMIT_REACHED
+	var costs := training_costs(unit)
+	for code: String in costs:
+		if get_resource(code) < costs[code]:
+			return Training.NOT_ENOUGH_RESOURCES
+	for code: String in costs:
+		_add_resource(code, -costs[code])
+	if queue.is_empty():
+		var id := str(_next_queue_id())
+		building._entry[7]["bq"] = id
+		_queues()[id] = {"ts": now, "amount": 1, "unit": unit.id, "r": {"1": costs}}
+	else:
+		queue["amount"] = int(queue["amount"]) + 1
+		queue["r"][str(queue["amount"])] = costs
+	return Training.OK
+
+
+## Seconds until the next unit of the queue is ready, or -1 when the queue is empty.
+func seconds_to_trained(building: PlacedItem, now: float) -> float:
+	var queue := _queue(building)
+	if queue.is_empty():
+		return -1
+	return maxf(float(queue["ts"]) + _config.get_item(int(queue["unit"])).training_time - now, 0)
+
+
+## Puts the next trained unit on the free tile nearest to the building, as the
+## server command "pop_queue_unit" does, and gives its experience. Returns the
+## unit, or null when it is not ready or no tile is free. The server does not
+## change the time of the queue, so after a reload all units of a queue are
+## ready after the time of one. The port moves the time to the next unit.
+func complete_training(building: PlacedItem, now: int) -> PlacedItem:
+	if seconds_to_trained(building, now) != 0:
+		return null
+	var tile := free_tile_around(_covered_tiles(building))
+	if tile == ANY_TILE:
+		return null
+	var queue := _queue(building)
+	var unit := _config.get_item(int(queue["unit"]))
+	queue["r"].erase(str(queue["amount"]))
+	queue["amount"] = int(queue["amount"]) - 1
+	queue["ts"] = float(queue["ts"]) + unit.training_time
+	if int(queue["amount"]) <= 0:
+		_queues().erase(building._entry[7]["bq"])
+		building._entry[7].erase("bq")
+	_add_xp(unit.xp)
+	_register_unit(unit.id)
+	return _add_entry(unit, tile, 0, now, {})
 
 
 ## Writes the save to a temporary file, keeps the old file as <path>.bak, then
@@ -547,7 +879,7 @@ func _tower_tiles_in_land_area(tile: Vector2i, ignored: PlacedItem) -> int:
 
 ## The production time of the building in seconds, or -1 when it does not produce.
 func _production_seconds(placed: PlacedItem) -> float:
-	if not is_producer(placed):
+	if not is_producer(placed) or needs_units(placed):
 		return -1
 	if needs_work_time(placed):
 		return WORK_MINUTES[_work_time(placed) - 1] * 60.0 if _work_time(placed) > 0 else -1.0
@@ -560,6 +892,72 @@ func _work_time(placed: PlacedItem) -> int:
 	if (choice is int or choice is float) and int(choice) >= 1 and int(choice) <= WORK_MINUTES.size():
 		return int(choice)
 	return 0
+
+
+## Removes the unit units_in(building)[index] from the building. Returns its id.
+func _take_unit(building: PlacedItem, index: int) -> int:
+	var unit_id := units_in(building)[index]
+	var seen := -1
+	for i in building._entry[6].size():
+		var id: Variant = building._entry[6][i]
+		var item := _config.get_item(int(id)) if id is int or id is float else null
+		if item != null and item.is_unit():
+			seen += 1
+			if seen == index:
+				building._entry[6].remove_at(i)
+				break
+	return unit_id
+
+
+## The server keeps a list of the units of the player's race that the player had.
+func _register_unit(unit_id: int) -> void:
+	if _config.get_item(unit_id).race == ("h" if race == "t" else "t"):
+		return
+	if not _document["privateState"].get("boughtUnits") is Array:
+		_document["privateState"]["boughtUnits"] = []
+	var bought: Array = _document["privateState"]["boughtUnits"]
+	if not bought.has(unit_id) and not bought.has(float(unit_id)):
+		bought.append(unit_id)
+
+
+## The training queues of the save, by queue id.
+func _queues() -> Dictionary:
+	if not _document["privateState"].get("barracksQueues") is Dictionary:
+		_document["privateState"]["barracksQueues"] = {}
+	return _document["privateState"]["barracksQueues"]
+
+
+## The training queue of the building, or an empty dictionary.
+func _queue(building: PlacedItem) -> Dictionary:
+	var id: Variant = building._entry[7].get("bq")
+	var queue: Variant = _queues().get(str(id)) if id != null else null
+	return queue if queue is Dictionary and queue.get("r") is Dictionary else {}
+
+
+## The client numbers the queues from the highest number in use.
+func _next_queue_id() -> int:
+	var highest := 0
+	for id: Variant in _queues():
+		highest = maxi(highest, int(str(id)) if str(id).is_valid_int() else 0)
+	for placed in items:
+		var bq: Variant = placed._entry[7].get("bq")
+		if bq != null and str(bq).is_valid_int():
+			highest = maxi(highest, int(str(bq)))
+	return highest + 1
+
+
+## Adds an item entry in the server format and puts the item on the map.
+func _add_entry(item: GameConfig.ItemDef, tile: Vector2i, frame: int, timestamp: int, attributes: Dictionary) -> PlacedItem:
+	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, units, attributes].
+	var entry := [item.id, tile.x, tile.y, frame, timestamp, 0, [], attributes]
+	_map["items"].append(entry)
+	var placed := PlacedItem.new()
+	placed.item_id = item.id
+	placed.tile = tile
+	placed.frame = frame
+	placed._entry = entry
+	_add(placed)
+	return placed
 
 
 func _set_frame(placed: PlacedItem, frame: int) -> void:

@@ -25,12 +25,25 @@ const ALLIES_BUILDING := 234
 const ROUND_TABLE := 389
 const PUMPKIN_CROP := 8  # farm: 32.4 s, 25 food for 8 wood, 2 XP
 const VILLAGER := 500
+const SHEEP := 505
+## Free tiles in land area 12 for the units of the fixtures, away from the
+## first tiles where _buy_free puts buildings.
+const UNIT_TILES: Array[Vector2i] = [Vector2i(21, 58), Vector2i(22, 58), Vector2i(23, 58), Vector2i(24, 58), Vector2i(25, 58)]
 const RESTAURANT := 232  # collect building: 8 h, 570 gold
 const CHICHEN_ITZA := 52  # wonder without population: 6 h, 600 gold
 const SAINT_BASIL := 261  # wonder that does not produce
 const DRAGONS_STATUE := 1456  # decoration that the store shows from level 20
 const DIAMOND_CASTLE := 1234  # only for gold members
 const CASH_WONDER := 1299  # in the "New" category, not in the rotation
+const COW_RANCH := 12
+const KNIGHT := 512
+const GOLD_DEPOSIT := 73  # 10 gold, times 3 at level 20
+const GOLD_REGROWTH := 80  # grows into a gold deposit after 3 hours
+const TOWN_HALL := 26  # trains villagers: 50 food, 5 seconds, 5 XP
+const CHURCH := 24  # trains healers; a map can have 5
+const HEALER := 502
+const BLACKSMITH := 22
+const SPEARMAN := 509  # 30 gold
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
@@ -64,7 +77,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -275,10 +288,14 @@ func _check_rotation() -> bool:
 
 
 ## Collection: the production time, the work time of mines, the workers, the
-## wood of farms, and the items that do not produce.
+## wood of farms, and the items that do not produce. Mines, ranches and farms
+## work only with units in them.
 func _check_production() -> bool:
 	const T := 1800000000
-	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12]}
+	var units: Array = _initial["maps"][0]["items"].duplicate(true)
+	for i in UNIT_TILES.size():
+		units.append([VILLAGER if i < 3 else SHEEP, UNIT_TILES[i].x, UNIT_TILES[i].y, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": units}
 	var path := _write_fixture("production", 100, HIGHEST_LEVEL_XP, 100000, plenty)
 	var village := Village.load_from_file(path, _config)
 	var area_12 := Rect2i(20, 40, 20, 20)
@@ -290,6 +307,9 @@ func _check_production() -> bool:
 	_check(village.buy(_config.get_item(GOLD_MINE_I), mine_tile, T) == Village.Placement.OK, "a gold mine is bought")
 	var mine: Village.PlacedItem = village.items.back()
 	_check(village.seconds_to_ready(mine, T + 100000) == -1, "a new mine does not work")
+	_check(village.collect(mine, T + 100000) == Village.Production.NO_UNITS, "a mine without a unit cannot be collected")
+	_check(village.start_work(mine, 0, T) == Village.Production.NO_UNITS, "a mine without a unit cannot start to work")
+	_check(village.push_unit(village.item_at(UNIT_TILES[0]), mine, T) == Village.Placement.OK, "a villager goes into the mine")
 	_check(village.collect(mine, T + 100000) == Village.Production.NOT_STARTED, "a mine without a work time cannot be collected")
 	_check(village.start_work(mine, 0, T + 10) == Village.Production.OK, "the mine starts to work for 5 minutes")
 	_check(village.start_work(mine, 1, T + 10) == Village.Production.ALREADY_STARTED, "a working mine cannot start again")
@@ -305,19 +325,17 @@ func _check_production() -> bool:
 	var ranch_tile := _free_tile(village, SHEEP_RANCH_I, area_12)
 	_check(village.buy(_config.get_item(SHEEP_RANCH_I), ranch_tile, T) == Village.Placement.OK, "a sheep ranch is bought")
 	var ranch: Village.PlacedItem = village.items.back()
-	_check(village.collect(ranch, T + 89) == Village.Production.NOT_READY, "the ranch is not ready after 89 seconds")
-	var food := village.get_resource("f")
-	_check(village.collect(ranch, T + 90) == Village.Production.OK, "the ranch is ready after 90 seconds")
-	_expect("after the ranch", village, {"f": food + 100})
-	_check(village.seconds_to_ready(ranch, T + 90) == 90, "the ranch starts again after the collection")
+	_check(village.collect(ranch, T + 90) == Village.Production.NO_UNITS, "a ranch without animals does not produce")
+	_check(not village.can_enter(village.item_at(UNIT_TILES[3]), ranch), "the player cannot send a wild sheep into the ranch")
 
 	# A farm costs a third of its amount in wood.
 	var farm_tile := _free_tile(village, PUMPKIN_CROP, area_12)
 	_check(village.buy(_config.get_item(PUMPKIN_CROP), farm_tile, T) == Village.Placement.OK, "a pumpkin crop is bought")
 	var farm: Village.PlacedItem = village.items.back()
+	_check(village.push_unit(village.item_at(UNIT_TILES[1]), farm, T) == Village.Placement.OK, "a villager goes into the farm")
 	_check(village.seconds_to_ready(farm, T + 32) > 0 and village.seconds_to_ready(farm, T + 33) == 0, "the farm is ready after 32.4 seconds")
 	var wood := village.get_resource("w")
-	food = village.get_resource("f")
+	var food := village.get_resource("f")
 	_check(village.collect(farm, T + 33) == Village.Production.OK, "the farm is collected")
 	_expect("after the farm", village, {"w": wood - 8, "f": food + 25})
 
@@ -333,7 +351,8 @@ func _check_production() -> bool:
 	# the units is not a unit. The work time of 4 hours doubles the amount.
 	var items: Array = _initial["maps"][0]["items"].duplicate(true)
 	items.append([GOLD_MINE_I, 25, 45, 0, T, 0, [VILLAGER, VILLAGER, HOUSE], {"cp": 3}])
-	items.append([PUMPKIN_CROP, 30, 45, 0, T, 0, [], {}])
+	items.append([PUMPKIN_CROP, 30, 45, 0, T, 0, [VILLAGER], {}])
+	items.append([SHEEP_RANCH_I, 37, 55, 0, T, 0, [SHEEP, SHEEP], {}])
 	var workers_path := _write_fixture("workers", 100, HIGHEST_LEVEL_XP, 100000, {"wood": 7, "expansions": [13, 12], "items": items})
 	village = Village.load_from_file(workers_path, _config)
 	mine = village.item_at(Vector2i(25, 45))
@@ -342,6 +361,14 @@ func _check_production() -> bool:
 	coins = village.get_resource("g")
 	_check(village.collect_amount(mine) == 480 and village.collect(mine, T + 4 * 3600) == Village.Production.OK, "the mine with 2 workers and 4 hours of work gives 480 gold")
 	_expect("after the mine with workers", village, {"g": coins + 480})
+	# A ranch with animals produces without a work time, and uses one animal for each collection.
+	ranch = village.item_at(Vector2i(37, 55))
+	_check(village.collect(ranch, T + 89) == Village.Production.NOT_READY, "the ranch is not ready after 89 seconds")
+	food = village.get_resource("f")
+	_check(village.collect(ranch, T + 90) == Village.Production.OK, "the ranch is ready after 90 seconds")
+	_expect("after the ranch (100 food and a fifth more for the second sheep)", village, {"f": food + 120})
+	_check(village.seconds_to_ready(ranch, T + 90) == 90, "the ranch starts again after the collection")
+	_check(village.units_in(ranch) == [SHEEP], "the ranch used one sheep for the collection")
 	var count := village.items.size()
 	_check(village.collect(farm, T + 100) == Village.Production.FARM_REMOVED, "a farm without enough wood is removed")
 	_check(village.items.size() == count - 1 and village.item_at(Vector2i(30, 45)) == null, "the removed farm is not on the map")
@@ -355,7 +382,8 @@ func _check_hurry() -> bool:
 	var items: Array = _initial["maps"][0]["items"].duplicate(true)
 	items.append([CHICHEN_ITZA, 25, 45, 0, T, 0, [], {}])
 	items.append([SAINT_BASIL, 30, 45, 0, T, 0, [], {}])
-	items.append([PUMPKIN_CROP, 33, 45, 0, T, 0, [], {}])
+	items.append([PUMPKIN_CROP, 33, 45, 0, T, 0, [VILLAGER], {}])
+	items.append([VILLAGER, UNIT_TILES[0].x, UNIT_TILES[0].y, 0, T, 0, [], {}])
 	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
 	var path := _write_fixture("hurry", 100, HIGHEST_LEVEL_XP, 100000, plenty)
 	var village := Village.load_from_file(path, _config)
@@ -372,6 +400,7 @@ func _check_hurry() -> bool:
 
 	_buy_free(village, GOLD_MINE_I, area_12, Village.Placement.OK)
 	var mine: Village.PlacedItem = village.items.back()
+	_check(village.push_unit(village.item_at(UNIT_TILES[0]), mine, T) == Village.Placement.OK, "a villager goes into the mine")
 	_check(village.hurry(mine, T + 10) == Village.Production.NOT_STARTED, "a mine without a work time cannot finish with cash")
 	cash = village.get_resource("c")
 	for i in cash / 2:
@@ -382,6 +411,138 @@ func _check_hurry() -> bool:
 	_expect("after the cash collections", village, {"c": cash % 2})
 	_check(village.hurry(mine, T + 20 + 3600) == Village.Production.OK and village.get_resource("c") == cash % 2, "a ready building needs no cash")
 	_check(village.save_to_file(path) == OK, "the village after the cash collections saves")
+	return true
+
+
+## Units: walking, going into buildings and out, and harvesting.
+func _check_units() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	for tile in UNIT_TILES.slice(0, 3):
+		items.append([VILLAGER, tile.x, tile.y, 0, T, 0, [], {}])
+	items.append([SHEEP, UNIT_TILES[3].x, UNIT_TILES[3].y, 0, T, 0, [], {}])
+	items.append([GOLD_DEPOSIT, 30, 50, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
+	var path := _write_fixture("units", 20, _config.levels[19].exp_required, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_12 := Rect2i(20, 40, 20, 20)
+	var villager := village.item_at(UNIT_TILES[0])
+	var sheep := village.item_at(UNIT_TILES[3])
+
+	var gold := village.get_resource("g")
+	var regrowth := village.harvest(village.item_at(Vector2i(30, 50)), 1, T + 50)
+	_expect("after the gold deposit at level 20 (10 gold x 3)", village, {"level": 20, "g": gold + 30})
+	_check(village.move_unit(villager, Vector2i(26, 57), 4) == Village.Placement.OK and village.item_at(Vector2i(26, 57)) == villager, "a villager walks to a free tile")
+	_check(villager.frame == 4 and village.item_at(UNIT_TILES[0]) == null, "the villager keeps its direction and leaves its old tile")
+	_check(village.move_unit(villager, TOWN_HALL_TILE, 4) == Village.Placement.OCCUPIED, "a unit cannot stand on a building")
+	_check(village.move_unit(village.item_at(HOUSE_TILE), Vector2i(26, 56), 4) == Village.Placement.NOT_ALLOWED, "move_unit does not move buildings")
+	var blocked := [Vector2i(1, 0), Vector2i(0, 1)]
+	var in_grid := func(tile: Vector2i) -> bool: return Rect2i(0, 0, 3, 3).has_point(tile) and not tile in blocked
+	_check(Pathfinder.find_path(Vector2i(0, 0), func(tile: Vector2i) -> bool: return tile == Vector2i(2, 2), in_grid).is_empty(), "a unit does not cut the corners of items")
+	var to_hall := Pathfinder.find_path(UNIT_TILES[1], func(tile: Vector2i) -> bool: return tile == Vector2i(53, 53), village.is_free)
+	_check(not to_hall.is_empty() and to_hall.all(func(tile: Vector2i) -> bool: return village.is_free(tile)), "a path goes around the items")
+
+	_buy_free(village, GOLD_MINE_I, area_12, Village.Placement.OK)
+	var mine: Village.PlacedItem = village.items.back()
+	_buy_free(village, SHEEP_RANCH_I, area_12, Village.Placement.OK)
+	var ranch: Village.PlacedItem = village.items.back()
+	_buy_free(village, COW_RANCH, area_12, Village.Placement.OK)
+	var cow_ranch: Village.PlacedItem = village.items.back()
+	_check(village.can_enter(villager, mine) and not village.can_enter(villager, ranch), "a villager can work in a mine, not in a ranch")
+	_check(not village.is_own_unit(sheep) and not village.can_enter(sheep, ranch) and not village.can_enter(sheep, cow_ranch), "a wild sheep is not a unit of the player")
+	_check(not village.can_enter(village.item_at(KNIGHT_TILE), mine), "a knight cannot work in a mine")
+	var troll := village.item_at(Vector2i(40, 40))
+	_check(village.is_own_unit(villager) and not village.is_own_unit(troll), "a troll unit on a human map is not a unit of the player")
+	_check(village.move_unit(troll, Vector2i(26, 56), 4) == Village.Placement.NOT_ALLOWED, "the player cannot move a troll unit on a human map")
+	var population := village.population()
+	_check(village.push_unit(villager, mine, T + 5) == Village.Placement.OK and not villager in village.items, "a villager goes into the mine and leaves the map")
+	_check(village.units_in(mine) == [VILLAGER] and village.seconds_to_ready(mine, T + 5) == -1 and village.population() == population, "the mine has the villager, needs a work time, and the population is the same")
+	_check(village.push_unit(village.item_at(UNIT_TILES[1]), mine, T + 6) == Village.Placement.OK, "a second villager goes into the mine")
+	_check(not village.can_enter(village.item_at(UNIT_TILES[2]), mine), "the mine has room for 2 villagers")
+	_check(village.start_work(mine, 1, T + 10) == Village.Production.OK, "the mine with villagers starts to work")
+	var out := village.pop_unit(mine, 0, T + 20)
+	_check(out != null and out.item_id == VILLAGER and village.units_in(mine) == [VILLAGER], "a villager comes out of the mine")
+	_check(Village.footprint(_config.get_item(GOLD_MINE_I), mine.tile).grow(1).has_point(out.tile), "the villager comes out next to the mine")
+	_check(village.seconds_to_ready(mine, T + 20) > 0, "the mine works with one villager")
+	village.pop_unit(mine, 0, T + 30)
+	_check(village.needs_units(mine) and village.seconds_to_ready(mine, T + 100000) == -1, "the mine stops when the last villager comes out")
+
+	var tree := village.item_at(TREE_TILE)
+	var wood := village.get_resource("w")
+	var xp := village.get_xp()
+	_check(village.can_harvest(out, tree) and not village.can_harvest(village.item_at(KNIGHT_TILE), tree), "a villager can harvest a tree, a knight cannot")
+	_check(village.harvest_seconds(tree) == 3.24 and village.harvest(tree, 2, T + 40) == null, "two villagers harvest a tree in 3.24 seconds")
+	_expect("after the tree (20 wood and a fifth more for the second villager, 1 XP)", village, {"w": wood + 24, "xp": xp + 1})
+	_check(not tree in village.items and village.item_at(TREE_TILE) == null, "the tree is gone")
+	_check(regrowth != null and regrowth.item_id == GOLD_REGROWTH and regrowth.tile == Vector2i(30, 50) and regrowth.frame == 1, "the gold deposit leaves a regrowth item")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	_check(village.regrow(T + 50 + 10799, rng).is_empty(), "the regrowth item does not change before 3 hours")
+	var changes := village.regrow(T + 50 + 10800, rng)
+	_check(changes.size() == 1 and changes[0][0] == regrowth and changes[0][1].item_id in [73, 74, 75, 76] and changes[0][1].tile == Vector2i(30, 50), "a new gold deposit grows after 3 hours")
+
+	_check(village.save_to_file(path) == OK, "the village with the units saves")
+	var reloaded := Village.load_from_file(path, _config)
+	_check(reloaded.units_in(reloaded.item_at(mine.tile)).is_empty() and reloaded.item_at(Vector2i(26, 57)) == null, "the save has the units at their new places")
+	var bought: Array = JSON.parse_string(FileAccess.get_file_as_string(path))["privateState"]["boughtUnits"]
+	_check(bought.has(float(VILLAGER)), "the save lists the villager as a unit of the player")
+	return true
+
+
+## Training: costs, the queue, the population and the unit limit.
+func _check_training() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	for i in 6:
+		items.append([HOUSE, 21 + 2 * i, 41, 0, T, 0, [], {}])
+	items.append([CHURCH, 35, 44, 0, T, 0, [], {}])
+	for i in 4:
+		items.append([HEALER, 21 + i, 50, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
+	var path := _write_fixture("training", 20, 20000, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var town_hall := village.item_at(TOWN_HALL_TILE)
+	# The 2 small trolls of the human map are not units of the player, as in the client.
+	_check(village.max_population() == 11 + 18 and village.population() == 6 + 4, "the population is 10 of 29")
+	_check(village.trained_unit(town_hall).id == VILLAGER and village.trained_unit(village.item_at(HOUSE_TILE)) == null, "the town hall trains villagers, a house trains nothing")
+	_check(village.training_costs(_config.get_item(VILLAGER)) == {"f": 50}, "a villager costs 50 food")
+	_check(village.training_costs(_config.get_item(SPEARMAN)) == {"g": 30, "f": 60}, "a spearman costs 30 gold and twice that in food")
+
+	var food := village.get_resource("f")
+	_check(village.train(town_hall, T) == Village.Training.OK and village.queued_units(town_hall) == 1, "a villager is in training")
+	_expect("after the training starts", village, {"f": food - 50})
+	_check(village.population() == 11, "a unit in training counts for the population")
+	_check(village.seconds_to_trained(town_hall, T) == 5 and village.complete_training(town_hall, T + 4) == null, "the villager is not ready before 5 seconds")
+	for i in 4:
+		village.train(town_hall, T + 1)
+	_check(village.train(town_hall, T + 1) == Village.Training.QUEUE_FULL, "the queue has room for 5 units")
+	var xp := village.get_xp()
+	var first := village.complete_training(town_hall, T + 5)
+	_check(first != null and first.item_id == VILLAGER and village.queued_units(town_hall) == 4, "the first villager comes out after 5 seconds")
+	_check(Village.footprint(_config.get_item(TOWN_HALL), town_hall.tile).grow(1).has_point(first.tile), "the villager comes out next to the town hall")
+	_expect("after the first villager", village, {"xp": xp + 5})
+	_check(village.complete_training(town_hall, T + 9) == null and village.complete_training(town_hall, T + 10) != null, "the next villager comes out 5 seconds later")
+	for i in 3:
+		village.complete_training(town_hall, T + 100)
+	_check(village.queued_units(town_hall) == 0 and not village.complete_training(town_hall, T + 200), "all villagers are out")
+
+	var church := village.item_at(Vector2i(35, 44))
+	_check(village.train(church, T) == Village.Training.OK, "the fifth healer is in training")
+	_check(village.train(church, T) == Village.Training.UNIT_LIMIT_REACHED, "a map can have 5 healers")
+	while village.population() + 1 <= village.max_population():
+		if village.train(town_hall, T + 300) != Village.Training.OK:
+			for i in Village.MAX_QUEUE:
+				village.complete_training(town_hall, T + 1000 + i * 10)
+	_check(village.train(town_hall, T + 2000) == Village.Training.POPULATION_FULL, "the training stops when the population is full")
+
+	_check(village.save_to_file(path) == OK, "the village with the training saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var queues: Dictionary = saved["privateState"]["barracksQueues"]
+	var church_entry: Array = saved["maps"][0]["items"].filter(func(entry: Array) -> bool: return int(entry[0]) == CHURCH)[0]
+	_check(queues.has(church_entry[7]["bq"]) and int(queues[church_entry[7]["bq"]]["unit"]) == HEALER, "the save has the queue of the church")
+	var poor := _write_fixture("training_poor", 20, 20000, 100000, {"food": 49})
+	village = Village.load_from_file(poor, _config)
+	_check(village.train(village.item_at(TOWN_HALL_TILE), T) == Village.Training.NOT_ENOUGH_RESOURCES, "training needs the resources")
 	return true
 
 

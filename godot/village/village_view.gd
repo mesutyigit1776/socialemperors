@@ -9,8 +9,9 @@ extends Node2D
 signal placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: int)
 ## The player clicked to put the moving item on the tile.
 signal move_confirmed(placed: Village.PlacedItem, tile: Vector2i, frame: int)
-## The player clicked on the map outside placement mode. placed is null when no item is on the tile.
-signal item_clicked(placed: Village.PlacedItem)
+## The player clicked on the map outside placement mode. placed is the item on
+## the tile, or null.
+signal map_clicked(tile: Vector2i, placed: Village.PlacedItem)
 
 const LAND_ITEM_BASE_ID := 1000
 const LAND_FRAME_WILD := 0
@@ -21,8 +22,11 @@ const LAND_FRAME_OWNED := 3
 # mirrored. A new unit faces down-right, down or down-left.
 const UNIT_FRAMES_PER_ANIMATION := 5
 const UNIT_ANIMATION_IDLE := 0
+const UNIT_ANIMATION_WALKING := 1
 const UNIT_START_DIRECTIONS: Array[int] = [4, 5, 8]
 const UNIT_LAST_UNMIRRORED_DIRECTION := 5
+## Directions for screen angles in steps of 45 degrees, from the right, clockwise.
+const UNIT_DIRECTIONS_BY_ANGLE: Array[int] = [3, 4, 5, 8, 7, 6, 1, 2]
 
 const PLACEMENT_VALID_COLOR := Color(0.5, 1.0, 0.5, 0.8)
 const PLACEMENT_INVALID_COLOR := Color(1.0, 0.4, 0.4, 0.8)
@@ -117,12 +121,38 @@ func update_placed(placed: Village.PlacedItem) -> void:
 	if not _nodes.has(placed):
 		return
 	var node: Sprite2D = _nodes[placed]
-	var sprite := _sprites.get_sprite(_config.get_item(placed.item_id).img_name)
+	var item := _config.get_item(placed.item_id)
+	if item.is_unit():
+		show_unit(placed, IsoGrid.tile_to_map(placed.tile), placed.frame, false)
+		return
+	var sprite := _sprites.get_sprite(item.img_name)
 	node.position = IsoGrid.tile_to_map(placed.tile)
 	node.texture = sprite.get_frame(placed.frame)
 	node.offset = _building_offset(sprite, placed.frame)
 	if _ready_marks.has(placed):
 		_ready_marks[placed].position = _mark_position(node)
+
+
+## Draws a unit at a position of the map, for example on its way between two
+## tiles, in a direction from 1 (up) to 8 (up-left), standing or walking.
+func show_unit(placed: Village.PlacedItem, map_position: Vector2, direction: int, walking: bool) -> void:
+	if not _nodes.has(placed):
+		return
+	var node: Sprite2D = _nodes[placed]
+	node.position = map_position
+	_set_unit_frame(node, _sprites.get_sprite(_config.get_item(placed.item_id).img_name), direction, UNIT_ANIMATION_WALKING if walking else UNIT_ANIMATION_IDLE)
+
+
+## Hides or shows an item, for example a unit that works in a building.
+func set_item_visible(placed: Village.PlacedItem, shown: bool) -> void:
+	if _nodes.has(placed):
+		_nodes[placed].visible = shown
+
+
+## The direction of a unit that walks from one tile to another.
+static func unit_direction(from: Vector2i, to: Vector2i) -> int:
+	var delta := IsoGrid.tile_to_map(to) - IsoGrid.tile_to_map(from)
+	return UNIT_DIRECTIONS_BY_ANGLE[posmod(roundi(delta.angle() / (PI / 4)), 8)]
 
 
 ## Shows a mark above each building that is ready to collect at the time now.
@@ -209,7 +239,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_press_position = event.position
 			elif event.position.distance_to(_press_position) <= CLICK_MAX_DISTANCE:
 				_press_position = Vector2.INF
-				item_clicked.emit(_village.item_at(IsoGrid.map_to_tile(make_input_local(event).position)))
+				var tile := IsoGrid.map_to_tile(make_input_local(event).position)
+				map_clicked.emit(tile, _village.item_at(tile))
 		return
 	if event is InputEventMouseMotion:
 		_update_placement(IsoGrid.map_to_tile(make_input_local(event).position))
@@ -282,15 +313,20 @@ func _place_unit(item: GameConfig.ItemDef, tile: Vector2i) -> Sprite2D:
 		return null
 	# The client picks the start direction at random. A fixed choice per tile keeps screenshots stable.
 	var direction: int = UNIT_START_DIRECTIONS[(tile.x + tile.y) % UNIT_START_DIRECTIONS.size()]
-	var mirrored := direction > UNIT_LAST_UNMIRRORED_DIRECTION
-	var direction_frame := direction - 4 if mirrored else direction
-	var node := _make_sprite(sprite, UNIT_ANIMATION_IDLE * UNIT_FRAMES_PER_ANIMATION + direction_frame - 1, tile)
-	# The client puts the registration point of a unit on its position and mirrors around it.
-	node.offset = sprite.origin
-	if mirrored:
-		node.scale.x = -1
+	var node := _make_sprite(sprite, 0, tile)
+	_set_unit_frame(node, sprite, direction, UNIT_ANIMATION_IDLE)
 	_item_layer.add_child(node)
 	return node
+
+
+## Directions 6 to 8 use the frames of directions 2 to 4, mirrored. The client
+## puts the registration point of a unit on its position and mirrors around it.
+func _set_unit_frame(node: Sprite2D, sprite: SpriteLibrary.ItemSprite, direction: int, animation: int) -> void:
+	var mirrored := direction > UNIT_LAST_UNMIRRORED_DIRECTION
+	var direction_frame := direction - 4 if mirrored else direction
+	node.texture = sprite.get_frame(animation * UNIT_FRAMES_PER_ANIMATION + direction_frame - 1)
+	node.offset = sprite.origin
+	node.scale.x = -1 if mirrored else 1
 
 
 func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:

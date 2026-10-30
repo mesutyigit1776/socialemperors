@@ -24,6 +24,7 @@ import tempfile
 from swf_bounds import SwfError, SwfFile
 
 TERRAIN_ITEM_IDS = range(1000, 1010)  # 1000 + map skin; see the land graphic in the client
+NEUTRAL_RESOURCE_SUBCATS = {"125", "126", "127", "128"}  # trees, stone, gold and their regrowth
 
 
 def load_game_config(source):
@@ -67,7 +68,8 @@ def needed_items(config, villages, shop, export_all):
 	"""Returns {img_name: item} for the items whose graphics must be exported.
 
 	By default these are the land, the store buildings, all items of the store
-	rotation and the items in the villages.
+	rotation, the units that these buildings train, the trees and deposits, and
+	the items in the villages.
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
@@ -75,11 +77,14 @@ def needed_items(config, villages, shop, export_all):
 	else:
 		ids = set(TERRAIN_ITEM_IDS)
 		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) != "0")
+		ids.update(item_id for item_id, item in items.items() if str(item["subcat_functional"]) in NEUTRAL_RESOURCE_SUBCATS)
 		for group in shop["factions"].values():
 			ids.update(int(item_id) for item_id in group)
 		for village in villages:
 			for game_map in village["maps"]:
 				ids.update(int(entry[0]) for entry in game_map["items"])
+				ids.update(int(unit_id) for entry in game_map["items"] for unit_id in entry[6])
+		ids.update(int(items[item_id]["trains"]) for item_id in list(ids) if item_id in items and str(items[item_id]["trains"]) != "0")
 	result = {}
 	for item_id in ids:
 		item = items.get(item_id)
