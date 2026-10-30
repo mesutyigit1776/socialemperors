@@ -19,7 +19,16 @@ enum Placement {
 	LEVEL_TOO_LOW,
 	NOT_ENOUGH_RESOURCES,
 	UNKNOWN_RESOURCE,
-	NOT_ALLOWED,  ## The player cannot move or sell this item.
+	NOT_ALLOWED,  ## The player cannot move, turn or sell this item.
+}
+
+enum Production {
+	OK,
+	NOT_PRODUCER,  ## The item does not produce a resource that the port supports.
+	NOT_STARTED,  ## The building needs a work time first, see WORK_MINUTES.
+	ALREADY_STARTED,
+	NOT_READY,
+	FARM_REMOVED,  ## The player did not have the wood for the farm, so the farm is gone.
 }
 
 ## Buildings for which the server's "buy" hires no workers, in addition to
@@ -38,6 +47,18 @@ const CATEGORY_TERRAIN := 6
 ## A sold item gives back its cost divided by this number, in the resource of
 ## the cost. Items that cost cash give nothing back.
 const SELL_DIVISOR := 20
+
+## Work times in minutes that the player chooses for the buildings in
+## GameConfig.variable_collect_ids, and the multiplier of the amount for each.
+## The save keeps the choice in the attribute "cp": 1 for the first work time,
+## 0 or no attribute when the building does not work.
+const WORK_MINUTES: Array[int] = [5, 60, 240, 480]
+const WORK_MULTIPLIERS: Array[float] = [0.5, 1.0, 2.0, 3.0]
+## A farm costs wood at each collection: its amount divided by this number.
+const SUBCAT_FARM := 122
+const FARM_WOOD_DIVISOR := 3.0
+## Each unit in a building after the first one adds this part of the amount.
+const WORKER_BONUS := 0.2
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -207,8 +228,10 @@ func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE, ignored: 
 
 
 ## Buys an item from the store and places it, as the server command "buy" does.
-## Changes nothing when the result is not OK.
-func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
+## frame is the direction, from 0 to item.max_frame - 1. Changes nothing when the result is not OK.
+func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 0) -> Placement:
+	if frame < 0 or frame >= item.max_frame:
+		return Placement.NOT_ALLOWED
 	var location := check_location(item, tile)
 	if location != Placement.OK:
 		return location
@@ -226,11 +249,12 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
 	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
 	_add_xp(item.xp)
 	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, store, attributes].
-	var entry := [item.id, tile.x, tile.y, 0, timestamp, 0, [], _new_item_attributes(item)]
+	var entry := [item.id, tile.x, tile.y, frame, timestamp, 0, [], _new_item_attributes(item)]
 	_map["items"].append(entry)
 	var placed := PlacedItem.new()
 	placed.item_id = item.id
 	placed.tile = tile
+	placed.frame = frame
 	placed._entry = entry
 	_add(placed)
 	return Placement.OK
@@ -273,16 +297,35 @@ func check_move(placed: PlacedItem, tile: Vector2i) -> Placement:
 	return check_limits(item, tile, placed)
 
 
-## Moves the item, as the server command "move" does. Changes nothing when the result is not OK.
-func move(placed: PlacedItem, tile: Vector2i) -> Placement:
+## Moves the item and gives it the direction frame, as the server command "move"
+## does. frame -1 keeps the direction. Changes nothing when the result is not OK.
+func move(placed: PlacedItem, tile: Vector2i, frame: int = -1) -> Placement:
 	var result := check_move(placed, tile)
 	if result != Placement.OK:
 		return result
+	if frame == -1:
+		frame = placed.frame
+	elif frame < 0 or frame >= _config.get_item(placed.item_id).max_frame:
+		return Placement.NOT_ALLOWED
 	_mark_occupied(placed, -1)
 	placed.tile = tile
 	placed._entry[1] = tile.x
 	placed._entry[2] = tile.y
+	_set_frame(placed, frame)
 	_mark_occupied(placed, 1)
+	return Placement.OK
+
+
+## The player can turn the items that they can move and that have more than one direction.
+func can_rotate(placed: PlacedItem) -> bool:
+	return can_move(placed) and _config.get_item(placed.item_id).max_frame > 1
+
+
+## Turns the item to its next direction, as the server command "orient" does.
+func rotate(placed: PlacedItem) -> Placement:
+	if not can_rotate(placed):
+		return Placement.NOT_ALLOWED
+	_set_frame(placed, (placed.frame + 1) % _config.get_item(placed.item_id).max_frame)
 	return Placement.OK
 
 
@@ -294,10 +337,92 @@ func sell(placed: PlacedItem) -> Placement:
 	var refund := sell_refund(item)
 	if refund > 0:
 		_add_resource(item.cost_type, refund)
-	_mark_occupied(placed, -1)
-	items.erase(placed)
-	_map["items"].erase(placed._entry)
+	_remove(placed)
 	return Placement.OK
+
+
+## Buildings that produce a resource for the player. Trees and deposits are not
+## included: units collect them. Items that produce potions, units or other
+## special resources are not included yet.
+func is_producer(placed: PlacedItem) -> bool:
+	var item := _config.get_item(placed.item_id)
+	return item != null and not item.is_unit() and item.activation > 0 and item.collect > 0 \
+			and RESOURCE_KEYS.has(item.collect_type) and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
+
+
+## A mill or mine that works only after the player chooses a work time.
+func needs_work_time(placed: PlacedItem) -> bool:
+	return is_producer(placed) and placed.item_id in _config.variable_collect_ids
+
+
+## Seconds until the player can collect: 0 when the building is ready, -1 when it
+## does not produce or has no work time.
+func seconds_to_ready(placed: PlacedItem, now: float) -> float:
+	var duration := _production_seconds(placed)
+	if duration < 0:
+		return -1
+	return maxf(duration - (now - float(placed._entry[4])), 0)
+
+
+## The amount that collect() gives, as the server command "collect_new" computes it.
+## The server is the reference because it writes the save.
+func collect_amount(placed: PlacedItem) -> int:
+	var item := _config.get_item(placed.item_id)
+	var amount: float = item.collect
+	if item.subcat_functional != SUBCAT_FARM and _work_time(placed) > 0:
+		amount *= WORK_MULTIPLIERS[_work_time(placed) - 1]
+	var workers := 0
+	for id: Variant in placed._entry[6]:
+		var unit := _config.get_item(int(id)) if id is int or id is float else null
+		if unit != null and unit.is_unit():
+			workers += 1
+	if workers > 1:
+		amount *= 1.0 + (workers - 1) * WORKER_BONUS
+	return int(amount)
+
+
+## The wood that a collection costs: farms only.
+func collect_cost(placed: PlacedItem) -> int:
+	var item := _config.get_item(placed.item_id)
+	return roundi(item.collect / FARM_WOOD_DIVISOR) if item.subcat_functional == SUBCAT_FARM else 0
+
+
+## Starts a mill or mine with the work time WORK_MINUTES[work_time], as the server
+## command "activate" does.
+func start_work(placed: PlacedItem, work_time: int, now: int) -> Production:
+	if not needs_work_time(placed) or work_time < 0 or work_time >= WORK_MINUTES.size():
+		return Production.NOT_PRODUCER
+	if _work_time(placed) > 0:
+		return Production.ALREADY_STARTED
+	placed._entry[7]["cp"] = work_time + 1
+	placed._entry[4] = now
+	return Production.OK
+
+
+## Collects the resource of a ready building, as the client and the server
+## command "collect_new" do. A farm needs wood for each collection. When the
+## player does not have it, the client removes the farm and the server command
+## "kill" removes it from the save.
+func collect(placed: PlacedItem, now: int) -> Production:
+	if not is_producer(placed):
+		return Production.NOT_PRODUCER
+	var remaining := seconds_to_ready(placed, now)
+	if remaining < 0:
+		return Production.NOT_STARTED
+	if remaining > 0:
+		return Production.NOT_READY
+	var cost := collect_cost(placed)
+	if cost > get_resource("w"):
+		_remove(placed)
+		return Production.FARM_REMOVED
+	var item := _config.get_item(placed.item_id)
+	_add_resource("w", -cost)
+	_add_resource(item.collect_type, collect_amount(placed))
+	_add_xp(item.collect_xp)
+	placed._entry[4] = now
+	# The client then sends "activate" with 0, so that the mill or mine stops.
+	placed._entry[7].erase("cp")
+	return Production.OK
 
 
 ## Writes the save to a temporary file, keeps the old file as <path>.bak, then
@@ -383,6 +508,34 @@ func _tower_tiles_in_land_area(tile: Vector2i, ignored: PlacedItem) -> int:
 	return count
 
 
+## The production time of the building in seconds, or -1 when it does not produce.
+func _production_seconds(placed: PlacedItem) -> float:
+	if not is_producer(placed):
+		return -1
+	if needs_work_time(placed):
+		return WORK_MINUTES[_work_time(placed) - 1] * 60.0 if _work_time(placed) > 0 else -1.0
+	return _config.get_item(placed.item_id).activation
+
+
+## The work time that the player chose for a mill or mine, from 1, or 0 when it does not work.
+func _work_time(placed: PlacedItem) -> int:
+	var choice: Variant = placed._entry[7].get("cp", 0)
+	if (choice is int or choice is float) and int(choice) >= 1 and int(choice) <= WORK_MINUTES.size():
+		return int(choice)
+	return 0
+
+
+func _set_frame(placed: PlacedItem, frame: int) -> void:
+	placed.frame = frame
+	placed._entry[3] = frame
+
+
+func _remove(placed: PlacedItem) -> void:
+	_mark_occupied(placed, -1)
+	items.erase(placed)
+	_map["items"].erase(placed._entry)
+
+
 func _add(placed: PlacedItem) -> void:
 	items.append(placed)
 	if _config.get_item(placed.item_id) == null:
@@ -410,11 +563,11 @@ static func footprint(item: GameConfig.ItemDef, tile: Vector2i) -> Rect2i:
 	return Rect2i(tile.x - item.width + 1, tile.y - item.height + 1, item.width, item.height)
 
 
-## An item entry is [item_id, x, y, frame, timestamp, ...].
+## An item entry is [item_id, x, y, frame, timestamp, level, units, attributes].
 static func _parse_item(entry: Variant) -> PlacedItem:
-	if not (entry is Array and entry.size() >= 4):
+	if not (entry is Array and entry.size() >= 8 and entry[6] is Array and entry[7] is Dictionary):
 		return null
-	for i in 4:
+	for i in 5:
 		if not (entry[i] is int or entry[i] is float):
 			return null
 	var placed := PlacedItem.new()

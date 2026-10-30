@@ -23,6 +23,8 @@ const SHEEP_RANCH_II := 190
 const NURSERY := 226
 const ALLIES_BUILDING := 234
 const ROUND_TABLE := 389
+const PUMPKIN_CROP := 8  # farm: 32.4 s, 25 food for 8 wood, 2 XP
+const VILLAGER := 500
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
@@ -54,7 +56,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -230,6 +232,112 @@ func _check_move_and_sell() -> bool:
 		return saved.filter(func(entry: Array) -> bool: return int(entry[0]) == id and Vector2i(int(entry[1]), int(entry[2])) == tile).size()
 	_check(at.call(TOWER, free_13) == 1 and at.call(TOWER, TOWER_TILE) == 0, "the save has the tower at its new tile")
 	_check(at.call(HOUSE, HOUSE_TILE) == 0 and saved.size() == village.items.size(), "the save does not have the sold items")
+	return true
+
+
+## Turning: which items can turn, the direction of new and moved items, and the save.
+func _check_rotation() -> bool:
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000}
+	var path := _write_fixture("rotation", 100, HIGHEST_LEVEL_XP, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_13 := Rect2i(40, 40, 20, 20)
+
+	var town_hall := village.item_at(TOWN_HALL_TILE)
+	_check(village.rotate(town_hall) == Village.Placement.OK and town_hall.frame == 1, "the town hall turns to its second direction")
+	_check(village.rotate(town_hall) == Village.Placement.OK and town_hall.frame == 0, "the town hall turns back to its first direction")
+	_check(village.rotate(village.item_at(TREE_TILE)) == Village.Placement.NOT_ALLOWED, "a tree cannot turn")
+	_check(village.rotate(village.item_at(KNIGHT_TILE)) == Village.Placement.NOT_ALLOWED, "a unit cannot turn with the turn tool")
+
+	var house := village.item_at(HOUSE_TILE)
+	_check(village.rotate(house) == Village.Placement.OK, "a house turns")
+	var tower := village.item_at(TOWER_TILE)
+	var free := _free_tile(village, TOWER, area_13)
+	_check(village.move(tower, free, 1) == Village.Placement.OK and tower.frame == 1, "a moved item gets the direction of the move")
+	_check(village.move(tower, TOWER_TILE) == Village.Placement.OK and tower.frame == 1, "a move without a direction keeps the direction")
+	var green_tree := _config.get_item(GREEN_TREE)
+	_check(village.buy(green_tree, _free_tile(village, GREEN_TREE, area_13), 1, 2) == Village.Placement.NOT_ALLOWED, "a new item cannot have a direction that it does not have")
+	_check(village.buy(green_tree, _free_tile(village, GREEN_TREE, area_13), 1, 1) == Village.Placement.OK, "a new item can have its second direction")
+	var new_tree: Village.PlacedItem = village.items.back()
+
+	_check(village.save_to_file(path) == OK, "the village after turns saves")
+	var reloaded := Village.load_from_file(path, _config)
+	_check(reloaded.item_at(HOUSE_TILE).frame == 1 and reloaded.item_at(TOWER_TILE).frame == 1 and reloaded.item_at(new_tree.tile).frame == 1, "the save keeps the directions")
+	_check(reloaded.item_at(TOWN_HALL_TILE).frame == 0, "the save keeps the first direction of the town hall")
+	return true
+
+
+## Collection: the production time, the work time of mines, the workers, the
+## wood of farms, and the items that do not produce.
+func _check_production() -> bool:
+	const T := 1800000000
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12]}
+	var path := _write_fixture("production", 100, HIGHEST_LEVEL_XP, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_12 := Rect2i(20, 40, 20, 20)
+	_check(village.collect(village.item_at(HOUSE_TILE), T) == Village.Production.NOT_PRODUCER, "a house does not produce")
+	_check(village.collect(village.item_at(TREE_TILE), T) == Village.Production.NOT_PRODUCER, "units collect trees, not the player")
+
+	# A gold mine works only after the player chooses a work time.
+	var mine_tile := _free_tile(village, GOLD_MINE_I, area_12)
+	_check(village.buy(_config.get_item(GOLD_MINE_I), mine_tile, T) == Village.Placement.OK, "a gold mine is bought")
+	var mine: Village.PlacedItem = village.items.back()
+	_check(village.seconds_to_ready(mine, T + 100000) == -1, "a new mine does not work")
+	_check(village.collect(mine, T + 100000) == Village.Production.NOT_STARTED, "a mine without a work time cannot be collected")
+	_check(village.start_work(mine, 0, T + 10) == Village.Production.OK, "the mine starts to work for 5 minutes")
+	_check(village.start_work(mine, 1, T + 10) == Village.Production.ALREADY_STARTED, "a working mine cannot start again")
+	_check(village.seconds_to_ready(mine, T + 10 + 299) == 1, "the mine is ready after 5 minutes")
+	_check(village.collect(mine, T + 10 + 299) == Village.Production.NOT_READY, "the mine cannot be collected before it is ready")
+	var coins := village.get_resource("g")
+	var xp := village.get_xp()
+	_check(village.collect(mine, T + 10 + 300) == Village.Production.OK, "the ready mine is collected")
+	_expect("after 5 minutes of the mine (200 gold x 0.5, 7 XP)", village, {"g": coins + 100, "xp": xp + 7})
+	_check(village.seconds_to_ready(mine, T + 100000) == -1, "the mine stops after the collection")
+
+	# A ranch produces without a work time.
+	var ranch_tile := _free_tile(village, SHEEP_RANCH_I, area_12)
+	_check(village.buy(_config.get_item(SHEEP_RANCH_I), ranch_tile, T) == Village.Placement.OK, "a sheep ranch is bought")
+	var ranch: Village.PlacedItem = village.items.back()
+	_check(village.collect(ranch, T + 89) == Village.Production.NOT_READY, "the ranch is not ready after 89 seconds")
+	var food := village.get_resource("f")
+	_check(village.collect(ranch, T + 90) == Village.Production.OK, "the ranch is ready after 90 seconds")
+	_expect("after the ranch", village, {"f": food + 100})
+	_check(village.seconds_to_ready(ranch, T + 90) == 90, "the ranch starts again after the collection")
+
+	# A farm costs a third of its amount in wood.
+	var farm_tile := _free_tile(village, PUMPKIN_CROP, area_12)
+	_check(village.buy(_config.get_item(PUMPKIN_CROP), farm_tile, T) == Village.Placement.OK, "a pumpkin crop is bought")
+	var farm: Village.PlacedItem = village.items.back()
+	_check(village.seconds_to_ready(farm, T + 32) > 0 and village.seconds_to_ready(farm, T + 33) == 0, "the farm is ready after 32.4 seconds")
+	var wood := village.get_resource("w")
+	food = village.get_resource("f")
+	_check(village.collect(farm, T + 33) == Village.Production.OK, "the farm is collected")
+	_expect("after the farm", village, {"w": wood - 8, "f": food + 25})
+
+	_check(village.sell(ranch) == Village.Placement.OK, "a producing building can be sold")
+	_check(village.save_to_file(path) == OK, "the village after the collections saves")
+	var saved := {}
+	for entry: Array in JSON.parse_string(FileAccess.get_file_as_string(path))["maps"][0]["items"]:
+		saved[int(entry[0])] = entry
+	_check(saved[GOLD_MINE_I][4] == T + 310 and saved[GOLD_MINE_I][7] == {}, "the save has the time of the collection and no work time for the mine")
+	_check(saved[PUMPKIN_CROP][4] == T + 33, "the save has the time of the collection for the farm")
+
+	# Each unit in a building after the first one adds a fifth. The house in
+	# the units is not a unit. The work time of 4 hours doubles the amount.
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([GOLD_MINE_I, 25, 45, 0, T, 0, [VILLAGER, VILLAGER, HOUSE], {"cp": 3}])
+	items.append([PUMPKIN_CROP, 30, 45, 0, T, 0, [], {}])
+	var workers_path := _write_fixture("workers", 100, HIGHEST_LEVEL_XP, 100000, {"wood": 7, "expansions": [13, 12], "items": items})
+	village = Village.load_from_file(workers_path, _config)
+	mine = village.item_at(Vector2i(25, 45))
+	farm = village.item_at(Vector2i(30, 45))
+	_check(village.seconds_to_ready(mine, T + 4 * 3600 - 1) == 1, "the mine with 4 hours of work is ready after 4 hours")
+	coins = village.get_resource("g")
+	_check(village.collect_amount(mine) == 480 and village.collect(mine, T + 4 * 3600) == Village.Production.OK, "the mine with 2 workers and 4 hours of work gives 480 gold")
+	_expect("after the mine with workers", village, {"g": coins + 480})
+	var count := village.items.size()
+	_check(village.collect(farm, T + 100) == Village.Production.FARM_REMOVED, "a farm without enough wood is removed")
+	_check(village.items.size() == count - 1 and village.item_at(Vector2i(30, 45)) == null, "the removed farm is not on the map")
+	_expect("after the removed farm", village, {"w": 7})
 	return true
 
 

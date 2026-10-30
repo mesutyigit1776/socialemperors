@@ -22,6 +22,16 @@ class ItemDef:
 	var cost_type: String  ## Resource code, see Village.RESOURCE_KEYS.
 	var xp: int  ## Experience that the player gets when buying the item.
 	var min_level: int
+	## Number of directions. Turning an item shows the next frame. Every item
+	## that can turn is square, so turning does not change its footprint.
+	var max_frame: int
+	## Seconds of production before the player can collect, or 0 when the item
+	## does not produce. Mills and mines use a work time instead, see
+	## variable_collect_ids.
+	var activation: float
+	var collect: int  ## Amount of the resource collect_type that a collection gives.
+	var collect_type: String  ## Resource code, see Village.RESOURCE_KEYS.
+	var collect_xp: int
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -50,6 +60,8 @@ var townhall_house_limit: Dictionary = {}  ## Town hall item id -> number of hou
 var worker_item_ids: Dictionary = {}  ## Item id -> true for the buildings that need workers ("social items").
 var allies_item_ids: Array[int] = []  ## Allies buildings and markets, and the recruitment prize.
 var category_names: Dictionary = {}  ## Store category id -> name.
+## Buildings that work only after the player chooses a work time, see Village.WORK_MINUTES.
+var variable_collect_ids: Array[int] = []
 
 var _items: Dictionary = {}  # int -> ItemDef
 
@@ -113,6 +125,16 @@ static func load_from_file(path: String) -> GameConfig:
 			push_error("Game configuration '%s' has an incorrect social item: %s" % [path, str(entry).left(200)])
 			return null
 		config.worker_item_ids[id] = true
+	var variable_ids: Variant = globals.get("COLLECT_VARIABLE_IDS")
+	if not variable_ids is Array:
+		push_error("Game configuration '%s' has no COLLECT_VARIABLE_IDS in globals." % path)
+		return null
+	for entry: Variant in variable_ids:
+		var id: Variant = _to_int(entry)
+		if id == null:
+			push_error("Game configuration '%s' has an incorrect COLLECT_VARIABLE_IDS." % path)
+			return null
+		config.variable_collect_ids.append(id)
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
@@ -138,11 +160,14 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level"]:
-		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height"] else 0))
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp"]:
+		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
-	if numbers["width"] < 1 or numbers["height"] < 1 or numbers["cost"] < 0:
+	if numbers["width"] < 1 or numbers["height"] < 1 or numbers["max_frame"] < 1 or numbers["cost"] < 0 or numbers["collect"] < 0:
+		return null
+	var activation := str(entry.get("activation", "0"))
+	if not activation.is_valid_float() or activation.to_float() < 0:
 		return null
 	var item := ItemDef.new()
 	item.id = numbers["id"]
@@ -158,6 +183,11 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.cost_type = str(entry.get("cost_type", ""))
 	item.xp = numbers["xp"]
 	item.min_level = numbers["min_level"]
+	item.max_frame = numbers["max_frame"]
+	item.activation = activation.to_float()
+	item.collect = numbers["collect"]
+	item.collect_type = str(entry.get("collect_type", ""))
+	item.collect_xp = numbers["collect_xp"]
 	return item
 
 

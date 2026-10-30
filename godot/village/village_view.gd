@@ -1,13 +1,14 @@
 class_name VillageView
 extends Node2D
 ## Draws one village map: the land areas, then the items in depth order.
-## In placement mode it shows the item to build or to move at the tile under the mouse.
+## In placement mode it shows the item to build or to move at the tile under the
+## mouse; the space bar turns it. A mark shows the buildings that are ready to collect.
 ## The view does not change the village; it reports the clicks of the player.
 
-## The player clicked to build the item from the store.
-signal placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i)
+## The player clicked to build the item from the store. frame is the direction.
+signal placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: int)
 ## The player clicked to put the moving item on the tile.
-signal move_confirmed(placed: Village.PlacedItem, tile: Vector2i)
+signal move_confirmed(placed: Village.PlacedItem, tile: Vector2i, frame: int)
 ## The player clicked on the map outside placement mode. placed is null when no item is on the tile.
 signal item_clicked(placed: Village.PlacedItem)
 
@@ -26,6 +27,12 @@ const UNIT_LAST_UNMIRRORED_DIRECTION := 5
 const PLACEMENT_VALID_COLOR := Color(0.5, 1.0, 0.5, 0.8)
 const PLACEMENT_INVALID_COLOR := Color(1.0, 0.4, 0.4, 0.8)
 const SELECTION_COLOR := Color(1.0, 1.0, 0.4, 0.35)
+const READY_MARK_COLORS := {
+	"g": Color(1.0, 0.85, 0.2), "w": Color(0.6, 0.4, 0.2), "s": Color(0.7, 0.7, 0.7),
+	"f": Color(1.0, 0.55, 0.15), "c": Color(0.3, 0.75, 0.3), "m": Color(0.4, 0.5, 1.0),
+}
+const READY_MARK_RADIUS := 10.0
+const READY_MARK_BORDER_COLOR := Color(0.15, 0.1, 0.05)
 ## A press and release of the left button closer than this is a click; a longer
 ## movement pans the map (see MapCamera).
 const CLICK_MAX_DISTANCE := 6.0
@@ -39,12 +46,14 @@ var _village: Village
 var _config: GameConfig
 var _sprites: SpriteLibrary
 var _nodes: Dictionary = {}  # Village.PlacedItem -> Sprite2D
+var _ready_marks: Dictionary = {}  # Village.PlacedItem -> Polygon2D, child of the item node
 
 # Placement mode. _placing_item is null when the mode is off. _moving is the
 # item that moves, or null when the player builds a new item.
 var _placing_item: GameConfig.ItemDef
 var _moving: Village.PlacedItem
 var _placing_tile := Vector2i(-1, -1)
+var _placing_frame := 0
 var _ghost: Sprite2D
 var _outline := Polygon2D.new()
 
@@ -70,6 +79,7 @@ func show_village(village: Village, config: GameConfig, sprites: SpriteLibrary) 
 		for child in layer.get_children():
 			child.queue_free()
 	_nodes.clear()
+	_ready_marks.clear()
 	_village = village
 	_config = config
 	_sprites = sprites
@@ -102,10 +112,32 @@ func add_placed(placed: Village.PlacedItem) -> void:
 		_nodes[placed] = node
 
 
-## Draws the item at its new tile after Village.move().
+## Draws the item at its tile and in its direction after Village.move() or Village.rotate().
 func update_placed(placed: Village.PlacedItem) -> void:
-	if _nodes.has(placed):
-		_nodes[placed].position = IsoGrid.tile_to_map(placed.tile)
+	if not _nodes.has(placed):
+		return
+	var node: Sprite2D = _nodes[placed]
+	var sprite := _sprites.get_sprite(_config.get_item(placed.item_id).img_name)
+	node.position = IsoGrid.tile_to_map(placed.tile)
+	node.texture = sprite.get_frame(placed.frame)
+	node.offset = _building_offset(sprite, placed.frame)
+	if _ready_marks.has(placed):
+		_ready_marks[placed].position = _mark_position(node)
+
+
+## Shows a mark above each building that is ready to collect at the time now.
+func update_production(now: float) -> void:
+	for placed: Village.PlacedItem in _nodes:
+		var ready := _village.seconds_to_ready(placed, now) == 0
+		if ready and not _ready_marks.has(placed):
+			var mark := _circle(READY_MARK_RADIUS + 2, READY_MARK_BORDER_COLOR)
+			mark.add_child(_circle(READY_MARK_RADIUS, READY_MARK_COLORS.get(_config.get_item(placed.item_id).collect_type, Color.WHITE)))
+			mark.position = _mark_position(_nodes[placed])
+			_nodes[placed].add_child(mark)
+			_ready_marks[placed] = mark
+		elif not ready and _ready_marks.has(placed):
+			_ready_marks[placed].queue_free()
+			_ready_marks.erase(placed)
 
 
 ## Removes the item from the map after Village.sell().
@@ -113,6 +145,7 @@ func remove_placed(placed: Village.PlacedItem) -> void:
 	if _nodes.has(placed):
 		_nodes[placed].queue_free()
 		_nodes.erase(placed)
+		_ready_marks.erase(placed)
 
 
 ## Outlines the tiles of the item, or removes the outline when placed is null.
@@ -145,6 +178,7 @@ func _begin(item: GameConfig.ItemDef, frame: int, moving: Village.PlacedItem) ->
 		return false
 	_placing_item = item
 	_moving = moving
+	_placing_frame = frame
 	_ghost = _make_sprite(sprite, frame, Vector2i.ZERO)
 	_ghost.offset = _building_offset(sprite, frame)
 	_placement_layer.add_child(_ghost)
@@ -183,9 +217,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_placement(IsoGrid.map_to_tile(make_input_local(event).position))
 		get_viewport().set_input_as_handled()
 		if _moving != null:
-			move_confirmed.emit(_moving, _placing_tile)
+			move_confirmed.emit(_moving, _placing_tile, _placing_frame)
 		else:
-			placement_confirmed.emit(_placing_item, _placing_tile)
+			placement_confirmed.emit(_placing_item, _placing_tile, _placing_frame)
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
+		get_viewport().set_input_as_handled()
+		_placing_frame = (_placing_frame + 1) % _placing_item.max_frame
+		var sprite := _sprites.get_sprite(_placing_item.img_name)
+		_ghost.texture = sprite.get_frame(_placing_frame)
+		_ghost.offset = _building_offset(sprite, _placing_frame)
 	elif event.is_action_pressed("ui_cancel") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
 		get_viewport().set_input_as_handled()
 		end_placement()
@@ -213,6 +253,21 @@ func _place(layer: Node2D, item: GameConfig.ItemDef, tile: Vector2i, frame: int)
 	node.offset = _building_offset(sprite, frame)
 	layer.add_child(node)
 	return node
+
+
+static func _circle(radius: float, color: Color) -> Polygon2D:
+	var circle := Polygon2D.new()
+	var points := PackedVector2Array()
+	for i in 16:
+		points.append(Vector2.from_angle(TAU * i / 16) * radius)
+	circle.polygon = points
+	circle.color = color
+	return circle
+
+
+## Above the top centre of the item graphic.
+static func _mark_position(node: Sprite2D) -> Vector2:
+	return node.offset + Vector2(node.texture.get_width() / 2.0, -READY_MARK_RADIUS - 4)
 
 
 ## The client puts the bottom centre of the shown frame on the item position.
