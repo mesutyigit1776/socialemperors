@@ -3,6 +3,10 @@ extends CanvasLayer
 ## Village screen interface: resources, the build menu and a message line.
 
 signal item_selected(item: GameConfig.ItemDef)
+## The player wants to move the selected item.
+signal move_requested
+## The player confirmed the sale of the selected item.
+signal sell_confirmed
 
 const PANEL_WIDTH := 340
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash"}
@@ -17,6 +21,7 @@ const PLACEMENT_MESSAGES := {
 	Village.Placement.LEVEL_TOO_LOW: "Your level is too low for this item.",
 	Village.Placement.NOT_ENOUGH_RESOURCES: "You do not have enough resources.",
 	Village.Placement.UNKNOWN_RESOURCE: "This item has a cost type that the port does not support yet.",
+	Village.Placement.NOT_ALLOWED: "You cannot do this with this item.",
 }
 
 var _resources := Label.new()
@@ -25,6 +30,11 @@ var _menu := VBoxContainer.new()
 var _category := OptionButton.new()
 var _buttons: Dictionary = {}  # ItemDef -> Button
 var _button_category: Dictionary = {}  # ItemDef -> category index
+var _selection := HBoxContainer.new()
+var _selection_name := Label.new()
+var _move_button := Button.new()
+var _sell_button := Button.new()
+var _sell_dialog := ConfirmationDialog.new()
 
 
 ## categories: [name, Array[GameConfig.ItemDef]] for each store category.
@@ -46,6 +56,17 @@ func _init(categories: Array) -> void:
 	scroll.add_child(_menu)
 	column.add_child(scroll)
 	column.add_child(_message)
+	_selection_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_selection_name.clip_text = true
+	_move_button.text = "Move"
+	_move_button.pressed.connect(func() -> void: move_requested.emit())
+	_sell_button.pressed.connect(_sell_dialog.popup_centered)
+	_sell_dialog.confirmed.connect(func() -> void: sell_confirmed.emit())
+	for control: Control in [_selection_name, _move_button, _sell_button]:
+		_selection.add_child(control)
+	_selection.visible = false
+	column.add_child(_selection)
+	add_child(_sell_dialog)
 	add_child(panel)
 	for index in categories.size():
 		_category.add_item(categories[index][0])
@@ -84,6 +105,21 @@ func refresh(village: Village) -> void:
 func _show_category(index: int) -> void:
 	for item: GameConfig.ItemDef in _buttons:
 		_buttons[item].visible = _button_category[item] == index
+
+
+## Shows the item that the player clicked on the map, or hides the section when item is null.
+func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool) -> void:
+	_selection.visible = item != null
+	if item == null:
+		return
+	_selection_name.text = item.name
+	_move_button.disabled = not can_move
+	_sell_button.disabled = not can_sell
+	var refund := Village.sell_refund(item)
+	_sell_button.text = "Sell"
+	if can_sell and refund > 0:
+		_sell_button.text = "Sell for %d %s" % [refund, RESOURCE_NAMES.get(item.cost_type, item.cost_type)]
+	_sell_dialog.dialog_text = "Sell %s? You get %s." % [item.name, "nothing back" if refund == 0 else "%d %s" % [refund, RESOURCE_NAMES.get(item.cost_type, item.cost_type)]]
 
 
 func show_message(text: String) -> void:

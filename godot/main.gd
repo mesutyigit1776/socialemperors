@@ -14,6 +14,7 @@ var _village: Village
 var _village_path: String
 var _view: VillageView
 var _hud: VillageHud
+var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
 
 
 func _ready() -> void:
@@ -33,6 +34,8 @@ func _ready() -> void:
 		add_child(_view)
 		_view.show_village(_village, _config, _sprites)
 		_view.placement_confirmed.connect(_on_placement_confirmed)
+		_view.move_confirmed.connect(_on_move_confirmed)
+		_view.item_clicked.connect(_select)
 		var camera := MapCamera.new()
 		camera.position = _start_position(_village)
 		add_child(camera)
@@ -45,6 +48,8 @@ func _ready() -> void:
 			categories.append([_config.category_names.get(category_id, str(category_id)), store_items])
 		_hud = VillageHud.new(categories)
 		_hud.item_selected.connect(_on_item_selected)
+		_hud.move_requested.connect(_on_move_requested)
+		_hud.sell_confirmed.connect(_on_sell_confirmed)
 		add_child(_hud)
 		_hud.refresh(_village)
 
@@ -54,8 +59,49 @@ func _ready() -> void:
 
 
 func _on_item_selected(item: GameConfig.ItemDef) -> void:
-	_view.begin_placement(item, _village, _sprites)
+	_select(null)
+	_view.begin_placement(item)
 	_hud.show_message("Place %s." % item.name)
+
+
+func _select(placed: Village.PlacedItem) -> void:
+	_selected = placed
+	_view.show_selection(placed)
+	var item := _config.get_item(placed.item_id) if placed != null else null
+	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed))
+
+
+func _on_move_requested() -> void:
+	if _selected != null and _view.begin_move(_selected):
+		_hud.show_message("Move %s. Right-click cancels." % _config.get_item(_selected.item_id).name)
+
+
+func _on_move_confirmed(placed: Village.PlacedItem, tile: Vector2i) -> void:
+	var result := _village.move(placed, tile)
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_view.end_placement()
+	_view.update_placed(placed)
+	_select(placed)
+	if _save():
+		_hud.show_message("Moved %s." % _config.get_item(placed.item_id).name)
+
+
+func _on_sell_confirmed() -> void:
+	if _selected == null:
+		return
+	var placed := _selected
+	var item := _config.get_item(placed.item_id)
+	var result := _village.sell(placed)
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_select(null)
+	_view.remove_placed(placed)
+	_hud.refresh(_village)
+	if _save():
+		_hud.show_message("Sold %s." % item.name)
 
 
 func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
@@ -65,13 +111,9 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
 		_hud.show_placement_result(result)
 		return
 	_view.end_placement()
-	_view.add_placed(_village.items.back(), _config, _sprites)
+	_view.add_placed(_village.items.back())
 	_hud.refresh(_village)
-	var error := _village.save_to_file(_village_path)
-	if error != OK:
-		var text := "Cannot save the village to %s: %s" % [_village_path, error_string(error)]
-		_hud.show_message(text)
-		push_error(text)
+	if not _save():
 		return
 	var text := "Built %s." % item.name
 	for level in range(old_level + 1, _village.get_level() + 1):
@@ -81,6 +123,17 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i) -> void:
 			text += " and %d mana" % _config.mana_reward_per_level
 		text += "."
 	_hud.show_message(text)
+
+
+## Saves the village after a change. Shows the error and returns false when the save fails.
+func _save() -> bool:
+	var error := _village.save_to_file(_village_path)
+	if error != OK:
+		var text := "Cannot save the village to %s: %s" % [_village_path, error_string(error)]
+		_hud.show_message(text)
+		push_error(text)
+		return false
+	return true
 
 
 ## Centre of the owned land, or the map centre when the village owns no land.

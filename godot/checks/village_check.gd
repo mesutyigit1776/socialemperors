@@ -24,6 +24,11 @@ const NURSERY := 226
 const ALLIES_BUILDING := 234
 const ROUND_TABLE := 389
 const HIGHEST_LEVEL_XP := 2016089205
+const TOWN_HALL_TILE := Vector2i(52, 52)
+const TREE_TILE := Vector2i(50, 58)
+const KNIGHT_TILE := Vector2i(50, 44)
+const HOUSE_TILE := Vector2i(44, 50)
+const TOWER_TILE := Vector2i(51, 47)
 
 var _config: GameConfig
 var _initial: Dictionary
@@ -49,7 +54,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -169,6 +174,72 @@ func _check_construction_limits() -> bool:
 	_check(attributes[ROUND_TABLE] == {"si": [], "sif": {}}, "a new round table has no workers")
 	_check(attributes[GOLD_MINE_II] == {}, "a building without workers has no attributes")
 	return true
+
+
+## Moving and selling: which items the player can move or sell, the location
+## and limit checks of a move, and the amounts that a sale gives back.
+func _check_move_and_sell() -> bool:
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12]}
+	var path := _write_fixture("move_sell", 100, HIGHEST_LEVEL_XP, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_13 := Rect2i(40, 40, 20, 20)
+	var area_12 := Rect2i(20, 40, 20, 20)
+
+	var town_hall := village.item_at(TOWN_HALL_TILE)
+	_check(village.can_move(town_hall) and not village.can_sell(town_hall), "the town hall can move but cannot be sold")
+	_check(village.sell(town_hall) == Village.Placement.NOT_ALLOWED, "selling the town hall is not allowed")
+	var tree := village.item_at(TREE_TILE)
+	_check(village.move(tree, Vector2i(41, 41)) == Village.Placement.NOT_ALLOWED, "a tree cannot move")
+	_check(village.sell(tree) == Village.Placement.NOT_ALLOWED, "a tree cannot be sold")
+	var knight := village.item_at(KNIGHT_TILE)
+	_check(village.move(knight, Vector2i(41, 41)) == Village.Placement.NOT_ALLOWED, "a unit cannot move with the move tool")
+
+	var house := village.item_at(HOUSE_TILE)
+	_check(village.move(house, HOUSE_TILE) == Village.Placement.OK, "an item does not block its own location")
+	_check(village.move(house, TOWN_HALL_TILE) == Village.Placement.OCCUPIED, "an item cannot move onto another item")
+	_check(village.move(house, Vector2i(55, 65)) == Village.Placement.NOT_OWNED_LAND, "an item cannot move to land that is not owned")
+	_check(house.tile == HOUSE_TILE, "a failed move does not change the item")
+
+	# Area 13 has 2 towers. 8 more fill it; a tower in it can still move inside it.
+	for i in 8:
+		_buy_free(village, TOWER, area_13, Village.Placement.OK)
+	_buy_free(village, TOWER, area_12, Village.Placement.OK)
+	var tower_12: Village.PlacedItem = village.items.back()
+	var tower_13 := village.item_at(TOWER_TILE)
+	var free_13 := _free_tile(village, TOWER, area_13)
+	_check(village.move(tower_12, free_13) == Village.Placement.LAND_AREA_TOWER_LIMIT_REACHED, "a tower cannot move into a full land area")
+	_check(village.move(tower_13, free_13) == Village.Placement.OK, "a tower can move inside its full land area")
+	_check(village.item_at(TOWER_TILE) == null and village.item_at(free_13) == tower_13, "the moved tower is only at its new tile")
+
+	var wood := village.get_resource("w")
+	_check(village.sell(house) == Village.Placement.OK, "a house can be sold")
+	_expect("after selling a house (30 wood)", village, {"w": wood + 1})
+	_check(village.check_location(_config.get_item(GREEN_TREE), HOUSE_TILE) == Village.Placement.OK, "the tile of a sold item is free")
+	_buy_free(village, MARKET, area_12, Village.Placement.OK)
+	wood = village.get_resource("w")
+	_check(village.sell(village.items.back()) == Village.Placement.OK, "a market can be sold")
+	_expect("after selling a market (350 wood)", village, {"w": wood + 17})
+	_buy_free(village, BATHS, area_12, Village.Placement.OK)
+	var cash := village.get_resource("c")
+	_check(village.sell(village.items.back()) == Village.Placement.OK, "the baths can be sold")
+	_expect("after selling the baths (6 cash)", village, {"c": cash})
+
+	_check(village.save_to_file(path) == OK, "the village after moves and sales saves")
+	var saved: Array = JSON.parse_string(FileAccess.get_file_as_string(path))["maps"][0]["items"]
+	var at := func(id: int, tile: Vector2i) -> int:
+		return saved.filter(func(entry: Array) -> bool: return int(entry[0]) == id and Vector2i(int(entry[1]), int(entry[2])) == tile).size()
+	_check(at.call(TOWER, free_13) == 1 and at.call(TOWER, TOWER_TILE) == 0, "the save has the tower at its new tile")
+	_check(at.call(HOUSE, HOUSE_TILE) == 0 and saved.size() == village.items.size(), "the save does not have the sold items")
+	return true
+
+
+## The first tile in area where the item fits.
+func _free_tile(village: Village, item_id: int, area: Rect2i) -> Vector2i:
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			if village.check_location(_config.get_item(item_id), Vector2i(x, y)) == Village.Placement.OK:
+				return Vector2i(x, y)
+	return Village.ANY_TILE
 
 
 ## Buys the item on the first tile in area where it fits.

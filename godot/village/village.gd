@@ -19,6 +19,7 @@ enum Placement {
 	LEVEL_TOO_LOW,
 	NOT_ENOUGH_RESOURCES,
 	UNKNOWN_RESOURCE,
+	NOT_ALLOWED,  ## The player cannot move or sell this item.
 }
 
 ## Buildings for which the server's "buy" hires no workers, in addition to
@@ -30,6 +31,13 @@ const GREAT_CHURCH := 470
 
 ## For check_limits(): the location is not known yet.
 const ANY_TILE := Vector2i(-1, -1)
+
+## Trees and stone and gold deposits. The player collects them, but cannot move or sell them.
+const NEUTRAL_RESOURCE_SUBCATS: Array[int] = [125, 126, 127, 128]
+const CATEGORY_TERRAIN := 6
+## A sold item gives back its cost divided by this number, in the resource of
+## the cost. Items that cost cash give nothing back.
+const SELL_DIVISOR := 20
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -48,6 +56,7 @@ class PlacedItem:
 	var item_id: int
 	var tile: Vector2i
 	var frame: int  ## 0-based graphic frame; the client uses it for orientation and state.
+	var _entry: Array  # The item entry in the save; move() and sell() change it.
 
 
 var items: Array[PlacedItem] = []
@@ -58,7 +67,7 @@ var race: String  ## "h" (human) or "t" (troll).
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _config: GameConfig
-var _occupied := PackedByteArray()  # 1 for each tile that an item covers, row by row.
+var _occupied := PackedByteArray()  # Number of items that cover each tile, row by row.
 
 
 ## Returns null and reports an error when the file is missing or not a valid save.
@@ -133,8 +142,10 @@ func get_resource(code: String) -> int:
 
 
 ## Checks only the location: the map edges, the owned land and the other items.
-func check_location(item: GameConfig.ItemDef, tile: Vector2i) -> Placement:
+## The item ignored does not block the location; use it for the item that moves.
+func check_location(item: GameConfig.ItemDef, tile: Vector2i, ignored: PlacedItem = null) -> Placement:
 	var covered := footprint(item, tile)
+	var ignored_tiles := _covered_tiles(ignored) if ignored != null else Rect2i()
 	if not Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).encloses(covered):
 		return Placement.OUTSIDE_MAP
 	for y in range(covered.position.y, covered.end.y):
@@ -142,14 +153,16 @@ func check_location(item: GameConfig.ItemDef, tile: Vector2i) -> Placement:
 			var area := Vector2i(x, y) / IsoGrid.LAND_TILES
 			if not IsoGrid.land_area_number(area) in owned_land:
 				return Placement.NOT_OWNED_LAND
-			if _occupied[y * IsoGrid.MAP_TILES + x] != 0:
+			var others := _occupied[y * IsoGrid.MAP_TILES + x] - (1 if ignored_tiles.has_point(Vector2i(x, y)) else 0)
+			if others != 0:
 				return Placement.OCCUPIED
 	return Placement.OK
 
 
 ## Checks the limits on the number of buildings of a type. With ANY_TILE, it does
-## not check the limit of towers in the land area of the location.
-func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE) -> Placement:
+## not check the limit of towers in the land area of the location. The item
+## ignored does not count; use it for the item that moves.
+func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE, ignored: PlacedItem = null) -> Placement:
 	var same_item := 0
 	var same_subcat := 0
 	var houses := 0
@@ -159,7 +172,7 @@ func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE) -> Placem
 	var in_group := 0
 	for placed in items:
 		var placed_item := _config.get_item(placed.item_id)
-		if placed_item == null:
+		if placed_item == null or placed == ignored:
 			continue
 		if placed.item_id == item.id:
 			same_item += 1
@@ -179,7 +192,7 @@ func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE) -> Placem
 	if item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
 		if towers >= owned_land.size() * ConstructionLimits.MAX_TOWERS_PER_LAND_AREA:
 			return Placement.TOWER_LIMIT_REACHED
-		if tile != ANY_TILE and _tower_tiles_in_land_area(tile) >= ConstructionLimits.MAX_TOWERS_PER_LAND_AREA:
+		if tile != ANY_TILE and _tower_tiles_in_land_area(tile, ignored) >= ConstructionLimits.MAX_TOWERS_PER_LAND_AREA:
 			return Placement.LAND_AREA_TOWER_LIMIT_REACHED
 	if item.subcat_functional == ConstructionLimits.SUBCAT_HOUSE and item.id != ConstructionLimits.BATHS:
 		if houses >= _config.townhall_house_limit.get(townhall_id, 0):
@@ -213,11 +226,77 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
 	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
 	_add_xp(item.xp)
 	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, store, attributes].
-	_map["items"].append([item.id, tile.x, tile.y, 0, timestamp, 0, [], _new_item_attributes(item)])
+	var entry := [item.id, tile.x, tile.y, 0, timestamp, 0, [], _new_item_attributes(item)]
+	_map["items"].append(entry)
 	var placed := PlacedItem.new()
 	placed.item_id = item.id
 	placed.tile = tile
+	placed._entry = entry
 	_add(placed)
+	return Placement.OK
+
+
+## The item that covers the tile, or null. When items overlap, the item added last.
+func item_at(tile: Vector2i) -> PlacedItem:
+	for i in range(items.size() - 1, -1, -1):
+		if _config.get_item(items[i].item_id) != null and _covered_tiles(items[i]).has_point(tile):
+			return items[i]
+	return null
+
+
+## The player can move the own buildings and decorations, also the town hall.
+func can_move(placed: PlacedItem) -> bool:
+	var item := _config.get_item(placed.item_id)
+	return item != null and not item.is_unit() and item.category_id != CATEGORY_TERRAIN \
+			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
+
+
+## The player can sell the items that they can move, except the town hall.
+func can_sell(placed: PlacedItem) -> bool:
+	return can_move(placed) and _config.get_item(placed.item_id).subcat_functional != ConstructionLimits.SUBCAT_TOWNHALL
+
+
+## The amount that selling the item gives back, in the resource of its cost.
+static func sell_refund(item: GameConfig.ItemDef) -> int:
+	return 0 if item.cost_type == "c" else item.cost / SELL_DIVISOR
+
+
+## Checks a move of the item to the tile. The client removes the item from the
+## map while it moves, so the item does not block its own location or count for the limits.
+func check_move(placed: PlacedItem, tile: Vector2i) -> Placement:
+	if not can_move(placed):
+		return Placement.NOT_ALLOWED
+	var item := _config.get_item(placed.item_id)
+	var location := check_location(item, tile, placed)
+	if location != Placement.OK:
+		return location
+	return check_limits(item, tile, placed)
+
+
+## Moves the item, as the server command "move" does. Changes nothing when the result is not OK.
+func move(placed: PlacedItem, tile: Vector2i) -> Placement:
+	var result := check_move(placed, tile)
+	if result != Placement.OK:
+		return result
+	_mark_occupied(placed, -1)
+	placed.tile = tile
+	placed._entry[1] = tile.x
+	placed._entry[2] = tile.y
+	_mark_occupied(placed, 1)
+	return Placement.OK
+
+
+## Sells the item, as the server command "sell" does. Changes nothing when the result is not OK.
+func sell(placed: PlacedItem) -> Placement:
+	if not can_sell(placed):
+		return Placement.NOT_ALLOWED
+	var item := _config.get_item(placed.item_id)
+	var refund := sell_refund(item)
+	if refund > 0:
+		_add_resource(item.cost_type, refund)
+	_mark_occupied(placed, -1)
+	items.erase(placed)
+	_map["items"].erase(placed._entry)
 	return Placement.OK
 
 
@@ -294,27 +373,36 @@ func _new_item_attributes(item: GameConfig.ItemDef) -> Dictionary:
 
 
 ## The client counts each tile that a tower covers, not each tower.
-func _tower_tiles_in_land_area(tile: Vector2i) -> int:
+func _tower_tiles_in_land_area(tile: Vector2i, ignored: PlacedItem) -> int:
 	var area := Rect2i(tile / IsoGrid.LAND_TILES * IsoGrid.LAND_TILES, Vector2i.ONE * IsoGrid.LAND_TILES)
 	var count := 0
 	for placed in items:
 		var placed_item := _config.get_item(placed.item_id)
-		if placed_item != null and placed_item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
+		if placed_item != null and placed != ignored and placed_item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
 			count += footprint(placed_item, placed.tile).intersection(area).get_area()
 	return count
 
 
 func _add(placed: PlacedItem) -> void:
 	items.append(placed)
-	var item := _config.get_item(placed.item_id)
-	if item == null:
+	if _config.get_item(placed.item_id) == null:
 		push_warning("The village contains item %d, which is not in the configuration." % placed.item_id)
 		return
-	# Units also mark their tile as occupied in the client.
-	var covered := footprint(item, placed.tile).intersection(Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES))
+	_mark_occupied(placed, 1)
+
+
+## change is 1 when the item comes on the map and -1 when it goes away.
+## Units also occupy their tile in the client.
+func _mark_occupied(placed: PlacedItem, change: int) -> void:
+	var covered := _covered_tiles(placed)
 	for y in range(covered.position.y, covered.end.y):
 		for x in range(covered.position.x, covered.end.x):
-			_occupied[y * IsoGrid.MAP_TILES + x] = 1
+			_occupied[y * IsoGrid.MAP_TILES + x] += change
+
+
+## The tiles of the map that a placed item covers.
+func _covered_tiles(placed: PlacedItem) -> Rect2i:
+	return footprint(_config.get_item(placed.item_id), placed.tile).intersection(Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES))
 
 
 ## The tiles that an item covers. tile is the front tile; the item extends up and to the left of it.
@@ -333,6 +421,7 @@ static func _parse_item(entry: Variant) -> PlacedItem:
 	placed.item_id = int(entry[0])
 	placed.tile = Vector2i(int(entry[1]), int(entry[2]))
 	placed.frame = int(entry[3])
+	placed._entry = entry
 	var inside := Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).has_point(placed.tile)
 	if not inside or placed.frame < 0:
 		return null
