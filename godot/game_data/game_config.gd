@@ -101,6 +101,19 @@ var soul_mixer_powerups: Array[Array] = []
 var soul_mixer_min_level: int  ## The client gives a free Soul Mixer from this level.
 ## collection_rewards[n] is the item that collection n gives; index 0 is not used.
 var collection_rewards: Array[int] = []
+## The campaign quests, see QuestBook and QuestBattle. Quest ids are text, as
+## in the configuration and the save.
+var quest_order: Array[String] = []  ## The islands in the order in which they open.
+var quest_min_levels: Dictionary = {}  ## Quest id -> the level that the island needs.
+var quests_always_open: Array[String] = []
+var quest_gold: Dictionary = {}  ## Gold key of a quest, for example "QUEST_ISLA_TROLLS_1" -> gold.
+var quest_gold_multipliers: Array[float] = []  ## For 1, 2 and 3 stars.
+var quest_gold_replayed: float  ## Multiplies the gold when the island already has these stars.
+var quest_max_xp: int  ## The experience of one quest is at most this.
+var quest_units_back_percent: int  ## The part of the dead units that come back after a quest.
+var quest_honour: Array[int] = []  ## For a win with 1, 2 and 3 stars.
+var quest_honour_first: Array[int] = []  ## For the first win with these stars.
+var quest_honour_lost: int
 var _texts: Dictionary = {}  # Language text name, for example "COLECCION_ROSA_ROJA" -> text.
 
 var _items: Dictionary = {}  # int -> ItemDef
@@ -187,6 +200,9 @@ static func load_from_file(path: String) -> GameConfig:
 	config.warehouse_max_capacity = numbers[3]
 	if not _parse_special_globals(config, globals):
 		push_error("Game configuration '%s' has no correct nest, rider, dragon, graveyard, Soul Mixer or collection settings in globals." % path)
+		return null
+	if not _parse_quest_globals(config, globals):
+		push_error("Game configuration '%s' has no correct quest settings in globals (ISLE_ORDER, QUEST_GOLD_REWARD, HONOR_POINT_QUEST and others)." % path)
 		return null
 	for entry: Variant in data.get("localization_strings", []):
 		if entry is Dictionary and entry.get("name") is String:
@@ -318,6 +334,56 @@ static func _parse_special_globals(config: GameConfig, globals: Dictionary) -> b
 			return false
 		config.collection_rewards.append(to_int(reward))
 	return config.collection_rewards.size() > Collections.count()
+
+
+## Reads the globals of the campaign quests. The server adds some of them with
+## the patch config/patch/1-mega_patch.json. Returns false when one is missing
+## or not correct.
+static func _parse_quest_globals(config: GameConfig, globals: Dictionary) -> bool:
+	for pair: Array in [[config.quest_order, "ISLE_ORDER"], [config.quests_always_open, "UNLOCKED_FOREVER_QUESTS"]]:
+		var ids: Variant = globals.get(pair[1])
+		if not ids is Array:
+			return false
+		for id: Variant in ids:
+			if to_int(id) == null:
+				return false
+			pair[0].append(str(to_int(id)))
+	var min_levels: Variant = globals.get("QUESTS_MIN_LEVELS")
+	var gold: Variant = globals.get("QUEST_GOLD_REWARD")
+	if not (min_levels is Dictionary and gold is Dictionary):
+		return false
+	for id: Variant in min_levels:
+		if to_int(min_levels[id]) == null:
+			return false
+		config.quest_min_levels[str(id)] = to_int(min_levels[id])
+	for key: Variant in gold:
+		var amount: Variant = to_int(gold[key].get("g")) if gold[key] is Dictionary else null
+		if amount == null:
+			return false
+		config.quest_gold[str(key)] = amount
+	var multipliers: Variant = globals.get("QUEST_GOLD_REWARD_MULTYPLIERS")
+	var honour: Variant = globals.get("HONOR_POINT_QUEST")
+	var honour_first: Variant = globals.get("HONOR_POINT_QUEST_FIRST_TIME")
+	if not (multipliers is Array and honour is Array and honour_first is Array):
+		return false
+	for value: Variant in multipliers:
+		if not (value is float or value is int or (value is String and value.is_valid_float())):
+			return false
+		config.quest_gold_multipliers.append(float(value))
+	for pair: Array in [[config.quest_honour, honour], [config.quest_honour_first, honour_first]]:
+		for value: Variant in pair[1]:
+			if to_int(value) == null:
+				return false
+			pair[0].append(to_int(value))
+	var replayed: Variant = globals.get("QUEST_GOLD_REWARD_REPLAYED")
+	var numbers := [to_int(globals.get("MAX_XP_QUEST")), to_int(globals.get("PERCENT_UNITS_RECOVERED_ISLE")), to_int(globals.get("HONOR_POINT_QUEST_LOSE"))]
+	if null in numbers or not (replayed is float or replayed is int or (replayed is String and replayed.is_valid_float())):
+		return false
+	config.quest_gold_replayed = float(replayed)
+	config.quest_max_xp = numbers[0]
+	config.quest_units_back_percent = numbers[1]
+	config.quest_honour_lost = numbers[2]
+	return config.quest_gold_multipliers.size() == QuestBook.MAX_STARS and config.quest_honour.size() == QuestBook.MAX_STARS and config.quest_honour_first.size() == QuestBook.MAX_STARS
 
 
 static func _parse_level(entry: Variant) -> LevelDef:

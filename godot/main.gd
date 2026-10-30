@@ -8,6 +8,11 @@ extends Node2D
 ##   --screenshot <png>    save the first frames as an image and quit; used for checks
 ##   --battle <file>       try a battle on the map of a save, for example a quest
 ##                         map, with the units of the village; see BattleScreen
+##   --quest <id>          open the start window of the quest island, as a click
+##                         in the island window does; used for checks
+
+## The windows of the quests are over the village bar and the battle bar.
+const WINDOW_LAYER := 10
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -24,6 +29,12 @@ var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again
 var _specials: SpecialActions
 var _panel := SpecialActions.View.NONE  # What the action panel of the HUD shows.
 var _placing_stored := false  # The item that the player places comes from the item store.
+var _data_dir: String
+var _camera: MapCamera
+var _ui: UiLibrary  # The windows of the client; loaded when the player opens the quests.
+var _effects: SpriteLibrary  # The shots and effects of battles; loaded with the first quest.
+var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
+var _quest_screen: QuestScreen
 
 
 func _ready() -> void:
@@ -31,6 +42,7 @@ func _ready() -> void:
 	var data_dir: String = _options.get("data", OS.get_environment("SE_DATA_DIR"))
 	if data_dir.is_empty():
 		data_dir = "user://imported"
+	_data_dir = data_dir
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
@@ -54,9 +66,9 @@ func _ready() -> void:
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
 		add_child(_orders)
-		var camera := MapCamera.new()
-		camera.position = _start_position(_village)
-		add_child(camera)
+		_camera = MapCamera.new()
+		_camera.position = _start_position(_village)
+		add_child(_camera)
 		_hud = VillageHud.new()
 		_hud.item_selected.connect(_on_item_selected)
 		_hud.move_requested.connect(_on_move_requested)
@@ -74,7 +86,10 @@ func _ready() -> void:
 		_hud.action_requested.connect(_on_action_requested)
 		_hud.collections_requested.connect(func() -> void: _show_panel(SpecialActions.View.COLLECTIONS))
 		_hud.stored_items_requested.connect(func() -> void: _show_panel(SpecialActions.View.STORE))
+		_hud.quests_requested.connect(_open_quests)
 		add_child(_hud)
+		_windows.layer = WINDOW_LAYER
+		add_child(_windows)
 		# The client spawns the wild animals when it loads the map.
 		if not _village.spawn_animals(_now(), _rng).is_empty():
 			_view.sync_items()
@@ -86,6 +101,8 @@ func _ready() -> void:
 		clock.start(1.0)
 		_update_production()
 
+	if _options.has("quest") and _village != null and _view != null:
+		_on_island_chosen(_options["quest"], null)
 	if _options.has("screenshot"):
 		await _save_screenshot(_options["screenshot"])
 		get_tree().quit()
@@ -99,12 +116,106 @@ func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 	var battle := BattleScreen.practice_battle(map, _village, _config, _sprites, _rng)
 	var view := BattleView.new()
 	add_child(view)
-	view.show_battle(battle, _config, _sprites, effects, map.skin, map.owned_land)
+	view.show_battle(battle, _config, _sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land))
 	var camera := MapCamera.new()
 	camera.position = _start_position(map)
 	add_child(camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
 	add_child(BattleScreen.new(battle, view))
+
+
+## The client opens the island window from the ship; a village without
+## fighting units cannot sail.
+func _open_quests() -> void:
+	if not _load_quest_graphics():
+		return
+	if _village.quest_army().is_empty():
+		_alert(_config.text("AVISO_NAVEGAR_SIN_TROPAS").strip_edges())
+		return
+	var window := QuestListWindow.new(_ui, QuestBook.new(_village, _config), _config, _now)
+	window.closed.connect(window.queue_free)
+	window.island_chosen.connect(_on_island_chosen.bind(window))
+	_windows.add_child(window)
+
+
+## window: the island window, which closes when the quest starts; or null.
+func _on_island_chosen(quest_id: String, window: QuestListWindow) -> void:
+	if not _load_quest_graphics():
+		return
+	var book := QuestBook.new(_village, _config)
+	match book.refusal(quest_id, _now()):
+		QuestBook.Refusal.LOCKED:
+			_alert(_config.text("AVISO_QUEST_BLOQUEADA").strip_edges())
+		QuestBook.Refusal.NOT_IN_PORT:
+			_alert(QuestListWindow.NOT_IN_PORT_ALERT)
+		QuestBook.Refusal.NO_ARMY:
+			_alert(_config.text("AVISO_NAVEGAR_SIN_TROPAS").strip_edges())
+		QuestBook.Refusal.LIMIT_REACHED:
+			# The text of the client names its own wait of 6 hours; the port names its own.
+			var text := _config.text("QUEST_COOLDOWN_REMINDER").replace("#0#", str(book.quests_per_window()))
+			_alert(RegEx.create_from_string("\\d+ hours").sub(text, "%d hours" % (QuestBook.QUEST_WINDOW_SECONDS / 3600)))
+		QuestBook.Refusal.NONE:
+			if window != null:
+				window.queue_free()
+			_start_quest(quest_id)
+
+
+## Leaves the village for the island: the army lands and the start window opens.
+func _start_quest(quest_id: String) -> void:
+	var map := Village.load_from_file(_data_dir.path_join("quests/%s.save.json" % quest_id), _config)
+	if map == null:
+		_alert("Cannot read the map of this island. Import the game files again.")
+		return
+	var army := _village.quest_army()
+	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng)
+	_quest_screen = QuestScreen.new(quest, _village, _ui, _config, _sprites, _effects)
+	_quest_screen.started.connect(func(_stars: int) -> void:
+		_village.start_quest(quest_id, _now())
+		_save())
+	_quest_screen.closed.connect(_on_quest_closed)
+	_select(null)
+	_show_village(false)
+	add_child(_quest_screen)
+
+
+## Saves the result of the quest and goes home. The client then opens the island window again.
+func _on_quest_closed(result: Dictionary) -> void:
+	var old_level := _village.get_level()
+	_village.end_quest(result)
+	_save()
+	_quest_screen.queue_free()
+	_quest_screen = null
+	_show_village(true)
+	_view.sync_items()
+	_update_store()
+	_update_production()
+	_hud.show_message(_level_up_text(old_level).strip_edges())
+	_open_quests()
+
+
+func _show_village(shown: bool) -> void:
+	for node: Node in [_view, _orders, _hud, _camera]:
+		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
+	_view.visible = shown
+	_hud.visible = shown
+	_camera.enabled = shown
+
+
+## Loads the windows of the client and the graphics of the shots when the
+## player first needs them. Returns false when the import does not have them.
+func _load_quest_graphics() -> bool:
+	if _ui == null:
+		_ui = UiLibrary.load_from(_data_dir)
+	if _ui == null:
+		_hud.show_message("The quests need the windows of the client. Import the game files again; see godot/README.md.")
+		return false
+	if _effects == null:
+		_effects = SpriteLibrary.new(_data_dir, "fx")
+	return true
+
+
+func _alert(text: String) -> void:
+	_windows.add_child(AlertWindow.new(_ui, _config, text))
 
 
 func _on_item_selected(item: GameConfig.ItemDef) -> void:

@@ -83,16 +83,24 @@ func _ready() -> void:
 
 
 ## effects: the graphics of the shots and their effects.
-func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, skin: int, owned_land: PackedInt32Array) -> void:
+func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, land_item_id: int, land_frames: Array[int]) -> void:
 	_sim = sim
 	_sprites = sprites
 	_effects = effects
-	VillageView.place_land(_land_layer, config, sprites, skin, owned_land)
+	VillageView.place_land(_land_layer, config, sprites, land_item_id, land_frames)
 	for fighter in sim.fighters:
 		_add(fighter)
+	sim.added.connect(_add)
 	sim.removed.connect(_on_removed)
 	sim.shot_fired.connect(_on_shot_fired)
 	sim.shot_landed.connect(_on_shot_landed)
+
+
+## Marks a building that the player can collect, as the village marks a
+## building that is ready: the treasure of a troll island.
+func show_collectable(fighter: BattleFighter, resource: String) -> void:
+	if _nodes.has(fighter) and not fighter.is_unit():
+		VillageView.add_ready_mark(_nodes[fighter], resource)
 
 
 func show_selection(selected: Array[BattleFighter]) -> void:

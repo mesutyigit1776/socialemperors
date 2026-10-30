@@ -32,7 +32,11 @@ const SUBCAT_SIEGE := 81
 const SUBCAT_KAMIKAZE := 89
 const ELEMENT_KINDS := {96: Kind.FOREST, 92: Kind.LIGHT, 95: Kind.FIRE, 94: Kind.SOUL, 93: Kind.WATER}
 
+signal stepped  ## The battle ran one frame.
+signal item_clicked(item: BattleFighter)  ## The player clicked an item that is not theirs and that they cannot attack now.
+
 var sim: BattleSim
+var paused := false  ## A paused battle does not run and takes no orders, as under a window of the client.
 var _view: BattleView
 var _selected: Array[BattleFighter] = []
 var _time := 0.0
@@ -82,13 +86,18 @@ static func practice_battle(map: Village, player: Village, config: GameConfig, s
 
 
 func _process(delta: float) -> void:
+	if paused:
+		return
 	_time += delta
 	while _time >= FRAME_SECONDS:
 		_time -= FRAME_SECONDS
 		sim.step()
+		stepped.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if paused:
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_selection_tool = true
 		get_viewport().set_input_as_handled()
@@ -136,6 +145,7 @@ func _click(point: Vector2) -> void:
 		# A click on an enemy without units of the player, or on a neutral
 		# item, selects it, so that its health shows.
 		_select([item])
+		item_clicked.emit(item)
 
 
 ## The living item under point, or null.

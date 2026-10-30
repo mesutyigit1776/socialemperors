@@ -10,6 +10,8 @@ socialemperors server folder that the user supplies and writes:
   <out>/sprites/<img_name>/clips/<id>/<n>.png  frame n of an animation of a unit
   <out>/fx/<name>/...                shots and effects of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
+  <out>/quests/<id>.save.json        maps of the quest islands
+  <out>/ui/...                       windows of the client, see ui_import.py
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
 """
@@ -20,11 +22,12 @@ import glob
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 
+from jpexs import copy_frames, exported_frames, run_jpexs
 from swf_bounds import SwfError, SwfFile
+from ui_import import import_ui
 
 TERRAIN_ITEM_IDS = range(1000, 1010)  # 1000 + map skin; see the land graphic in the client
 NEUTRAL_RESOURCE_SUBCATS = {"125", "126", "127", "128"}  # trees, stone, gold and their regrowth
@@ -128,31 +131,6 @@ def needed_items(config, villages, shop, export_all):
 	return result
 
 
-def run_jpexs(jpexs, swf_path, selection, work_dir):
-	"Renders every frame of the selected sprites to PNG in work_dir, one folder for each sprite."
-	command = ["java", "-jar", jpexs] if jpexs.endswith(".jar") else [jpexs]
-	command += selection + ["-format", "sprite:png", "-export", "sprite", work_dir, swf_path]
-	result = subprocess.run(command, capture_output=True, text=True)
-	if result.returncode != 0:
-		raise RuntimeError(f"JPEXS failed for {swf_path}: {result.stdout[-500:]}{result.stderr[-500:]}")
-
-
-def exported_frames(work_dir, matches, what):
-	"Returns the frame files of the one exported folder whose name matches, in order."
-	folders = [d for d in os.listdir(work_dir) if matches(d)]
-	if len(folders) != 1:
-		raise RuntimeError(f"JPEXS did not export {what}")
-	folder = os.path.join(work_dir, folders[0])
-	frames = sorted((f for f in os.listdir(folder) if f.endswith(".png")), key=lambda f: int(f[:-4]))
-	return [os.path.join(folder, f) for f in frames]
-
-
-def copy_frames(frames, folder):
-	os.makedirs(folder, exist_ok=True)
-	for index, frame in enumerate(frames, start=1):
-		shutil.copyfile(frame, os.path.join(folder, f"{index}.png"))
-
-
 def import_clips(jpexs, swf, swf_path, symbol, sprite_dir):
 	"""Exports the clips of a graphic. Returns the meta entries "clips" and "frame_clips"."""
 	frame_clips = swf.symbol_frame_clips(symbol)
@@ -229,6 +207,9 @@ def main():
 		json.dump(shop, f, indent='\t')
 	for path in village_paths:
 		shutil.copyfile(path, os.path.join(out_dir, "villages", os.path.basename(path)))
+	os.makedirs(os.path.join(out_dir, "quests"), exist_ok=True)
+	for path in glob.glob(os.path.join(source, "villages", "quests", "*.save.json")):
+		shutil.copyfile(path, os.path.join(out_dir, "quests", os.path.basename(path)))
 
 	sprite_dir = os.path.join(source, "assets", "buildingsprites")
 	items = needed_items(config, villages, shop, args.all)
@@ -255,6 +236,12 @@ def main():
 			if error is not None:
 				failed.append((job[0], error))
 			print(f"[{count}/{len(jobs)}] {job[0]}", flush=True)
+
+	unit_thumbs = [f"{img_name}.jpg" for img_name, item in items.items() if item["type"] == "u"]
+	try:
+		print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs)} sprites", flush=True)
+	except (SwfError, RuntimeError, OSError) as e:
+		failed.append(("windows of the client", str(e)))
 
 	for name, reason in failed:
 		print(f"not imported: {name}: {reason}", file=sys.stderr)

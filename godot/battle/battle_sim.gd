@@ -22,6 +22,7 @@ signal shot_landed(shot: BattleProjectile)
 signal died(fighter: BattleFighter, killer: BattleFighter)
 ## The fighter left the map: a dead unit after DEAD_UNIT_FRAMES, or a destroyed building.
 signal removed(fighter: BattleFighter)
+signal added(fighter: BattleFighter)  ## An item came on the map after the start, see add_item().
 
 ## A unit checks its attack every ATTACK_CHECK_FRAMES frames, and attacks when
 ## the frame is also a multiple of its attack interval.
@@ -78,6 +79,7 @@ var projectiles: Array[BattleProjectile] = []
 var _removed: Array[BattleFighter] = []  # Items that left the map; others can still target them.
 var _tiles := {}  # Vector2i -> BattleFighter on the tile, like the tile array of the client.
 var _blocked := {}  # Vector2i -> true for tiles that walking units go around.
+var _water := {}  # Vector2i -> true for the water of a quest island, see add_water().
 var _towers := 0
 
 
@@ -127,7 +129,22 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 	if def.subcat_functional == SUBCAT_TOWER:
 		_towers += 1
 	fighters.append(item)
+	added.emit(item)
 	return item
+
+
+## Makes tiles water, as the water areas of a quest island: the client marks
+## them as taken, so no unit stands on them and walking units go around them.
+func add_water(tiles: Array[Vector2i]) -> void:
+	for tile in tiles:
+		_water[tile] = true
+		_blocked[tile] = true
+
+
+## A tile on the map without an item and without water, as the client finds
+## free tiles in its tile array.
+func is_free(tile: Vector2i) -> bool:
+	return _on_map(tile) and not _tiles.has(tile) and not _water.has(tile)
 
 
 ## Runs one frame.
@@ -166,7 +183,6 @@ func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 		var can_stand := func(candidate: Vector2i) -> bool: return _is_standable(candidate) or _tiles.get(candidate) in living
 		stands = BattleFormation.attack_tiles(item, living, can_stand)
 	else:
-		var is_free := func(candidate: Vector2i) -> bool: return _on_map(candidate) and not _tiles.has(candidate)
 		var tiles := BattleFormation.spiral_tiles(item.tile, living.size(), is_free) if item != null \
 				else BattleFormation.square_tiles(tile, living.size(), is_free)
 		for i in tiles.size():
@@ -180,6 +196,11 @@ func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 				set_target(unit, null)
 		else:
 			order_walk(unit, stands[unit])
+
+
+## Takes an item off the map, for example a treasure that the player collects.
+func remove_item(item: BattleFighter) -> void:
+	_remove(item)
 
 
 ## The item on tile, as the tile array of the client has it, or null.
@@ -602,7 +623,7 @@ func _is_walkable(tile: Vector2i) -> bool:
 
 ## A unit can stand on a tile without items, or on a flat item such as a road.
 func _is_standable(tile: Vector2i) -> bool:
-	if not _on_map(tile):
+	if not _on_map(tile) or _water.has(tile):
 		return false
 	var item: BattleFighter = _tiles.get(tile)
 	return item == null or item.def.elevation == 0
@@ -613,11 +634,11 @@ func _random_free_tile_near(tile: Vector2i) -> Variant:
 		var free: Array[Vector2i] = []
 		for x in range(tile.x - ring, tile.x + ring + 1):
 			for y in [tile.y + ring, tile.y - ring]:
-				if _on_map(Vector2i(x, y)) and not _tiles.has(Vector2i(x, y)):
+				if is_free(Vector2i(x, y)):
 					free.append(Vector2i(x, y))
 		for y in range(tile.y - ring + 1, tile.y + ring):
 			for x in [tile.x - ring, tile.x + ring]:
-				if _on_map(Vector2i(x, y)) and not _tiles.has(Vector2i(x, y)):
+				if is_free(Vector2i(x, y)):
 					free.append(Vector2i(x, y))
 		if not free.is_empty():
 			return free[rng.randi_range(0, free.size() - 1)]

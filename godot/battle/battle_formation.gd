@@ -10,6 +10,8 @@ extends RefCounted
 ## the order of equal values. The port keeps the order in which it finds the
 ## tiles, so among tiles at the same distance it can choose another one.
 
+const FAR_CORNER := Vector2i(200, 200)
+
 
 ## Up to count free tiles in a square that grows to the right and down from
 ## tile: each step adds the column on the right and then the row below.
@@ -28,6 +30,35 @@ static func square_tiles(tile: Vector2i, count: int, is_free: Callable) -> Array
 				if result.size() >= count:
 					return result
 	return result
+
+
+## The free tile where the client puts a new item near tile: tile itself when
+## it is free, else a free tile on the nearest ring with free tiles, up to
+## max_rings rings. On that ring the client takes the tile nearest to the tile
+## (200, 200), outside the map, so it prefers tiles down and to the right.
+## Returns null when no ring has a free tile.
+static func nearest_free_tile(tile: Vector2i, max_rings: int, is_free: Callable) -> Variant:
+	if is_free.call(tile):
+		return tile
+	for ring in range(1, max_rings + 1):
+		var candidates: Array[Vector2i] = []
+		for x in range(maxi(0, tile.x - ring), mini(tile.x + ring, IsoGrid.MAP_TILES - 1) + 1):
+			candidates.append(Vector2i(x, tile.y + ring))
+			candidates.append(Vector2i(x, tile.y - ring))
+		for y in range(maxi(0, tile.y - ring + 1), mini(tile.y + ring - 1, IsoGrid.MAP_TILES - 1) + 1):
+			candidates.append(Vector2i(tile.x - ring, y))
+			candidates.append(Vector2i(tile.x + ring, y))
+		var best: Variant = null
+		for candidate in candidates:
+			if is_free.call(candidate) and (best == null or _far_corner_distance(candidate) < _far_corner_distance(best)):
+				best = candidate
+		if best != null:
+			return best
+	return null
+
+
+static func _far_corner_distance(tile: Vector2i) -> int:
+	return (tile - FAR_CORNER).length_squared()
 
 
 ## Up to count free tiles on the rings around tile, nearest first. On each ring

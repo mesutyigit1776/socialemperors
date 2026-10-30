@@ -32,6 +32,7 @@ signal action_requested(id: String)
 ## The player wants to see the collections, or the items in the item store.
 signal collections_requested
 signal stored_items_requested
+signal quests_requested
 
 const PANEL_WIDTH := 340
 const ACTIONS_MAX_HEIGHT := 220  ## More actions than fit scroll.
@@ -99,7 +100,7 @@ func _init() -> void:
 	column.add_child(title)
 	column.add_child(_category)
 	var lists := HBoxContainer.new()
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested]]:
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested]]:
 		var button := Button.new()
 		button.text = pair[0]
 		var requested: Signal = pair[1]

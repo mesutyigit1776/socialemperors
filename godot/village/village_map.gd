@@ -209,10 +209,16 @@ func _read(path: String, config: GameConfig, map_index: int) -> bool:
 	if not game_map.get("items") is Array:
 		push_error("Map %d of village '%s' has no item list." % [map_index, path])
 		return false
+	# Two quest maps of the server store the level as text, for example "50".
+	# The client reads it as a number, so the port does too.
 	for key in ["level", "xp", "coins", "wood", "stone", "food"]:
-		if not (game_map.get(key) is float or game_map.get(key) is int):
+		var number: Variant = game_map.get(key)
+		if number is String:
+			number = GameConfig.to_int(number)
+		if not (number is float or number is int):
 			push_error("Map %d of village '%s' has no number '%s'." % [map_index, path, key])
 			return false
+		game_map[key] = number
 	if int(game_map["level"]) < 1:
 		push_error("Map %d of village '%s' has level %d. The lowest level is 1." % [map_index, path, int(game_map["level"])])
 		return false

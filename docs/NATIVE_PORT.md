@@ -134,17 +134,17 @@ Decompile the client and convert it with as3hx, fixing the result by hand. OpenF
 
 Port the economy and quests, then combat and the remaining systems. Check each system against the original game running in Phase 1's build. Add Android and iOS builds at the end.
 
-Update (2026-10-30): the prototype became the port on branch `godot-port`. It has the village economy, the special buildings, the battle rules, and the battle screen with the unit controls. The roadmap below replaces the order of Phase 4.
+Update (2026-10-30): the prototype became the port on branch `godot-port`. It has the village economy, the special buildings, the battle rules, and the battle screen with the unit controls. The roadmap below replaces the order of Phase 4. Step 1 of the roadmap is done: 12 campaign islands can be played.
 
 ## 4a. Roadmap of the Godot port
 
 The steps come in this order. Each step ends with checks, and, where it changes the save, a replay against the server. `docs/GODOT_BATTLES.md` has the details of the battle stages.
 
-**1. First playable quest**
+**1. First playable quest** (done)
 
 1. Finish the battle screen: the graphics of shots and effects from `assets/fx/`, and shots that start at 0.75 of the height of the shooter, as in the client (battle stage 2).
-2. Campaign quests: the quest list, unlocked quests, the waiting time between quests, the team, the map, the goal "destroy all enemies", and the end of the quest as `end_quest` writes it: gold, experience, honour, rank and lost units (battle stage 3).
-3. Let the loader read the quest maps `100000053` and `100000054`, which have no level.
+2. Campaign quests: the island list, open islands, the limit of quests in a row, the army, the map, the goals of the troll and civilisation islands (12 islands), and the end of the quest as `end_quest` writes it: gold, experience, honour, stars and lost units (battle stage 3). The windows of the quests use the art and the fonts of the client.
+3. Let the loader read the quest maps `100000053` and `100000054`, which store the level as text.
 
 **2. A build for tests by hand**
 
@@ -155,7 +155,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 **3. The campaign, one quest at a time**
 
 1. Spells: mana, buying and using spells, shields (battle stage 4).
-2. For each of the 36 quests: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5).
+2. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). The 24 islands without a port show a "not in the port" sign until then.
 3. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6).
 
 **4. The rest of the single-player game**
@@ -167,7 +167,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 
 **5. The look and the sound of the original game**
 
-1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. This comes after the screens exist.
+1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. This comes after the screens exist. The importer and `godot/ui/` can already show windows of the client; the quests use them.
 2. Music and sounds.
 
 **6. Release**

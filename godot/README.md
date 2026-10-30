@@ -32,9 +32,11 @@ The save changes are the same as from the server commands, with three difference
 
 Battles have started. The port has the battle rules of the original client: units look for enemies, walk around buildings and attack, towers shoot, healers heal, and the damage, the timing and the walking speed are the same as in the client. You control your units as in the original game. Click a unit to select it, or click it twice within one second to select your units of the same kind near it, for example all archers. Drag from one of your units, or press the space bar and drag, to select the units in a box. Click the ground to send the selected units there in a formation, or an enemy to attack it. The selected items and the item under the mouse show a health bar.
 
-Until the quests come, you can try a battle on a quest map: start the port with `--battle <file>`, for example `--battle <socialemperors folder>/villages/quests/100000013.save.json`. All items of that map except the trees, rocks and other neutral items are enemies, and the units of your village start in the land area with the fewest items. Shots use the graphics of the original game and fly as in the client: arrows and rocks in a curve, rocks and cannonballs with smoke and a blast where they land, fireballs and other shots straight or in an arc. They start at the point of the graphic from which the original shoots, and aim at the height of the target, as the client does. A data folder from an import before this change has no graphics of shots, and its shots start and aim at the feet of the items; import the files again to get them. The health bars and the selection rings are simple shapes, because their graphics are in the main file of the client, which the importer does not read. `docs/GODOT_BATTLES.md` has the plan for the next stages: the campaign quests, spells, special abilities and the single-player modes.
+The campaign quests are playable on 12 islands: the 4 troll islands and the 8 civilisation islands. The Quests button opens the island window of the original game, with its pictures, buttons and fonts. The islands open one after the other, as in the original game; the window shows the stars that you won and a lock on the islands that you cannot start yet. The other islands have bosses and scripts of their own, which the port does not have yet; they show a lock and the sign "Not in the port yet". Click an open island to sail there with all fighting units of your village (not the villagers and animals). Choose 1 to 3 stars, at most one more than you won on the island; more stars give each enemy unit a copy. On a troll island, defeat all enemy units, then click the treasure to win. On a civilisation island, destroy the town hall. The bar at the top shows the gold and experience of the quest, and the Withdraw button ends the battle early. At the end, the result window shows the gold, the experience, the honour and the units that you lost: 60 percent of the units that died come back. The save then changes as the server command `end_quest` changes it, and the next island opens after a win. You can start 3 quests in a row, or 4 with the Odin statue; after 2 hours without a new quest you can start them again (the original game waits 6 hours; `quest/quest_book.gd` explains how to change this). The units on the islands do not use their special attacks yet.
 
-Not done yet: quests and neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
+You can also try a battle on any quest map: start the port with `--battle <file>`, for example `--battle <socialemperors folder>/villages/quests/100000013.save.json`. All items of that map except the trees, rocks and other neutral items are enemies, and the units of your village start in the land area with the fewest items. Shots use the graphics of the original game and fly as in the client: arrows and rocks in a curve, rocks and cannonballs with smoke and a blast where they land, fireballs and other shots straight or in an arc. They start at the point of the graphic from which the original shoots, and aim at the height of the target, as the client does. A data folder from an import before this change has no graphics of shots, and its shots start and aim at the feet of the items; import the files again to get them. The health bars and the selection rings are simple shapes; their graphics are in the main file of the client, from which the importer takes only the windows of the quests. `docs/GODOT_BATTLES.md` has the plan for the next stages: spells, the other quests, special abilities and the single-player modes.
+
+Not done yet: the quests of the other islands, neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
 
 ## Import the game files
 
@@ -47,7 +49,7 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 - `--source` defaults to this repository.
 - `--village <file>` selects a village save to import, for example `saves/<USERID>.save.json`. The default is `villages/initial.json`. You can give the option more than one time.
 - By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages, the player saves in `saves/` and the quest maps in `villages/quests/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
-- The tool also imports the graphics of the shots and effects of battles from `assets/fx/`.
+- The tool also imports the graphics of the shots and effects of battles from `assets/fx/`, copies the quest maps, and exports the windows of the quests from the client file `assets/flash/SocialEmpires1.4.07sec_fixed.swf`, with their fonts and pictures. A data folder from an import before the quests has no windows; the Quests button then asks you to import again.
 - `--jobs <n>` sets how many JPEXS processes run at the same time (default 4).
 
 ## Run
@@ -76,15 +78,23 @@ godot --headless --path godot --script res://checks/village_check.gd -- --data <
 godot --headless --path godot --script res://checks/battle_check.gd -- --data <data folder>
 ```
 
-The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, and the battle check after you change the battle rules or the path search.
+`checks/quest_check.gd` checks the rules of the campaign quests: the island list, the quest limit, the save changes of a quest result, the sides, the stars, the goals and the units that come back. It needs the same data folder, with the quest maps in `quests/`.
+
+```bash
+godot --headless --path godot --script res://checks/quest_check.gd -- --data <data folder>
+```
+
+The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, the battle check after you change the battle rules or the path search, and the quest check after you change the quests.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `importer/` | Import tool. `swf_bounds.py` reads symbol bounds from SWF files, so the images keep the position of the original graphics. |
+| `importer/` | Import tool. `swf_bounds.py` reads symbol bounds, text fields and placements from SWF files, so the images keep the position of the original graphics. `ui_import.py` exports the windows of the client. |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
 | `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
 | `sprites/` | Loads the imported graphics of the items and of the shots and effects. `clip_sprite.gd` plays the animation of a frame; `unit_sprite.gd` chooses the frame of a unit from its action and direction. |
-| `checks/` | Headless checks of the village rules, the save format and the battle rules |
+| `quest/` | Campaign quests: the islands, the island list rules, the quest battle with its goals and result, and the windows of the quests |
+| `ui/` | Shows the windows of the client that the importer exported (`ui_import.py`): their images, buttons, stars and text fields |
+| `checks/` | Headless checks of the village rules, the save format, the battle rules and the quests |

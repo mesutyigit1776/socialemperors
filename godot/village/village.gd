@@ -13,8 +13,8 @@ extends VillageUnits
 ## (special buildings and collections). Other code uses Village.
 ##
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
-## graveyards, Soul Mixer), the free buildings of the client, the collections
-## and the item store.
+## graveyards, Soul Mixer), the free buildings of the client, the collections,
+## the item store, and the save changes of the campaign quests.
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
 const SUBCAT_DECORATION := 411
@@ -43,6 +43,18 @@ const RIDER_KEYS: Array[String] = ["riderNumber", "riderStepNumber", "riderTimeS
 const GRAVEYARD := 486
 const HEROES_GRAVE := 239
 const RESURRECT_GOLD_PER_CASH := 500
+## After a battle the server puts the units that died in the graveyard, except
+## villagers, animals and troll units, and the heroes in the Heroes Grave. The
+## limits are the defaults of "graveyard_max_slots" and
+## "graveyard_max_each_unit" in the server_config.json of the server.
+const NOT_BURIED_UNITS: Array[int] = [500, 501]
+const NOT_BURIED_SUBCATS: Array[int] = [74, 75, 88, 90]
+const HEROES: Array[int] = [535, 533, 534, 550, 554, 555, 556, 557]
+const GRAVEYARD_MAX_UNITS := 10000
+const GRAVEYARD_MAX_EACH := 100
+## Units of these kinds stay in the village during a quest: villagers,
+## settlers, cows, sheep, carts, horses and boars.
+const QUEST_HOME_SUBCATS: Array[int] = [71, 73, 74, 75, 76, 88, 90]
 ## The Soul Mixer makes a new unit from the power ("breeding order") of two
 ## units, which come back out after it. The result has the power
 ## SOUL_MIX_STRONG_SHARE of the stronger unit plus the rest of the weaker one,
@@ -558,6 +570,120 @@ func take_soul_mix(mixer: PlacedItem, now: int) -> Placement:
 	_add_player_unit(unit, tile, 0, now)
 	_pop_all(mixer, now)
 	return Placement.OK
+
+
+## The stars that the player won on the island of the quest: 0 to 3.
+func quest_rank(quest_id: String) -> int:
+	var ranks: Variant = _document["privateState"].get("questsRank")
+	var rank: Variant = ranks.get(quest_id) if ranks is Dictionary else null
+	return int(rank) if rank is int or rank is float else 0
+
+
+## The place in GameConfig.quest_order of the last island that the player can
+## start, as the server keeps it.
+func unlocked_quest_index() -> int:
+	return _private_int("unlockedQuestIndex")
+
+
+## The times at which the player started quests on this map, as the server
+## keeps them. The server removes the times that are older than its setting
+## "quests_reset_hours" when it loads the save.
+func quest_start_times() -> Array[int]:
+	var times: Array[int] = []
+	var listed: Variant = _map.get("lastQuestTimes")
+	for time: Variant in listed if listed is Array else []:
+		if time is int or time is float:
+			times.append(int(time))
+	return times
+
+
+## The units that go on a quest: unit id -> number. The client takes all units
+## of the player on the map, except villagers, animals, settlers and carts.
+func quest_army() -> Dictionary:
+	var army := {}
+	for placed in items:
+		var item := _config.get_item(placed.item_id)
+		if is_own_unit(placed) and not item.subcat_functional in QUEST_HOME_SUBCATS:
+			army[item.id] = int(army.get(item.id, 0)) + 1
+	return army
+
+
+## Records the start of a quest, as the client commands "start_quest" and
+## "start_quest_new" do on the server.
+func start_quest(quest_id: String, now: int) -> void:
+	if not _map.get("questTimes") is Dictionary:
+		_map["questTimes"] = {}
+	_map["questTimes"][quest_id] = now
+	if not _map.get("lastQuestTimes") is Array:
+		_map["lastQuestTimes"] = []
+	_map["lastQuestTimes"].append(now)
+
+
+## The honour that the result of a quest gives: more for the first win with
+## these stars, and GameConfig.quest_honour_lost without a win.
+func quest_honour(quest_id: String, difficulty: int, won: bool) -> int:
+	if not won:
+		return _config.quest_honour_lost
+	return (_config.quest_honour_first if difficulty > quest_rank(quest_id) else _config.quest_honour)[difficulty - 1]
+
+
+## Applies the result of a quest, as the server command "end_quest" does.
+## result has the fields that the client sends, see QuestBattle.result():
+## quest_id, difficulty, win, resources {"g", "x"} and units, a list of
+## [unit id, number that went, number that died, number that came back].
+##
+## - A win opens the next island in GameConfig.quest_order, keeps the highest
+##   stars of the island, and gives honour: more for the first win with these
+##   stars. A loss gives GameConfig.quest_honour_lost.
+## - The gold and the experience go to the map. The server only adds the
+##   experience; the port also raises the level, as the client does when it
+##   gets experience.
+## - The units that died and did not come back leave the map. The graveyard
+##   takes them, see _bury().
+func end_quest(result: Dictionary) -> void:
+	var quest_id := str(result["quest_id"])
+	var difficulty := int(result["difficulty"])
+	var player: Dictionary = _document["playerInfo"]
+	var won := int(result["win"]) == 1
+	var honour := quest_honour(quest_id, difficulty, won)
+	if won:
+		var next_index := _config.quest_order.find(quest_id) + 1
+		var old_index := unlocked_quest_index() if _document["privateState"].get("unlockedQuestIndex") != null else -1
+		if next_index > 0 and next_index - old_index <= 1:
+			_set_private(["unlockedQuestIndex"], [maxi(next_index, old_index)])
+		var rank := quest_rank(quest_id)
+		if not _document["privateState"].get("questsRank") is Dictionary:
+			_document["privateState"]["questsRank"] = {}
+		_document["privateState"]["questsRank"][quest_id] = maxi(difficulty, rank)
+	player["honor_points"] = int(player.get("honor_points", 0)) + honour
+	_add_resource("g", int(result["resources"]["g"]))
+	_add_xp(int(result["resources"]["x"]))
+	for entry: Array in result["units"]:
+		var lost := int(entry[2]) - int(entry[3])
+		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):
+			_remove(placed)
+			_bury(placed.item_id)
+
+
+## Puts a unit that died in the graveyard, as the server does after a battle:
+## heroes go to the Heroes Grave; villagers, animals and troll units go nowhere.
+## The graveyard holds at most GRAVEYARD_MAX_UNITS units, GRAVEYARD_MAX_EACH of a kind.
+func _bury(unit_id: int) -> void:
+	var unit := _config.get_item(unit_id)
+	if unit_id in NOT_BURIED_UNITS or unit.subcat_functional in NOT_BURIED_SUBCATS or unit.race == "t":
+		return
+	var private: Dictionary = _document["privateState"]
+	if unit_id in HEROES:
+		if not private.get("deadHeroes") is Dictionary:
+			private["deadHeroes"] = {}
+		private["deadHeroes"][str(unit_id)] = int(private["deadHeroes"].get(str(unit_id), 0)) + 1
+		return
+	if not private.get("resurrectableUnits") is Array:
+		private["resurrectableUnits"] = []
+	var buried: Array = private["resurrectableUnits"]
+	if buried.size() >= maxi(GRAVEYARD_MAX_UNITS, _private_int("graveyardCapacity")) or graveyard_units().get(unit_id, 0) >= GRAVEYARD_MAX_EACH:
+		return
+	buried.append(unit_id)
 
 
 ## The client does not mix some dragons of other games below SOUL_MIX_PROMOTION_LEVEL.

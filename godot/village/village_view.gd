@@ -83,7 +83,7 @@ func show_village(village: Village, config: GameConfig, sprites: SpriteLibrary) 
 	_config = config
 	_sprites = sprites
 
-	place_land(_land_layer, config, sprites, village.skin, village.owned_land)
+	place_land(_land_layer, config, sprites, LAND_ITEM_BASE_ID + village.skin, village_land_frames(village.owned_land))
 	for placed in village.items:
 		add_placed(placed)
 
@@ -146,11 +146,7 @@ func update_production(now: float) -> void:
 	for placed: Village.PlacedItem in _nodes:
 		var ready := _village.seconds_to_ready(placed, now) == 0
 		if ready and not _ready_marks.has(placed):
-			var mark := _circle(READY_MARK_RADIUS + 2, READY_MARK_BORDER_COLOR)
-			mark.add_child(_circle(READY_MARK_RADIUS, READY_MARK_COLORS.get(_config.get_item(placed.item_id).collect_type, Color.WHITE)))
-			mark.position = _mark_position(_nodes[placed])
-			_nodes[placed].add_child(mark)
-			_ready_marks[placed] = mark
+			_ready_marks[placed] = add_ready_mark(_nodes[placed], _config.get_item(placed.item_id).collect_type)
 		elif not ready and _ready_marks.has(placed):
 			_ready_marks[placed].queue_free()
 			_ready_marks.erase(placed)
@@ -274,18 +270,32 @@ func _update_placement(tile: Vector2i) -> void:
 	_outline.color = Color(_ghost.modulate, 0.35)
 
 
-## Draws the land areas of a map with the land graphic of its skin. The areas in
-## owned_land (see IsoGrid.land_area_number()) show the owned land.
-static func place_land(layer: Node2D, config: GameConfig, sprites: SpriteLibrary, skin: int, owned_land: PackedInt32Array) -> void:
-	var land_item := config.get_item(LAND_ITEM_BASE_ID + skin)
+## The frame (from 0) of the land graphic in each land area of a village map,
+## row by row: the areas in owned_land (see IsoGrid.land_area_number()) show
+## the owned land. The land graphic is the item LAND_ITEM_BASE_ID + skin.
+static func village_land_frames(owned_land: PackedInt32Array) -> Array[int]:
+	var frames: Array[int] = []
+	for y in IsoGrid.LAND_AREAS:
+		for x in IsoGrid.LAND_AREAS:
+			frames.append(LAND_FRAME_OWNED if IsoGrid.land_area_number(Vector2i(x, y)) in owned_land else LAND_FRAME_WILD)
+	return frames
+
+
+## Draws the land areas of a map with the land item: frames has the frame
+## (from 0) of each area, row by row. The client places a land graphic with
+## its first frame and then only shows another frame, so all frames keep the
+## place of the first one; the coasts of the quest islands have other bounds.
+static func place_land(layer: Node2D, config: GameConfig, sprites: SpriteLibrary, land_item_id: int, frames: Array[int]) -> void:
+	var land_item := config.get_item(land_item_id)
 	if land_item == null:
-		push_warning("The configuration has no land item for map skin %d." % skin)
+		push_warning("The configuration has no land item %d." % land_item_id)
 		return
 	for y in IsoGrid.LAND_AREAS:
 		for x in IsoGrid.LAND_AREAS:
 			var area := Vector2i(x, y)
-			var owned := IsoGrid.land_area_number(area) in owned_land
-			place_sprite(layer, sprites, land_item, IsoGrid.land_area_anchor_tile(area), LAND_FRAME_OWNED if owned else LAND_FRAME_WILD)
+			var node := place_sprite(layer, sprites, land_item, IsoGrid.land_area_anchor_tile(area), frames[y * IsoGrid.LAND_AREAS + x])
+			if node != null:
+				node.offset = building_offset(sprites.get_sprite(land_item.img_name), 0)
 
 
 ## Draws an item that is not a unit at its tile in layer. Returns null when its graphic is missing.
@@ -297,6 +307,16 @@ static func place_sprite(layer: Node2D, sprites: SpriteLibrary, item: GameConfig
 	node.offset = building_offset(sprite, frame)
 	layer.add_child(node)
 	return node
+
+
+## Puts the mark of a building that the player can collect above its node:
+## a circle in the color of the resource code.
+static func add_ready_mark(node: Sprite2D, resource: String) -> Node2D:
+	var mark := _circle(READY_MARK_RADIUS + 2, READY_MARK_BORDER_COLOR)
+	mark.add_child(_circle(READY_MARK_RADIUS, READY_MARK_COLORS.get(resource, Color.WHITE)))
+	mark.position = _mark_position(node)
+	node.add_child(mark)
+	return mark
 
 
 static func _circle(radius: float, color: Color) -> Polygon2D:
