@@ -34,10 +34,10 @@ static func square_tiles(tile: Vector2i, count: int, is_free: Callable) -> Array
 
 ## The free tile where the client puts a new item near tile: tile itself when
 ## it is free, else a free tile on the nearest ring with free tiles, up to
-## max_rings rings. On that ring the client takes the tile nearest to the tile
-## (200, 200), outside the map, so it prefers tiles down and to the right.
-## Returns null when no ring has a free tile.
-static func nearest_free_tile(tile: Vector2i, max_rings: int, is_free: Callable) -> Variant:
+## max_rings rings. On that ring the client takes the tile nearest to towards,
+## by default the tile (200, 200) outside the map, so it prefers tiles down and
+## to the right. Returns null when no ring has a free tile.
+static func nearest_free_tile(tile: Vector2i, max_rings: int, is_free: Callable, towards: Vector2i = FAR_CORNER) -> Variant:
 	if is_free.call(tile):
 		return tile
 	for ring in range(1, max_rings + 1):
@@ -50,15 +50,12 @@ static func nearest_free_tile(tile: Vector2i, max_rings: int, is_free: Callable)
 			candidates.append(Vector2i(tile.x + ring, y))
 		var best: Variant = null
 		for candidate in candidates:
-			if is_free.call(candidate) and (best == null or _far_corner_distance(candidate) < _far_corner_distance(best)):
+			if is_free.call(candidate) and (best == null or (candidate - towards).length_squared() < (best - towards).length_squared()):
 				best = candidate
 		if best != null:
 			return best
 	return null
 
-
-static func _far_corner_distance(tile: Vector2i) -> int:
-	return (tile - FAR_CORNER).length_squared()
 
 
 ## Up to count free tiles on the rings around tile, nearest first. On each ring

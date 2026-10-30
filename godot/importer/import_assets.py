@@ -11,6 +11,7 @@ socialemperors server folder that the user supplies and writes:
   <out>/fx/<name>/...                shots and effects of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
   <out>/quests/<id>.save.json        maps of the quest islands
+  <out>/spells.json                  frame labels of the spell graphics: img_name -> {label: frame}
   <out>/ui/...                       windows of the client, see ui_import.py
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
@@ -212,6 +213,16 @@ def main():
 		shutil.copyfile(path, os.path.join(out_dir, "quests", os.path.basename(path)))
 
 	sprite_dir = os.path.join(source, "assets", "buildingsprites")
+	# A spell hurts at the frame of its graphic with the label "attack".
+	spell_labels = {}
+	for spell in config.get("magics", []):
+		swf_path = os.path.join(sprite_dir, f"{spell['img_name']}.swf")
+		try:
+			spell_labels[spell["img_name"]] = SwfFile(swf_path).symbol_frame_labels(spell["img_name"])
+		except (SwfError, OSError) as e:
+			print(f"not imported: labels of {spell['img_name']}: {e}", file=sys.stderr)
+	with open(os.path.join(out_dir, "spells.json"), 'w', encoding='utf-8') as f:
+		json.dump(spell_labels, f, indent='\t')
 	items = needed_items(config, villages, shop, args.all)
 	# Each file in assets/fx has one symbol with the name of the file. The
 	# client loads them by name; the port maps the shooters to the names.

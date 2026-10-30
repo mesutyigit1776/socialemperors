@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 3 done; stage 4 in progress (4a and 4b done). Branch `godot-port`.
+Status: stages 1 to 3 done; stage 4 in progress (4a to 4c done). Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -147,7 +147,7 @@ Also in this stage: the client puts the registration point of a building graphic
 
 ### Stage 4 progress
 
-Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a and 4b are done.
+Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a to 4c are done.
 
 | File | Contents |
 |---|---|
@@ -155,7 +155,9 @@ Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spell
 | `village/village.gd` | `spell_uses()`, `buy_mana()`, `buy_spell()`, `use_spell()`: the save changes of `buy_mana_new`, `buy_magic` and `use_magic`. |
 | `battle/battle_sim.gd` | Timers in frames, `items_near()`, and the states: `stun()`, `freeze()`, `poison()`, `enlarge()`, `swallow()`, `summon()`, shields. |
 | `quest/quest_battle.gd` | Summoned units do not count in a quest. |
-| `checks/spell_check.gd` | Checks of the spell rules of the save. |
+| `battle/spells/` | `BattleSpell` and one class for each spell, with the numbers of the client. A battle makes its own spells with `BattleSpell.create()`. |
+| `importer/import_assets.py`, `importer/swf_bounds.py` | `spells.json`: the frame with the label "attack" in the graphic of each spell, at which the spell acts. |
+| `checks/spell_check.gd` | Checks of the spell rules of the save and of each spell in a battle. |
 
 The rules come from the client:
 
@@ -167,6 +169,31 @@ The rules come from the client:
 - Summoned units do not count in a quest: they give no gold or experience, are not in the result, and do not keep the player in the quest.
 
 The port counts the timers of the client in frames at 30 frames per second.
+
+The spells (4c) follow their classes in the client. The player casts on a tile, the corner of the marked square with the largest x and y. Each effect waits for its delay and then for the frame of its graphic with the label "attack" (10 frames without a label).
+
+| Spell | What it does in the client |
+|---|---|
+| Fire Havoc | 30 fireballs, one every 3 frames, of 150, 200 or 250 damage. Every third ball falls on an enemy unit within 2 tiles of the middle of the area, the others on random tiles. The client drops half tiles, so the area of the balls lies 3 tiles left and up of the marked square. |
+| Ultimate Hail | A stone on each tile of a square one tile wider than the marked one, within 100 frames: 800, 1000 or 1500 damage to enemy buildings for each of their tiles, a tenth of it and a stun to enemy units. Town halls, treasures and activators take nothing. |
+| Deadly Frostbite | Ice on each tile of the same square within 60 frames: freezes enemy units for 15, 20 or 30 seconds, without damage. Bosses do not freeze. |
+| Sacred Rain | Heals nobody, see below. |
+| Golem's Wrath, Yeti's Trail | A golem or a yeti with 4000, 5000 or 7000 life on the free tile nearest to the tile, within 4 rings. |
+| Summon Dragon | One of 5 Bahamut dragons, the same way. It leaves after 30 or 60 seconds at levels 1 and 2, and stays at level 3. |
+| Hell Abyss | Swallows the enemy units and buildings within 3, 4 or 5 tiles of the middle of the square, except bosses, town halls, treasures, activators and units with 500 life or more. |
+| Poisonous Flood | Poisons the enemy units within 5, 7 or 9 tiles of the tile, except bosses: 15, 20 or 25 damage, 5, 7 or 10 times. |
+| Ether Shield | A shield for 20, 30 or 40 seconds that lets 70, 55 or 40 percent of the damage through. See below for its errors. |
+| Age of Colossus | The units of the player within 5, 7 or 9 tiles of the tile get bigger for 30, 45 or 60 seconds. |
+| 2x Speed, 2x Range | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square get double speed or range for 15, 30 or 45 seconds. 2x Range stops at the first building of the player, with an error of the client: the units before it keep the double range, the units after it get nothing. |
+| Black Hole | Like Hell Abyss, at once and then every second for 15, 20 or 30 seconds. |
+| Instant Limit | Not in the port, see decision 7. |
+
+Errors of the client that the port keeps, each with a switch in the code:
+
+- **Sacred Rain** heals nobody. Its rain acts only on enemy items, but its healing acts only on units of the player. `SacredRainSpell.FIX_CLIENT_ERROR` turns on the healing of the player's units: 100 life, and 20 life each second for 5 or 10 seconds at levels 2 and 3.
+- **Ether Shield** covers 7 tiles at level 1, 9 at level 2 and none at level 3, protects all sides, and a second cast before the end of the first leaves the first shield for the rest of the battle. `EtherShieldSpell.FIX_CLIENT_ERRORS` protects the marked square, only for the player, and ends each shield after its time.
+
+Not ported: when a freeze ends, the client lets the frozen unit hit a unit of the player on the same tile for 10 points.
 
 ## How to check the result
 
@@ -181,6 +208,6 @@ The port counts the timers of the client in frames at 30 frames per second.
 3. Survival and tournament are ported where they work without other players.
 4. The limit of quests in a row uses 2 hours instead of 6, and the code makes it easy to change or remove.
 5. Islands that the port does not have yet are locked, with a "not in the port" sign in the style of the game, until their quest is ported.
-6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. A switch in the code will turn on a correction later.
+6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. `EtherShieldSpell.FIX_CLIENT_ERRORS` turns on a correction.
 7. Instant Limit is locked with the "not in the port" sign until units have their limit bars (stages 5 and 6).
 8. The player can cast spells in the own village, as in the client.

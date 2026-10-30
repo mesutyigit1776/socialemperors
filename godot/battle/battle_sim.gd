@@ -77,6 +77,7 @@ const CLOSE_FIGHTERS: Array[int] = [538, 545, 650, 702]
 ## Units that keep a unit of their own side as target: healers and the engineer.
 const SUPPORT_UNITS: Array[int] = [502, 570, 590, 866, 886]
 
+const FRAMES_PER_SECOND := 30
 const SUBCAT_BOSS := 84
 ## A stunned unit jumps for 1 second and stays down for 1.5 seconds.
 const STUN_FRAMES := 75
@@ -96,7 +97,7 @@ var _blocked := {}  # Vector2i -> true for tiles that walking units go around.
 var _water := {}  # Vector2i -> true for the water of a quest island, see add_water().
 var _towers := 0
 var _timers: Array[Array] = []  # [frame, Callable], in the order in which they were set.
-var _shields := {}  # Shield id -> [Rect2i of the protected tiles, part of the damage that passes].
+var _shields := {}  # Shield id -> [Rect2i of the protected tiles, part of the damage that passes, team or null].
 var _last_shield_id := 0
 
 
@@ -351,7 +352,7 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var critical := rng.randf() * 100 < CRITICAL_PERCENT
 	var variance := rng.randf() * DAMAGE_VARIANCE - DAMAGE_VARIANCE / 2
 	points = (points + absf(variance)) * CRITICAL_MULTIPLIER if critical else points + variance
-	points -= floorf(points - points * shield_factor(target.tile) + 0.5)
+	points -= floorf(points - points * shield_factor(target.tile, target.team) + 0.5)
 	var damage := maxi(floori(points - target.defense + 0.5), 1)
 	target.health -= damage
 	hit.emit(target, attacker, damage, critical)
@@ -483,12 +484,13 @@ func summon(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team, l
 
 
 ## Protects the square of area tiles with corner as its tile of largest x and
-## y: an item on these tiles takes only factor of the damage, on all sides.
+## y: an item of team on these tiles takes only factor of the damage. Without
+## a team the shield protects the items of all sides, as in the client.
 ## Returns the id for remove_shield(). With an area of 0 the shield protects
 ## no tile.
-func add_shield(corner: Vector2i, area: int, factor: float) -> int:
+func add_shield(corner: Vector2i, area: int, factor: float, team: Variant = null) -> int:
 	_last_shield_id += 1
-	_shields[_last_shield_id] = [Rect2i(corner - Vector2i(area - 1, area - 1), Vector2i(area, area)), factor]
+	_shields[_last_shield_id] = [Rect2i(corner - Vector2i(area - 1, area - 1), Vector2i(area, area)), factor, team]
 	return _last_shield_id
 
 
@@ -496,13 +498,25 @@ func remove_shield(shield_id: int) -> void:
 	_shields.erase(shield_id)
 
 
-## The part of the damage that passes to an item on tile: the factor of the
-## first shield that protects it, or 1. Shields do not add up.
-func shield_factor(tile: Vector2i) -> float:
+## The part of the damage that passes to an item of team on tile: the factor
+## of the first shield that protects it, or 1. Shields do not add up.
+func shield_factor(tile: Vector2i, team: BattleFighter.Team = BattleFighter.Team.NEUTRAL) -> float:
 	for shield: Array in _shields.values():
-		if shield[0].has_point(tile):
+		if shield[0].has_point(tile) and (shield[2] == null or shield[2] == team):
 			return shield[1]
 	return 1.0
+
+
+## The unit walks this number of pixels per frame, until a change or the end
+## of the battle. The client keeps the new speed when the unit dies.
+func set_speed(unit: BattleFighter, speed: int) -> void:
+	unit.speed = speed
+	state_changed.emit(unit)
+
+
+func set_attack_range(item: BattleFighter, tiles: int) -> void:
+	item.attack_range = tiles
+	state_changed.emit(item)
 
 
 func _poison_tick(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker: BattleFighter, left: int) -> void:

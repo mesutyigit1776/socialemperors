@@ -18,6 +18,7 @@ SPRITE_TAG = 39
 PLACE_TAGS = {26, 70}                 # PlaceObject2, PlaceObject3
 SYMBOL_CLASS_TAG = 76
 SHOW_FRAME_TAG = 1
+FRAME_LABEL_TAG = 43
 REMOVE_OBJECT2_TAG = 28
 # Names of the point in a graphic where the shots of the client start. The
 # client looks for the first name; for some shots it also accepts the second.
@@ -421,6 +422,17 @@ class SwfFile:
 		for rect in self._frame_bounds(*self.sprites[self._symbol_sprite(class_name)], self._first_frame_bounds):
 			rects.append((0.0, 0.0, 0.0, 0.0) if rect is None else (rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20))
 		return rects
+
+	def symbol_frame_labels(self, class_name):
+		"Returns the frame labels of the symbol: label -> frame number (1-based)."
+		labels = {}
+		frame = 1
+		for code, start, _ in _tags(self.data, *self.sprites[self._symbol_sprite(class_name)]):
+			if code == FRAME_LABEL_TAG:
+				labels[self.data[start:self.data.index(b'\0', start)].decode('utf-8')] = frame
+			elif code == SHOW_FRAME_TAG:
+				frame += 1
+		return labels
 
 	def symbol_shot_points(self, class_name):
 		"""Returns for each frame of the symbol the point (x, y) in pixels where its shots start, or None.

@@ -84,7 +84,7 @@ godot --headless --path godot --script res://checks/battle_check.gd -- --data <d
 godot --headless --path godot --script res://checks/quest_check.gd -- --data <data folder>
 ```
 
-`checks/spell_check.gd` checks the spell rules of the save: mana, buying spells and casts. It needs the same data folder.
+`checks/spell_check.gd` checks the spell rules of the save (mana, buying spells and casts) and the 14 spells in battles, with fixed random seeds. It needs the same data folder, with `spells.json`.
 
 ```bash
 godot --headless --path godot --script res://checks/spell_check.gd -- --data <data folder>
@@ -99,7 +99,7 @@ The exit code is the number of failed checks. Run the village check after you ch
 | `importer/` | Import tool. `swf_bounds.py` reads symbol bounds, text fields and placements from SWF files, so the images keep the position of the original graphics. `ui_import.py` exports the windows of the client. |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
-| `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
+| `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities, and the spells in `battle/spells/`), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
 | `sprites/` | Loads the imported graphics of the items and of the shots and effects. `clip_sprite.gd` plays the animation of a frame; `unit_sprite.gd` chooses the frame of a unit from its action and direction. |
 | `quest/` | Campaign quests: the islands, the island list rules, the quest battle with its goals and result, and the windows of the quests |
 | `ui/` | Shows the windows of the client that the importer exported (`ui_import.py`): their images, buttons, stars and text fields |
