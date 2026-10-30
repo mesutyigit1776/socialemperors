@@ -6,6 +6,8 @@ extends Node2D
 ##                         (default: the SE_DATA_DIR environment variable, then user://imported)
 ##   --village <file>      village save (default: <data>/villages/initial.json)
 ##   --screenshot <png>    save the first frames as an image and quit; used for checks
+##   --battle <file>       try a battle on the map of a save, for example a quest
+##                         map, with the units of the village; see BattleScreen
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -36,6 +38,9 @@ func _ready() -> void:
 	_village = Village.load_from_file(_village_path, _config) if _store != null else null
 	if _village == null:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
+	elif _options.has("battle"):
+		_sprites = SpriteLibrary.new(data_dir)
+		_start_battle(_options["battle"])
 	else:
 		_sprites = SpriteLibrary.new(data_dir)
 		_view = VillageView.new()
@@ -84,6 +89,22 @@ func _ready() -> void:
 	if _options.has("screenshot"):
 		await _save_screenshot(_options["screenshot"])
 		get_tree().quit()
+
+
+func _start_battle(map_path: String) -> void:
+	var map := Village.load_from_file(map_path, _config)
+	if map == null:
+		_show_message("Cannot read the battle map %s." % map_path)
+		return
+	var battle := BattleScreen.practice_battle(map, _village, _config, _rng)
+	var view := BattleView.new()
+	add_child(view)
+	view.show_battle(battle, _config, _sprites, map.skin, map.owned_land)
+	var camera := MapCamera.new()
+	camera.position = _start_position(map)
+	add_child(camera)
+	# After the camera, so that it gets the mouse first: a selection box does not move the map.
+	add_child(BattleScreen.new(battle, view))
 
 
 func _on_item_selected(item: GameConfig.ItemDef) -> void:

@@ -83,16 +83,7 @@ func show_village(village: Village, config: GameConfig, sprites: SpriteLibrary) 
 	_config = config
 	_sprites = sprites
 
-	var land_item := config.get_item(LAND_ITEM_BASE_ID + village.skin)
-	if land_item == null:
-		push_warning("The configuration has no land item for map skin %d." % village.skin)
-	else:
-		for y in IsoGrid.LAND_AREAS:
-			for x in IsoGrid.LAND_AREAS:
-				var area := Vector2i(x, y)
-				var owned := IsoGrid.land_area_number(area) in village.owned_land
-				_place(_land_layer, land_item, IsoGrid.land_area_anchor_tile(area), LAND_FRAME_OWNED if owned else LAND_FRAME_WILD)
-
+	place_land(_land_layer, config, sprites, village.skin, village.owned_land)
 	for placed in village.items:
 		add_placed(placed)
 
@@ -106,7 +97,7 @@ func add_placed(placed: Village.PlacedItem) -> void:
 	if item.is_unit():
 		node = _place_unit(item, placed.tile)
 	else:
-		node = _place(_item_layer, item, placed.tile, placed.frame)
+		node = place_sprite(_item_layer, _sprites, item, placed.tile, placed.frame)
 	if node != null:
 		_nodes[placed] = node
 
@@ -123,7 +114,7 @@ func update_placed(placed: Village.PlacedItem) -> void:
 	var sprite := _sprites.get_sprite(item.img_name)
 	node.position = IsoGrid.tile_to_map(placed.tile)
 	node.texture = sprite.get_frame(placed.frame)
-	node.offset = _building_offset(sprite, placed.frame)
+	node.offset = building_offset(sprite, placed.frame)
 	if _ready_marks.has(placed):
 		_ready_marks[placed].position = _mark_position(node)
 
@@ -217,7 +208,7 @@ func _begin(item: GameConfig.ItemDef, frame: int, moving: Village.PlacedItem) ->
 	_moving = moving
 	_placing_frame = frame
 	_ghost = _make_sprite(sprite, frame, Vector2i.ZERO)
-	_ghost.offset = _building_offset(sprite, frame)
+	_ghost.offset = building_offset(sprite, frame)
 	_placement_layer.add_child(_ghost)
 	_placement_layer.visible = true
 	_update_placement(IsoGrid.map_to_tile(get_local_mouse_position()))
@@ -263,7 +254,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_placing_frame = (_placing_frame + 1) % _placing_item.max_frame
 		var sprite := _sprites.get_sprite(_placing_item.img_name)
 		_ghost.texture = sprite.get_frame(_placing_frame)
-		_ghost.offset = _building_offset(sprite, _placing_frame)
+		_ghost.offset = building_offset(sprite, _placing_frame)
 	elif event.is_action_pressed("ui_cancel") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
 		get_viewport().set_input_as_handled()
 		end_placement()
@@ -283,12 +274,27 @@ func _update_placement(tile: Vector2i) -> void:
 	_outline.color = Color(_ghost.modulate, 0.35)
 
 
-func _place(layer: Node2D, item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> Sprite2D:
-	var sprite := _sprites.get_sprite(item.img_name)
+## Draws the land areas of a map with the land graphic of its skin. The areas in
+## owned_land (see IsoGrid.land_area_number()) show the owned land.
+static func place_land(layer: Node2D, config: GameConfig, sprites: SpriteLibrary, skin: int, owned_land: PackedInt32Array) -> void:
+	var land_item := config.get_item(LAND_ITEM_BASE_ID + skin)
+	if land_item == null:
+		push_warning("The configuration has no land item for map skin %d." % skin)
+		return
+	for y in IsoGrid.LAND_AREAS:
+		for x in IsoGrid.LAND_AREAS:
+			var area := Vector2i(x, y)
+			var owned := IsoGrid.land_area_number(area) in owned_land
+			place_sprite(layer, sprites, land_item, IsoGrid.land_area_anchor_tile(area), LAND_FRAME_OWNED if owned else LAND_FRAME_WILD)
+
+
+## Draws an item that is not a unit at its tile in layer. Returns null when its graphic is missing.
+static func place_sprite(layer: Node2D, sprites: SpriteLibrary, item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> Sprite2D:
+	var sprite := sprites.get_sprite(item.img_name)
 	if sprite == null:
 		return null
 	var node := _make_sprite(sprite, frame, tile)
-	node.offset = _building_offset(sprite, frame)
+	node.offset = building_offset(sprite, frame)
 	layer.add_child(node)
 	return node
 
@@ -309,7 +315,7 @@ static func _mark_position(node: Sprite2D) -> Vector2:
 
 
 ## The client puts the bottom centre of the shown frame on the item position.
-static func _building_offset(sprite: SpriteLibrary.ItemSprite, frame: int) -> Vector2:
+static func building_offset(sprite: SpriteLibrary.ItemSprite, frame: int) -> Vector2:
 	var size := sprite.get_frame_size(frame)
 	return Vector2(-floorf(size.x / 2.0), -size.y) + sprite.origin
 
@@ -327,7 +333,7 @@ func _place_unit(item: GameConfig.ItemDef, tile: Vector2i) -> Sprite2D:
 	return node
 
 
-func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:
+static func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:
 	var node := Sprite2D.new()
 	node.texture = sprite.get_frame(frame)
 	node.centered = false

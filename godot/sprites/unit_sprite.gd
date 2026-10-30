@@ -7,8 +7,9 @@ extends Sprite2D
 ## 2 to 4, mirrored around the registration point of the unit, which is on its
 ## position.
 
-## The actions of the client, in the order of the frames.
-enum Action { IDLE, WALKING, ATTACKING, DYING }
+## The actions of the client, in the order of the frames. Special attack n
+## (from 0) is the action SPECIAL + n.
+enum Action { IDLE, WALKING, ATTACKING, DYING, SPECIAL = 6 }
 
 const FRAMES_PER_ACTION := 5
 const LAST_UNMIRRORED_DIRECTION := 5
@@ -34,6 +35,27 @@ func _init(sprite: SpriteLibrary.ItemSprite) -> void:
 func _ready() -> void:
 	# Godot turns processing on when the node enters the tree.
 	set_process(_clip != null)
+
+
+## The direction (1 to 8) in which a unit at from looks at to. The client keeps
+## the direction current when to is less than a third of a tile away.
+static func direction_to(from: Vector2, to: Vector2, current: int) -> int:
+	var delta := to - from
+	if absf(delta.x) < IsoGrid.TILE_SIZE.x / 3 and absf(delta.y) < IsoGrid.TILE_SIZE.y / 3:
+		return current
+	if delta.x > 0:
+		return 2 if delta.y < 0 else (4 if delta.y > 0 else 3)
+	if delta.x < 0:
+		return 6 if delta.y < 0 else (8 if delta.y > 0 else 7)
+	return 1 if delta.y < 0 else (5 if delta.y > 0 else current)
+
+
+## The rectangle on the map that the graphic covers now.
+func map_rect() -> Rect2:
+	var node: Sprite2D = _clip_node if _clip != null else self
+	if node.texture == null:
+		return Rect2(global_position, Vector2.ZERO)
+	return node.get_global_transform() * Rect2(node.offset, node.texture.get_size())
 
 
 ## Shows the action in direction (1 to 8). A new action or direction

@@ -96,7 +96,8 @@ def needed_items(config, villages, shop, export_all):
 	By default these are the land, the store buildings, all items of the store
 	rotation, the units that these buildings train, the trees and deposits, the
 	wild animals, the mounted units of the training stables, the items that the
-	special buildings and the collections give, and the items in the villages.
+	special buildings and the collections give, and the items in the villages
+	and on the quest maps.
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
@@ -207,9 +208,10 @@ def main():
 	out_dir = os.path.abspath(args.out)
 	village_paths = args.village or [os.path.join(source, "villages", "initial.json")]
 	villages = [load_village(path) for path in village_paths]
-	# The graphics also cover the player saves of the server, so that the port can open each of them.
-	player_saves = sorted(glob.glob(os.path.join(source, "saves", "*.save.json")))
-	villages += [load_village(path) for path in player_saves if os.path.abspath(path) not in map(os.path.abspath, village_paths)]
+	# The graphics also cover the player saves of the server, so that the port can
+	# open each of them, and the quest maps, on which the battles of the quests are.
+	other_saves = sorted(glob.glob(os.path.join(source, "saves", "*.save.json")) + glob.glob(os.path.join(source, "villages", "quests", "*.save.json")))
+	villages += [load_village(path) for path in other_saves if os.path.abspath(path) not in map(os.path.abspath, village_paths)]
 
 	config = load_game_config(source)
 	shop = load_shop(source)

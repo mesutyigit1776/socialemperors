@@ -5,6 +5,7 @@ class_name IsoGrid
 ## client puts the item anchor at the point that tile_to_map() returns.
 
 const MAP_TILES := 100
+const TILE_SIZE := Vector2(108, 54)  ## Pixels.
 const LAND_TILES := 20  ## One land (expansion) area is 20 x 20 tiles.
 const LAND_AREAS := MAP_TILES / LAND_TILES
 

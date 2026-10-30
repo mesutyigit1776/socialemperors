@@ -30,9 +30,11 @@ A new building that needs workers gets only the player's own villager. The serve
 
 The save changes are the same as from the server commands, with three differences. All follow what the client shows. When the first unit goes into an empty building (in the Nursery, the second), the port starts the production time then, as the client does on screen; the server does not change the time. When a unit comes out of a training queue, the port moves the start time of the queue to the next unit; the server keeps it, so after a reload all units of a queue come out at once. When you finish a training queue with cash, the port charges the price that the client shows and takes, which counts all units of the queue; the server charges only for the next unit.
 
-Battles have started. The port has the battle rules of the original client, without graphics yet: units look for enemies, walk around buildings and attack, towers shoot, healers heal, and the damage, the timing and the walking speed are the same as in the client. `docs/GODOT_BATTLES.md` has the plan for the next stages: the battle view and unit control, the campaign quests, spells, special abilities and the single-player modes.
+Battles have started. The port has the battle rules of the original client: units look for enemies, walk around buildings and attack, towers shoot, healers heal, and the damage, the timing and the walking speed are the same as in the client. You control your units as in the original game. Click a unit to select it, or click it twice within one second to select your units of the same kind near it, for example all archers. Drag from one of your units, or press the space bar and drag, to select the units in a box. Click the ground to send the selected units there in a formation, or an enemy to attack it. The selected items and the item under the mouse show a health bar.
 
-Not done yet: battles that you can see and play, quests and neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
+Until the quests come, you can try a battle on a quest map: start the port with `--battle <file>`, for example `--battle <socialemperors folder>/villages/quests/100000013.save.json`. All items of that map except the trees, rocks and other neutral items are enemies, and the units of your village start in the land area with the fewest items. Shots are lines, and the health bars and the selection rings are simple shapes, until the importer reads these graphics. `docs/GODOT_BATTLES.md` has the plan for the next stages: the graphics of shots and effects, the campaign quests, spells, special abilities and the single-player modes.
+
+Not done yet: quests and neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
 
 ## Import the game files
 
@@ -44,7 +46,7 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 
 - `--source` defaults to this repository.
 - `--village <file>` selects a village save to import, for example `saves/<USERID>.save.json`. The default is `villages/initial.json`. You can give the option more than one time.
-- By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages and the player saves in `saves/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
+- By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages, the player saves in `saves/` and the quest maps in `villages/quests/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
 - `--jobs <n>` sets how many JPEXS processes run at the same time (default 4).
 
 ## Run
@@ -82,6 +84,6 @@ The exit code is the number of failed checks. Run the village check after you ch
 | `importer/` | Import tool. `swf_bounds.py` reads symbol bounds from SWF files, so the images keep the position of the original graphics. |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
-| `battle/` | Battle rules without graphics: the battle, its items, the unit AI, shots and special abilities |
+| `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
 | `sprites/` | Loads the imported item graphics. `unit_sprite.gd` plays the animations of a unit. |
 | `checks/` | Headless checks of the village rules, the save format and the battle rules |

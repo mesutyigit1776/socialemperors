@@ -20,6 +20,8 @@ signal shot_fired(shot: BattleProjectile)
 signal shot_landed(shot: BattleProjectile)
 ## fighter died. killer is null when no fighter killed it.
 signal died(fighter: BattleFighter, killer: BattleFighter)
+## The fighter left the map: a dead unit after DEAD_UNIT_FRAMES, or a destroyed building.
+signal removed(fighter: BattleFighter)
 
 ## A unit checks its attack every ATTACK_CHECK_FRAMES frames, and attacks when
 ## the frame is also a multiple of its attack interval.
@@ -178,6 +180,11 @@ func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 				set_target(unit, null)
 		else:
 			order_walk(unit, stands[unit])
+
+
+## The item on tile, as the tile array of the client has it, or null.
+func fighter_at(tile: Vector2i) -> BattleFighter:
+	return _tiles.get(tile)
 
 
 ## The unit attacks target; it walks next to it when it is out of range.
@@ -545,6 +552,7 @@ func _remove(item: BattleFighter) -> void:
 		for x in range(area.position.x, area.end.x):
 			for y in range(area.position.y, area.end.y):
 				_blocked.erase(Vector2i(x, y))
+	removed.emit(item)
 
 
 ## The client calls the units of the same side on the rings around the tile of
