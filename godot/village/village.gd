@@ -28,6 +28,8 @@ enum Production {
 	NOT_STARTED,  ## The building needs a work time first, see WORK_MINUTES.
 	ALREADY_STARTED,
 	NOT_READY,
+	CANNOT_HURRY,  ## The building is not one that the player can finish with cash.
+	NOT_ENOUGH_CASH,
 	FARM_REMOVED,  ## The player did not have the wood for the farm, so the farm is gone.
 }
 
@@ -59,6 +61,11 @@ const SUBCAT_FARM := 122
 const FARM_WOOD_DIVISOR := 3.0
 ## Each unit in a building after the first one adds this part of the amount.
 const WORKER_BONUS := 0.2
+## The player can pay this cash to collect at once from mills, mines, other
+## collect buildings and wonders without population.
+const HURRY_COST := 2
+const HURRY_SUBCATS: Array[int] = [121, 124, 138]
+const SUBCAT_WONDER := 511
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -411,6 +418,36 @@ func collect(placed: PlacedItem, now: int) -> Production:
 		return Production.NOT_STARTED
 	if remaining > 0:
 		return Production.NOT_READY
+	return _collect_now(placed, now)
+
+
+## A working building that the player can finish with cash: it is not ready yet.
+func can_hurry(placed: PlacedItem, now: float) -> bool:
+	if not is_producer(placed) or seconds_to_ready(placed, now) <= 0:
+		return false
+	var item := _config.get_item(placed.item_id)
+	return item.subcat_functional in HURRY_SUBCATS or (item.subcat_functional == SUBCAT_WONDER and item.population == 0)
+
+
+## Pays HURRY_COST cash and collects at once, as the client does with the server
+## command "collect_new" and its cash argument. A ready building needs no cash.
+func hurry(placed: PlacedItem, now: int) -> Production:
+	if not is_producer(placed):
+		return Production.NOT_PRODUCER
+	var remaining := seconds_to_ready(placed, now)
+	if remaining < 0:
+		return Production.NOT_STARTED
+	if remaining == 0:
+		return _collect_now(placed, now)
+	if not can_hurry(placed, now):
+		return Production.CANNOT_HURRY
+	if get_resource("c") < HURRY_COST:
+		return Production.NOT_ENOUGH_CASH
+	_add_resource("c", -HURRY_COST)
+	return _collect_now(placed, now)
+
+
+func _collect_now(placed: PlacedItem, now: int) -> Production:
 	var cost := collect_cost(placed)
 	if cost > get_resource("w"):
 		_remove(placed)

@@ -25,6 +25,9 @@ const ALLIES_BUILDING := 234
 const ROUND_TABLE := 389
 const PUMPKIN_CROP := 8  # farm: 32.4 s, 25 food for 8 wood, 2 XP
 const VILLAGER := 500
+const RESTAURANT := 232  # collect building: 8 h, 570 gold
+const CHICHEN_ITZA := 52  # wonder without population: 6 h, 600 gold
+const SAINT_BASIL := 261  # wonder that does not produce
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
@@ -56,7 +59,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -338,6 +341,42 @@ func _check_production() -> bool:
 	_check(village.collect(farm, T + 100) == Village.Production.FARM_REMOVED, "a farm without enough wood is removed")
 	_check(village.items.size() == count - 1 and village.item_at(Vector2i(30, 45)) == null, "the removed farm is not on the map")
 	_expect("after the removed farm", village, {"w": 7})
+	return true
+
+
+## Paying cash to collect before a building is ready.
+func _check_hurry() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([CHICHEN_ITZA, 25, 45, 0, T, 0, [], {}])
+	items.append([SAINT_BASIL, 30, 45, 0, T, 0, [], {}])
+	items.append([PUMPKIN_CROP, 33, 45, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
+	var path := _write_fixture("hurry", 100, HIGHEST_LEVEL_XP, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_12 := Rect2i(20, 40, 20, 20)
+	var wonder := village.item_at(Vector2i(25, 45))
+	var cash := village.get_resource("c")
+	var coins := village.get_resource("g")
+	_check(village.can_hurry(wonder, T + 10) and village.hurry(wonder, T + 10) == Village.Production.OK, "a wonder without population can finish with cash")
+	_expect("after the wonder finished with cash", village, {"c": cash - 2, "g": coins + 600})
+	_check(village.seconds_to_ready(wonder, T + 10) == 21600, "the wonder starts again after the cash collection")
+	_check(village.hurry(village.item_at(Vector2i(30, 45)), T + 10) == Village.Production.NOT_PRODUCER, "a wonder that does not produce cannot finish with cash")
+	_check(village.hurry(village.item_at(Vector2i(33, 45)), T + 10) == Village.Production.CANNOT_HURRY, "a farm cannot finish with cash")
+	_check(village.hurry(village.item_at(HOUSE_TILE), T + 10) == Village.Production.NOT_PRODUCER, "a house cannot finish with cash")
+
+	_buy_free(village, GOLD_MINE_I, area_12, Village.Placement.OK)
+	var mine: Village.PlacedItem = village.items.back()
+	_check(village.hurry(mine, T + 10) == Village.Production.NOT_STARTED, "a mine without a work time cannot finish with cash")
+	cash = village.get_resource("c")
+	for i in cash / 2:
+		village.start_work(mine, 1, T + 20)
+		_check(village.hurry(mine, T + 30) == Village.Production.OK, "the mine finishes with cash, time %d" % (i + 1))
+	village.start_work(mine, 1, T + 20)
+	_check(village.hurry(mine, T + 30) == Village.Production.NOT_ENOUGH_CASH, "the mine does not finish without enough cash")
+	_expect("after the cash collections", village, {"c": cash % 2})
+	_check(village.hurry(mine, T + 20 + 3600) == Village.Production.OK and village.get_resource("c") == cash % 2, "a ready building needs no cash")
+	_check(village.save_to_file(path) == OK, "the village after the cash collections saves")
 	return true
 
 

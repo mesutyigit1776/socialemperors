@@ -32,6 +32,7 @@ class ItemDef:
 	var collect: int  ## Amount of the resource collect_type that a collection gives.
 	var collect_type: String  ## Resource code, see Village.RESOURCE_KEYS.
 	var collect_xp: int
+	var population: int  ## Population that the building gives. Wonders with population cannot hurry.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -160,7 +161,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population"]:
 		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -188,6 +189,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.collect = numbers["collect"]
 	item.collect_type = str(entry.get("collect_type", ""))
 	item.collect_xp = numbers["collect_xp"]
+	item.population = numbers["population"]
 	return item
 
 

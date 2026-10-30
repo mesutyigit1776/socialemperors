@@ -11,6 +11,8 @@ signal sell_confirmed
 signal rotate_requested
 ## The player wants to collect from the selected building.
 signal collect_requested
+## The player wants to pay cash to collect from the selected building at once.
+signal hurry_requested
 ## The player chose Village.WORK_MINUTES[work_time] for the selected mill or mine.
 signal work_time_chosen(work_time: int)
 
@@ -45,6 +47,7 @@ var _rotate_button := Button.new()
 var _production := HBoxContainer.new()
 var _production_text := Label.new()
 var _collect_button := Button.new()
+var _hurry_button := Button.new()
 var _work_times := HBoxContainer.new()
 
 
@@ -83,8 +86,11 @@ func _init(categories: Array) -> void:
 	_production_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_collect_button.text = "Collect"
 	_collect_button.pressed.connect(func() -> void: collect_requested.emit())
+	_hurry_button.text = "Finish for %d cash" % Village.HURRY_COST
+	_hurry_button.pressed.connect(func() -> void: hurry_requested.emit())
 	_production.add_child(_production_text)
 	_production.add_child(_collect_button)
+	_production.add_child(_hurry_button)
 	_production.visible = false
 	column.add_child(_production)
 	for work_time in Village.WORK_MINUTES.size():
@@ -154,14 +160,14 @@ func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, ca
 
 ## Shows the production of the selected building. item is null when the
 ## selection does not produce. seconds_left is -1 when a mill or mine needs a work time.
-func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int, wood_cost: int) -> void:
+func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int, wood_cost: int, can_hurry: bool) -> void:
 	_production.visible = item != null
 	_work_times.visible = item != null and seconds_left < 0
 	if item == null:
 		return
 	var resource: String = RESOURCE_NAMES.get(item.collect_type, item.collect_type)
-	_collect_button.visible = seconds_left >= 0
-	_collect_button.disabled = seconds_left > 0
+	_collect_button.visible = seconds_left == 0
+	_hurry_button.visible = can_hurry
 	if seconds_left < 0:
 		_production_text.text = "Choose a work time:"
 	elif seconds_left > 0:

@@ -52,6 +52,7 @@ func _ready() -> void:
 		_hud.sell_confirmed.connect(_on_sell_confirmed)
 		_hud.rotate_requested.connect(_on_rotate_requested)
 		_hud.collect_requested.connect(func() -> void: _collect(_selected))
+		_hud.hurry_requested.connect(func() -> void: _collect(_selected, true))
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
 		add_child(_hud)
 		_hud.refresh(_village)
@@ -94,17 +95,19 @@ func _update_production() -> void:
 	var now := _now()
 	_view.update_production(now)
 	if _selected == null or not _village.is_producer(_selected):
-		_hud.show_production(null, 0, 0, 0)
+		_hud.show_production(null, 0, 0, 0, false)
 	else:
-		_hud.show_production(_config.get_item(_selected.item_id), _village.seconds_to_ready(_selected, now), _village.collect_amount(_selected), _village.collect_cost(_selected))
+		_hud.show_production(_config.get_item(_selected.item_id), _village.seconds_to_ready(_selected, now), _village.collect_amount(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now))
 
 
-func _collect(placed: Village.PlacedItem) -> void:
+## With hurry, the player pays cash to collect before the building is ready.
+func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	var item := _config.get_item(placed.item_id)
 	var old_level := _village.get_level()
 	var amount := _village.collect_amount(placed)
 	var cost := _village.collect_cost(placed)
-	var result := _village.collect(placed, _now())
+	var cash_before := _village.get_resource("c")
+	var result := _village.hurry(placed, _now()) if hurry else _village.collect(placed, _now())
 	match result:
 		Village.Production.OK:
 			_update_production()
@@ -114,6 +117,9 @@ func _collect(placed: Village.PlacedItem) -> void:
 			_view.remove_placed(placed)
 		Village.Production.NOT_READY:
 			_hud.show_message("%s is not ready." % item.name)
+			return
+		Village.Production.NOT_ENOUGH_CASH:
+			_hud.show_message("You need %d cash to finish %s now." % [Village.HURRY_COST, item.name])
 			return
 		_:
 			_hud.show_message("%s does not produce now." % item.name)
@@ -127,6 +133,8 @@ func _collect(placed: Village.PlacedItem) -> void:
 		var text := "Collected %d %s from %s." % [amount, VillageHud.RESOURCE_NAMES.get(item.collect_type, item.collect_type), item.name]
 		if cost > 0:
 			text += " It cost %d wood." % cost
+		if cash_before > _village.get_resource("c"):
+			text += " It cost %d cash." % (cash_before - _village.get_resource("c"))
 		_hud.show_message(text + _level_up_text(old_level))
 
 
