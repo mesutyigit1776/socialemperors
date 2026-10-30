@@ -7,6 +7,7 @@ socialemperors server folder that the user supplies and writes:
   <out>/shop.json                    item groups of the "New" store rotation and the shop settings of the server
   <out>/sprites/<img_name>/<n>.png   frame n of the item graphic (1-based)
   <out>/sprites/<img_name>/meta.json registration offset and frame count
+  <out>/sprites/<img_name>/clips/<id>/<n>.png  frame n of an animation of a unit
   <out>/villages/<name>.json         village saves to display
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
@@ -125,32 +126,59 @@ def needed_items(config, villages, shop, export_all):
 	return result
 
 
-def export_frames(jpexs, swf_path, class_name, work_dir):
-	"Renders every frame of the exported symbol to PNG. Returns the frame file paths in order."
+def run_jpexs(jpexs, swf_path, selection, work_dir):
+	"Renders every frame of the selected sprites to PNG in work_dir, one folder for each sprite."
 	command = ["java", "-jar", jpexs] if jpexs.endswith(".jar") else [jpexs]
-	command += ["-selectclass", class_name, "-format", "sprite:png", "-export", "sprite", work_dir, swf_path]
+	command += selection + ["-format", "sprite:png", "-export", "sprite", work_dir, swf_path]
 	result = subprocess.run(command, capture_output=True, text=True)
 	if result.returncode != 0:
 		raise RuntimeError(f"JPEXS failed for {swf_path}: {result.stdout[-500:]}{result.stderr[-500:]}")
-	suffix = f"_{class_name}"
-	folders = [d for d in os.listdir(work_dir) if d.endswith(suffix)]
+
+
+def exported_frames(work_dir, matches, what):
+	"Returns the frame files of the one exported folder whose name matches, in order."
+	folders = [d for d in os.listdir(work_dir) if matches(d)]
 	if len(folders) != 1:
-		raise RuntimeError(f"JPEXS did not export symbol '{class_name}' from {swf_path}")
+		raise RuntimeError(f"JPEXS did not export {what}")
 	folder = os.path.join(work_dir, folders[0])
 	frames = sorted((f for f in os.listdir(folder) if f.endswith(".png")), key=lambda f: int(f[:-4]))
 	return [os.path.join(folder, f) for f in frames]
 
 
-def import_sprite(jpexs, swf_path, img_name, out_dir):
+def copy_frames(frames, folder):
+	os.makedirs(folder, exist_ok=True)
+	for index, frame in enumerate(frames, start=1):
+		shutil.copyfile(frame, os.path.join(folder, f"{index}.png"))
+
+
+def import_clips(jpexs, swf, swf_path, img_name, sprite_dir):
+	"""Exports the clips of a unit graphic. Returns the meta entries "clips" and "frame_clips"."""
+	frame_clips = swf.symbol_frame_clips(img_name)
+	clip_ids = sorted({clip[0] for clip in frame_clips if clip is not None})
+	clips = {}
+	if clip_ids:
+		with tempfile.TemporaryDirectory() as work_dir:
+			run_jpexs(jpexs, swf_path, ["-selectid", ",".join(map(str, clip_ids))], work_dir)
+			for clip_id in clip_ids:
+				name = f"DefineSprite_{clip_id}"
+				frames = exported_frames(work_dir, lambda d: d == name or d.startswith(name + "_"), f"sprite {clip_id} of {swf_path}")
+				copy_frames(frames, os.path.join(sprite_dir, "clips", str(clip_id)))
+				offset_x, offset_y = swf.sprite_offset(clip_id)
+				clips[str(clip_id)] = {"origin_x": offset_x, "origin_y": offset_y, "frames": len(frames)}
+	# The matrix places the clip in the graphic: [a, b, c, d] and the translation in pixels.
+	entries = [None if clip is None else [clip[0], *clip[1][:4], clip[1][4] / 20, clip[1][5] / 20] for clip in frame_clips]
+	return clips, entries
+
+
+def import_sprite(jpexs, swf_path, img_name, out_dir, is_unit):
 	swf = SwfFile(swf_path)
 	offset_x, offset_y, _, _ = swf.symbol_offset(img_name)
 	frame_sizes = swf.symbol_frame_sizes(img_name)
+	sprite_dir = os.path.join(out_dir, "sprites", img_name)
 	with tempfile.TemporaryDirectory() as work_dir:
-		frames = export_frames(jpexs, swf_path, img_name, work_dir)
-		sprite_dir = os.path.join(out_dir, "sprites", img_name)
-		os.makedirs(sprite_dir, exist_ok=True)
-		for index, frame in enumerate(frames, start=1):
-			shutil.copyfile(frame, os.path.join(sprite_dir, f"{index}.png"))
+		run_jpexs(jpexs, swf_path, ["-selectclass", img_name], work_dir)
+		frames = exported_frames(work_dir, lambda d: d.endswith(f"_{img_name}"), f"symbol '{img_name}' from {swf_path}")
+		copy_frames(frames, sprite_dir)
 	if len(frame_sizes) != len(frames):
 		raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_sizes)}")
 	meta = {
@@ -158,6 +186,8 @@ def import_sprite(jpexs, swf_path, img_name, out_dir):
 		"origin_y": offset_y,
 		"frame_sizes": frame_sizes,   # [width, height] of each frame as Flash measures it; the client places graphics by it
 	}
+	if is_unit:
+		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, img_name, sprite_dir)
 	with open(os.path.join(sprite_dir, "meta.json"), 'w', encoding='utf-8') as f:
 		json.dump(meta, f, indent='\t')
 
@@ -200,7 +230,7 @@ def main():
 		if not os.path.exists(swf_path):
 			return "no SWF file"
 		try:
-			import_sprite(args.jpexs, swf_path, img_name, out_dir)
+			import_sprite(args.jpexs, swf_path, img_name, out_dir, items[img_name]["type"] == "u")
 		except (SwfError, RuntimeError) as e:
 			return str(e)
 		return None

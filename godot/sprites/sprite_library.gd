@@ -7,6 +7,12 @@ class ItemSprite:
 	var frames: Array[Texture2D] = []
 	var frame_sizes: Array[Vector2] = []  ## Size of each frame as Flash measures it.
 	var origin: Vector2  ## Top-left of each frame image relative to the symbol registration point.
+	## For each frame of a unit graphic, the FrameClip that it plays, or null.
+	var frame_clips: Array = []
+
+	## The clip of frame, or null when the frame is a still image.
+	func get_frame_clip(frame: int) -> FrameClip:
+		return frame_clips[frame] if frame >= 0 and frame < frame_clips.size() else null
 
 	## frame is 0-based. A frame that the graphic does not have shows the last frame.
 	func get_frame(frame: int) -> Texture2D:
@@ -17,6 +23,37 @@ class ItemSprite:
 
 	func _index(frame: int) -> int:
 		return clampi(frame, 0, frames.size() - 1)
+
+
+## A nested animation of a unit graphic, for example the walk in one direction.
+## Its frames load when they are first shown.
+class Clip:
+	var origin: Vector2  ## Top-left of each frame image relative to the clip registration point.
+	var _dir: String
+	var _count: int
+	var _frames: Array[Texture2D] = []
+
+	func _init(dir: String, count: int, clip_origin: Vector2) -> void:
+		_dir = dir
+		_count = count
+		origin = clip_origin
+
+	func frame_count() -> int:
+		return _count
+
+	## frame is 0-based. A frame that cannot load is empty.
+	func get_frame(frame: int) -> Texture2D:
+		if _frames.is_empty():
+			for i in _count:
+				var image := Image.load_from_file(_dir.path_join("%d.png" % (i + 1)))
+				_frames.append(ImageTexture.create_from_image(image) if image != null else null)
+		return _frames[clampi(frame, 0, _count - 1)]
+
+
+## A clip in a frame of a unit graphic, and where the frame places it.
+class FrameClip:
+	var clip: Clip
+	var transform: Transform2D
 
 
 var _sprites_dir: String
@@ -53,4 +90,35 @@ func _load(img_name: String) -> ItemSprite:
 			return null
 		sprite.frame_sizes.append(Vector2(float(size[0]), float(size[1])))
 		sprite.frames.append(ImageTexture.create_from_image(image))
+	if meta.has("frame_clips"):
+		sprite.frame_clips = _load_clips(img_name, dir, meta)
 	return sprite
+
+
+## Returns the FrameClip or null for each frame. Returns no clips when the meta
+## data is not correct, so that the unit shows its still frames.
+func _load_clips(img_name: String, dir: String, meta: Dictionary) -> Array:
+	var entries: Variant = meta["frame_clips"]
+	var clip_meta: Variant = meta.get("clips")
+	if not (entries is Array and entries.size() == meta["frame_sizes"].size() and clip_meta is Dictionary):
+		push_warning("Graphic '%s' has no correct clips." % img_name)
+		return []
+	var clips := {}
+	var result := []
+	for entry: Variant in entries:
+		if entry == null:
+			result.append(null)
+			continue
+		var info: Variant = clip_meta.get(str(int(entry[0]))) if entry is Array and entry.size() == 7 else null
+		if not (info is Dictionary and info.get("frames") is float and info["frames"] > 0):
+			push_warning("Graphic '%s' has no correct clips." % img_name)
+			return []
+		var id := str(int(entry[0]))
+		if not clips.has(id):
+			clips[id] = Clip.new(dir.path_join("clips").path_join(id), int(info["frames"]), Vector2(float(info.get("origin_x", 0)), float(info.get("origin_y", 0))))
+		var frame_clip := FrameClip.new()
+		frame_clip.clip = clips[id]
+		# Flash matrix [a, b, c, d, tx, ty]: x' = a x + c y + tx, y' = b x + d y + ty.
+		frame_clip.transform = Transform2D(Vector2(entry[1], entry[2]), Vector2(entry[3], entry[4]), Vector2(entry[5], entry[6]))
+		result.append(frame_clip)
+	return result

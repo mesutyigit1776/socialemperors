@@ -17,14 +17,9 @@ const LAND_ITEM_BASE_ID := 1000
 const LAND_FRAME_WILD := 0
 const LAND_FRAME_OWNED := 3
 
-# Unit graphics have 5 frames per animation, one per direction from up (1)
-# to down (5). Directions 6 to 8 (up-left, left, down-left) use frames 2 to 4
-# mirrored. A new unit faces down-right, down or down-left.
-const UNIT_FRAMES_PER_ANIMATION := 5
-const UNIT_ANIMATION_IDLE := 0
-const UNIT_ANIMATION_WALKING := 1
+# Units face one of 8 directions, from up (1) clockwise; see UnitSprite. A new
+# unit faces down-right, down or down-left.
 const UNIT_START_DIRECTIONS: Array[int] = [4, 5, 8]
-const UNIT_LAST_UNMIRRORED_DIRECTION := 5
 ## Directions for screen angles in steps of 45 degrees, from the right, clockwise.
 const UNIT_DIRECTIONS_BY_ANGLE: Array[int] = [3, 4, 5, 8, 7, 6, 1, 2]
 
@@ -138,9 +133,9 @@ func update_placed(placed: Village.PlacedItem) -> void:
 func show_unit(placed: Village.PlacedItem, map_position: Vector2, direction: int, walking: bool) -> void:
 	if not _nodes.has(placed):
 		return
-	var node: Sprite2D = _nodes[placed]
+	var node: UnitSprite = _nodes[placed]
 	node.position = map_position
-	_set_unit_frame(node, _sprites.get_sprite(_config.get_item(placed.item_id).img_name), direction, UNIT_ANIMATION_WALKING if walking else UNIT_ANIMATION_IDLE)
+	node.show_action(UnitSprite.Action.WALKING if walking else UnitSprite.Action.IDLE, direction)
 
 
 ## Hides or shows an item, for example a unit that works in a building.
@@ -325,20 +320,11 @@ func _place_unit(item: GameConfig.ItemDef, tile: Vector2i) -> Sprite2D:
 		return null
 	# The client picks the start direction at random. A fixed choice per tile keeps screenshots stable.
 	var direction: int = UNIT_START_DIRECTIONS[(tile.x + tile.y) % UNIT_START_DIRECTIONS.size()]
-	var node := _make_sprite(sprite, 0, tile)
-	_set_unit_frame(node, sprite, direction, UNIT_ANIMATION_IDLE)
+	var node := UnitSprite.new(sprite)
+	node.position = IsoGrid.tile_to_map(tile)
+	node.show_action(UnitSprite.Action.IDLE, direction)
 	_item_layer.add_child(node)
 	return node
-
-
-## Directions 6 to 8 use the frames of directions 2 to 4, mirrored. The client
-## puts the registration point of a unit on its position and mirrors around it.
-func _set_unit_frame(node: Sprite2D, sprite: SpriteLibrary.ItemSprite, direction: int, animation: int) -> void:
-	var mirrored := direction > UNIT_LAST_UNMIRRORED_DIRECTION
-	var direction_frame := direction - 4 if mirrored else direction
-	node.texture = sprite.get_frame(animation * UNIT_FRAMES_PER_ANIMATION + direction_frame - 1)
-	node.offset = sprite.origin
-	node.scale.x = -1 if mirrored else 1
 
 
 func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:

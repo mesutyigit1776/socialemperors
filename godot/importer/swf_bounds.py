@@ -172,16 +172,23 @@ class SwfFile:
 
 	def _frame_bounds(self, pos, end, nested_bounds):
 		"Returns the bounds of each frame of a sprite. nested_bounds gives the bounds of a placed character."
+		frames = []
+		for places in self._frame_places(pos, end):
+			rect = None
+			for char_id, matrix in places.values():
+				rect = _union(rect, _transform_or_none(nested_bounds(char_id), matrix))
+			frames.append(rect)
+		return frames
+
+	def _frame_places(self, pos, end):
+		"Returns for each frame of a sprite {depth: (character id, matrix)} of the placed characters."
 		data = self.data
 		depth_char = {}
 		depth_matrix = {}
 		frames = []
 		for code, start, length in _tags(data, pos, end):
 			if code == SHOW_FRAME_TAG:
-				rect = None
-				for depth, char_id in depth_char.items():
-					rect = _union(rect, _transform_or_none(nested_bounds(char_id), depth_matrix[depth]))
-				frames.append(rect)
+				frames.append({depth: (char_id, depth_matrix[depth]) for depth, char_id in depth_char.items()})
 				continue
 			if code == REMOVE_OBJECT2_TAG:
 				depth = struct.unpack_from('<H', data, start)[0]
@@ -238,3 +245,27 @@ class SwfFile:
 		if rect is None:
 			raise SwfError(f"symbol '{class_name}' has no visible content")
 		return rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20
+
+	def symbol_frame_clips(self, class_name):
+		"""Returns for each frame of the symbol (character id, matrix) of its clip, or None.
+
+		A clip is a nested sprite with more than one frame. A frame of a unit graphic shows one nested sprite, the clip, which plays
+		its own frames: for example the walk in one direction. The client shows
+		only the first frame of nested sprites in buildings, but units play them.
+		"""
+		char_id = self.symbols[class_name]
+		result = []
+		for places in self._frame_places(*self.sprites[char_id]):
+			clips = list(places.values())
+			if len(clips) == 1 and clips[0][0] in self.sprites and len(self._frame_places(*self.sprites[clips[0][0]])) > 1:
+				result.append(clips[0])
+			else:
+				result.append(None)
+		return result
+
+	def sprite_offset(self, char_id):
+		"Returns the top-left corner of a sprite's bounds in pixels, relative to its registration point."
+		rect = self.character_bounds(char_id)
+		if rect is None:
+			raise SwfError(f"sprite {char_id} has no visible content")
+		return rect[0] / 20, rect[1] / 20
