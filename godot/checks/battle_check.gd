@@ -338,11 +338,12 @@ func _check_shot_points() -> bool:
 	# The bottom of the target is 2 pixels below its position; an arrow aims at half its height.
 	_check(arrow.aim - target.position == Vector2(0, -28), "an arrow aims at half the height of the target: %s" % [arrow.aim - target.position])
 
-	# The middle of the bottom of a building graphic is on its position.
+	# The registration point of a building graphic is half its width left of
+	# the position and its height above it.
 	var tower := sim.add_item(_config.get_item(TOWER_I), Vector2i(60, 50), ENEMY)
 	tower.graphic = BattleGraphic.of(_made_up_sprite(Vector2(100, 200), Vector2(-50, -190), Vector2(10, -150)), false, 0)
 	var tower_arrow := BattleProjectile.fire(tower, target, sim.rng)
-	_check(tower_arrow.start - tower.position == Vector2(10, -160), "a tower arrow starts at the shot point: %s" % [tower_arrow.start - tower.position])
+	_check(tower_arrow.start - tower.position == Vector2(-40, -350), "a tower arrow starts at the shot point: %s" % [tower_arrow.start - tower.position])
 	var lightning := sim.add_item(_config.get_item(LIGHTNING_TOWER), Vector2i(70, 50), ENEMY)
 	lightning.graphic = tower.graphic
 	var bolt := BattleProjectile.fire(lightning, target, sim.rng)

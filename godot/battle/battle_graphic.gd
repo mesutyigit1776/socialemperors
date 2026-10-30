@@ -14,8 +14,9 @@ extends RefCounted
 ## The client uses the frame that the item shows at that moment. The port uses
 ## the attack frame in the direction of the target for the shooter, and for a
 ## target unit the idle frame looking down. These frames differ little in height.
-## Buildings place their graphic with the middle of its bottom on the position,
-## units with the registration point. The client also looks for a hit point in
+## The client puts the registration point of a building graphic half the width
+## of the frame left of the position and the height of the frame above it
+## (IsoElement), and the registration point of a unit graphic on the position. The client also looks for a hit point in
 ## the target graphic; the graphics of the game do not have one.
 
 const SHOT_HEIGHT := 0.75
@@ -70,4 +71,4 @@ func _registration(frame: int) -> Vector2:
 	if _is_unit:
 		return Vector2.ZERO
 	var size := _sprite.get_frame_size(frame)
-	return Vector2(-floorf(size.x / 2), -size.y) - _sprite.get_frame_rect(frame).position
+	return Vector2(-floorf(size.x / 2), -size.y)
