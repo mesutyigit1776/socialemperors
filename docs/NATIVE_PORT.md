@@ -134,6 +134,49 @@ Decompile the client and convert it with as3hx, fixing the result by hand. OpenF
 
 Port the economy and quests, then combat and the remaining systems. Check each system against the original game running in Phase 1's build. Add Android and iOS builds at the end.
 
+Update (2026-10-30): the prototype became the port on branch `godot-port`. It has the village economy, the special buildings, the battle rules, and the battle screen with the unit controls. The roadmap below replaces the order of Phase 4.
+
+## 4a. Roadmap of the Godot port
+
+The steps come in this order. Each step ends with checks, and, where it changes the save, a replay against the server. `docs/GODOT_BATTLES.md` has the details of the battle stages.
+
+**1. First playable quest**
+
+1. Finish the battle screen: the graphics of shots and effects from `assets/fx/`, and shots that start at 0.75 of the height of the shooter, as in the client (battle stage 2).
+2. Campaign quests: the quest list, unlocked quests, the waiting time between quests, the team, the map, the goal "destroy all enemies", and the end of the quest as `end_quest` writes it: gold, experience, honour, rank and lost units (battle stage 3).
+3. Let the loader read the quest maps `100000053` and `100000054`, which have no level.
+
+**2. A build for tests by hand**
+
+1. A desktop build, so that the owner can play without the command line.
+2. An import that continues after a stop. The full import of all graphics takes several hours.
+3. The first comparison with the original game: the same quest in Ruffle and in the port, for targets, duration and losses. This also shows if Ruffle can run the game far enough to be the reference. Until now, the port is checked only against the rules in the client code, so this comparison comes early.
+
+**3. The campaign, one quest at a time**
+
+1. Spells: mana, buying and using spells, shields (battle stage 4).
+2. For each of the 36 quests: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5).
+3. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6).
+
+**4. The rest of the single-player game**
+
+1. Sieges on the own village, survival and tournament (battle stage 7).
+2. The other special buildings: Time Machine, weather machine, Bahamut temple.
+3. Goals and the tutorial.
+4. Neighbours, if the owner decides on a form without a server, for example the neighbour villages in `villages/`.
+
+**5. The look and the sound of the original game**
+
+1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. This comes after the screens exist.
+2. Music and sounds.
+
+**6. Release**
+
+1. A comparison of the whole game with the original, and the fixes that it finds.
+2. Builds for Windows, macOS and Linux, and for mobile if the owner decides so.
+
+Open decisions of the owner: mobile builds (touch changes the unit control in battles), the mini-games of the nests and the Rider Academy (the port counts them as won), and neighbours.
+
 ## 5. Risks
 
 - **Ruffle gaps:** if Ruffle cannot run the game well, option A fails, and option B becomes the main native option for the original client. Phase 1, step 2 tests this first.

@@ -57,6 +57,7 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 - A quest runner reads a quest map, places the player's units, checks the goals and ends the battle.
 - At the end, the battle writes the results through new `Village` methods that do what the server commands do. If they are large, they get their own layer, `village_battle.gd`, above `village.gd`.
 - Special abilities are added one unit at a time behind one interface, as the client does with its delegates.
+- `docs/NATIVE_PORT.md`, section 4a, has the roadmap of the whole port. A comparison with the original game in Ruffle comes after stage 3.
 
 ## Stages
 
@@ -65,9 +66,9 @@ Each stage is a milestone with headless checks and, where it changes the save, a
 1. **Battle core, headless.** Fighters from the configuration, the damage rules, frames, melee and ranged attacks, projectile travel time, towers and other attacking buildings, healers, death, and the basic AI states. Checks with a fixed seed: damage values, attack timing, target choice, who wins small fights.
 2. **Battle view.** Attack and death animations, projectiles and effects (importer: `assets/fx/`), health bars, and orders to units during a battle (select, move, attack).
 3. **Campaign quests.** The quest list and its rules: unlocked quests, the waiting time between quests, the team. Load the quest map, place the units, the generic goals (destroy all enemies), and the end: gold, experience, honour, rank and lost units, as `end_quest` writes them.
-4. **Quest scripts.** Port the client quest classes for the 36 quests whose maps the server has.
-5. **Spells.** The spell book: mana, buying and using spells (`buy_magic`, `use_magic`), shields.
-6. **Special abilities.** First the units that a player can own (store, nests, Soul Mixer, riders, collections), then the bosses of the quests.
+4. **Spells.** The spell book: mana, buying and using spells (`buy_magic`, `use_magic`), shields. Quests use them, so they come before the quest scripts.
+5. **Quests one at a time.** For each of the 36 quests whose maps the server has: port the client quest class and the special abilities of the units and bosses on the map. Each quest is then complete and playable, and the quests can be compared with the original game one at a time.
+6. **Other special abilities.** The units that a player can own (store, nests, Soul Mixer, riders, collections) that no quest map has.
 7. **Single-player modes.** Events such as the heavy siege on the own village, then survival and tournament, as far as they work without other players.
 8. **Multiplayer, last or never.** PvP attacks and neighbour visits need other players' saves and a server. The port has no server, so this stage waits for a decision of the owner.
 
