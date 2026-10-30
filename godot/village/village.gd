@@ -20,6 +20,8 @@ enum Placement {
 	NOT_ENOUGH_RESOURCES,
 	UNKNOWN_RESOURCE,
 	NOT_ALLOWED,  ## The player cannot move, turn or sell this item.
+	POPULATION_FULL,
+	UNIT_LIMIT_REACHED,
 }
 
 enum Training {
@@ -41,6 +43,7 @@ enum Production {
 	CANNOT_HURRY,  ## The building is not one that the player can finish with cash.
 	NOT_ENOUGH_CASH,
 	FARM_REMOVED,  ## The player did not have the wood for the farm, so the farm is gone.
+	NO_FREE_TILE,  ## No free tile for the animal that the nursery breeds.
 }
 
 ## Buildings for which the server's "buy" hires no workers, in addition to
@@ -108,6 +111,39 @@ const SUBCAT_BLACKSMITH := 131
 const SUBCAT_UNIVERSITY := 134
 const BLACKSMITH_UNIT_SUBCATS: Array[int] = [78, 79, 80]
 const UNIVERSITY_UNIT_SUBCATS: Array[int] = [81]
+const SUBCAT_SIEGE := 81
+
+## Wild animals, by unit subcat: the unit that the client spawns, how many it
+## keeps on the map, the level from which it spawns, the map race, and the
+## buildings that the animal goes into. A captured horse goes into the training
+## stables, the other animals go into their ranch.
+const WILD_ANIMALS := {
+	74: {"id": 504, "count": 7, "level": 0, "race": "h", "homes": [12, 192, 193]},
+	75: {"id": 505, "count": 7, "level": 0, "race": "h", "homes": [11, 190, 191]},
+	88: {"id": 571, "count": 6, "level": 11, "race": "h", "homes": [227]},
+	90: {"id": 584, "count": 7, "level": 0, "race": "t", "homes": [340, 341, 342]},
+}
+## A unit of the player captures a wild animal at this distance in tiles or nearer.
+const CAPTURE_RANGE := 4
+## The server counts the animals of these kinds at each load of the save
+## (version.check_animals). It does not count boars.
+const COUNTED_ANIMAL_SUBCATS: Array[int] = [74, 75, 88]
+
+## A footman or archer that goes into the training stables takes a horse and
+## becomes this mounted unit.
+const TRAINING_STABLES := 227
+const MOUNTED_UNITS := {509: 512, 510: 513, 511: 514, 539: 541, 516: 572, 517: 515, 518: 573, 540: 574}
+## The nursery breeds a new animal from two animals of the same kind.
+const NURSERY := 226
+const NURSERY_PAIR := 2
+## The altar sacrifices a unit for 1/SELL_DIVISOR of its cost.
+const SACRIFICE_ALTAR := 225
+## Refuges and the fortress keep units. Units in the fortress shoot in battles,
+## which the port does not have yet.
+const SUBCAT_REFUGE := 1311
+const FORTRESS := 469
+## The unit warehouse keeps units outside the map and outside the population.
+const UNIT_WAREHOUSE := 1284
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -138,6 +174,11 @@ var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _config: GameConfig
 var _occupied := PackedByteArray()  # Number of items that cover each tile, row by row.
+# Wild animals that belong to the player: Village.PlacedItem -> true. The save
+# does not keep this. The client gives the player the animals on the owned
+# land when it loads the map, the animals that units capture, and the animals
+# that come out of buildings.
+var _captured: Dictionary = {}
 
 
 ## Returns null and reports an error when the file is missing or not a valid save.
@@ -186,6 +227,8 @@ static func load_from_file(path: String, config: GameConfig, map_index: int = 0)
 			push_warning("Ignored an incorrect item in '%s': %s" % [path, str(entry).left(200)])
 			continue
 		village._add(placed)
+		if village._is_animal(placed) and IsoGrid.land_area_number(placed.tile / IsoGrid.LAND_TILES) in village.owned_land:
+			village._captured[placed] = true
 	return village
 
 
@@ -370,25 +413,29 @@ func rotate(placed: PlacedItem) -> Placement:
 	return Placement.OK
 
 
-## Sells the item, as the server command "sell" does. Changes nothing when the result is not OK.
-func sell(placed: PlacedItem) -> Placement:
+## Sells the item, as the server command "sell" does. The client first takes
+## the units out of the building, see _pop_all(). Changes nothing when the
+## result is not OK.
+func sell(placed: PlacedItem, now: int) -> Placement:
 	if not can_sell(placed):
 		return Placement.NOT_ALLOWED
 	var item := _config.get_item(placed.item_id)
 	var refund := sell_refund(item)
 	if refund > 0:
 		_add_resource(item.cost_type, refund)
+	_pop_all(placed, now)
 	_remove(placed)
 	return Placement.OK
 
 
-## Buildings that produce a resource for the player. Trees and deposits are not
-## included: units collect them. Items that produce potions, units or other
-## special resources are not included yet.
+## Buildings that produce a resource for the player, and the nursery, which
+## produces an animal. Trees and deposits are not included: units collect them.
+## Items that produce potions or other special resources are not included yet.
 func is_producer(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and not item.is_unit() and item.activation > 0 and item.collect > 0 \
-			and RESOURCE_KEYS.has(item.collect_type) and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
+			and (RESOURCE_KEYS.has(item.collect_type) or placed.item_id == NURSERY) \
+			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
 
 
 ## A mill or mine that works only after the player chooses a work time.
@@ -396,9 +443,11 @@ func needs_work_time(placed: PlacedItem) -> bool:
 	return is_producer(placed) and placed.item_id in _config.variable_collect_ids
 
 
-## A building with room for units produces only with a unit in it.
+## A building with room for units produces only with a unit in it, the nursery
+## only with two animals.
 func needs_units(placed: PlacedItem) -> bool:
-	return is_producer(placed) and _config.get_item(placed.item_id).unit_capacity > 0 and units_in(placed).is_empty()
+	var needed := NURSERY_PAIR if placed.item_id == NURSERY else 1
+	return is_producer(placed) and _config.get_item(placed.item_id).unit_capacity > 0 and units_in(placed).size() < needed
 
 
 ## Seconds until the player can collect: 0 when the building is ready, -1 when it
@@ -491,18 +540,27 @@ func hurry(placed: PlacedItem, now: int) -> Production:
 func _collect_now(placed: PlacedItem, now: int) -> Production:
 	var cost := collect_cost(placed)
 	if cost > get_resource("w"):
+		_pop_all(placed, now)
 		_remove(placed)
 		return Production.FARM_REMOVED
 	var item := _config.get_item(placed.item_id)
+	var born := bred_unit(placed)
+	var tile := free_tile_around(_covered_tiles(placed)) if born != null else ANY_TILE
+	if born != null and tile == ANY_TILE:
+		return Production.NO_FREE_TILE
 	_add_resource("w", -cost)
-	_add_resource(item.collect_type, collect_amount(placed))
+	if born == null:
+		_add_resource(item.collect_type, collect_amount(placed))
 	_add_xp(item.collect_xp)
 	placed._entry[4] = now
+	# The client sends "buy" for the new animal, which costs nothing, then "collect_new".
+	if born != null:
+		_add_player_unit(born, tile, 1, now)
 	# The client then sends "activate" with 0, so that the mill or mine stops.
 	placed._entry[7].erase("cp")
 	# A ranch uses one animal for each collection; the client sends "pop_unit"
 	# without a tile, and the animal goes away.
-	if item.subcat_functional == SUBCAT_RANCH:
+	if item.subcat_functional == SUBCAT_RANCH and placed.item_id != NURSERY:
 		_take_unit(placed, 0)
 	return Production.OK
 
@@ -540,9 +598,98 @@ func free_tile_around(area: Rect2i) -> Vector2i:
 
 
 ## A unit that the player commands, as the client decides it from the race.
+## Wild animals belong to the player after a capture, see _captured.
 func is_own_unit(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
-	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL)
+	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL or _captured.has(placed))
+
+
+## An animal that does not belong to the player yet.
+func is_wild_animal(placed: PlacedItem) -> bool:
+	return _is_animal(placed) and not _captured.has(placed)
+
+
+## The unit of the player, at unit_tile, captures the wild animal when it is
+## near, as the client checks for each wild animal. unit_tile is the tile where
+## the unit is now; it can be on its way.
+func can_capture(unit: PlacedItem, unit_tile: Vector2i, animal: PlacedItem) -> bool:
+	return is_own_unit(unit) and unit != animal and is_wild_animal(animal) \
+			and (unit_tile - animal.tile).length_squared() <= CAPTURE_RANGE * CAPTURE_RANGE
+
+
+## The animal belongs to the player from now on. The save does not change.
+func capture(animal: PlacedItem) -> void:
+	if is_wild_animal(animal):
+		_captured[animal] = true
+
+
+## The building nearest to the animal that animals of its kind go into, or null.
+## The client chooses it also when it is full.
+func animal_home(animal: PlacedItem) -> PlacedItem:
+	if not _is_animal(animal):
+		return null
+	var homes: Array = WILD_ANIMALS[_config.get_item(animal.item_id).subcat_functional]["homes"]
+	var nearest: PlacedItem = null
+	for placed in items:
+		if placed.item_id in homes and (nearest == null or (placed.tile - animal.tile).length_squared() < (nearest.tile - animal.tile).length_squared()):
+			nearest = placed
+	return nearest
+
+
+## The town hall, or null.
+func town_hall() -> PlacedItem:
+	for placed in items:
+		var item := _config.get_item(placed.item_id)
+		if item != null and item.subcat_functional == ConstructionLimits.SUBCAT_TOWNHALL:
+			return placed
+	return null
+
+
+## Adds the wild animals that the map needs, as the client does when it loads
+## the map. The server first counts the animals of the save into
+## privateState.arrayAnimals. The client then spawns each kind until the map
+## has its number, but only up to GameConfig.animals_per_day minus that count.
+## It sends "buy" without cost for each animal and "admin_add_animal", which
+## adds to the count. The animals spawn on land that the player does not own.
+## Returns the new animals.
+func spawn_animals(now: int, rng: RandomNumberGenerator) -> Array[PlacedItem]:
+	var counts := {}
+	for subcat in COUNTED_ANIMAL_SUBCATS:
+		counts[str(subcat)] = 0
+	for game_map: Variant in _document["maps"]:
+		for entry: Variant in game_map.get("items", []) if game_map is Dictionary else []:
+			if not (entry is Array and entry.size() >= 7 and entry[6] is Array):
+				continue
+			for id: Variant in [entry[0]] + entry[6]:
+				var item := _config.get_item(int(id)) if id is int or id is float else null
+				if item != null and item.subcat_functional in COUNTED_ANIMAL_SUBCATS:
+					counts[str(item.subcat_functional)] += 1
+	_document["privateState"]["arrayAnimals"] = counts
+	var areas: Array[int] = []
+	for number in range(1, IsoGrid.LAND_AREAS * IsoGrid.LAND_AREAS + 1):
+		if not number in owned_land:
+			areas.append(number)
+	var result: Array[PlacedItem] = []
+	for subcat: int in WILD_ANIMALS:
+		var kind: Dictionary = WILD_ANIMALS[subcat]
+		var animal := _config.get_item(kind["id"])
+		if kind["race"] != race or get_level() < kind["level"] or animal == null or areas.is_empty():
+			continue
+		var on_map := items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == animal.id).size()
+		var amount := mini(maxi(kind["count"] - on_map, 0), _config.animals_per_day - int(counts.get(str(subcat), 0)))
+		for i in amount:
+			var number := areas[rng.randi_range(0, areas.size() - 1)]
+			var area := Vector2i((number - 1) % IsoGrid.LAND_AREAS, (number - 1) / IsoGrid.LAND_AREAS)
+			var tile := area * IsoGrid.LAND_TILES + Vector2i(rng.randi_range(0, IsoGrid.LAND_TILES - 1), rng.randi_range(0, IsoGrid.LAND_TILES - 1))
+			if not is_free(tile):
+				tile = free_tile_around(Rect2i(tile, Vector2i.ONE))
+			if tile == ANY_TILE:
+				break
+			_add_xp(animal.xp)
+			_register_unit(animal.id)
+			result.append(_add_entry(animal, tile, 0, now, {}))
+			counts[str(subcat)] = int(counts.get(str(subcat), 0)) + 1
+	return result
 
 
 ## Moves a unit to a free tile and gives it the direction frame (1 to 8), as the
@@ -561,30 +708,80 @@ func move_unit(unit: PlacedItem, tile: Vector2i, frame: int) -> Placement:
 	return Placement.OK
 
 
-## Peasants of the player work in mines, mills and farms. The building must
-## have room. Animals are neutral: in the client they go into a ranch after a
-## unit of the player captures them, which the port does not have yet.
+## The units that go into a building of the player, in the order in which the
+## client checks them. The building must have room, except for mounting (see
+## can_mount). Any unit goes into a refuge or the unit warehouse; peasants go
+## into mines, mills and farms; captured animals go into their ranch or, for
+## horses, the training stables; the nursery takes two animals of one kind; the
+## altar takes all units except siege units; the fortress takes units that
+## shoot.
 func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
 	var unit_item := _config.get_item(unit.item_id)
 	var building_item := _config.get_item(building.item_id)
 	if not is_own_unit(unit) or building_item == null or building_item.is_unit():
 		return false
-	if units_in(building).size() >= building_item.unit_capacity:
+	if can_mount(unit, building):
+		return true
+	# The units in the warehouse are not in the building entry; the warehouse has its own capacity.
+	if building.item_id == UNIT_WAREHOUSE:
+		return warehoused_count() < warehouse_capacity()
+	var inside := units_in(building)
+	if inside.size() >= building_item.unit_capacity:
 		return false
-	return unit_item.subcat_functional == SUBCAT_PEASANT and building_item.subcat_functional in PEASANT_BUILDING_SUBCATS
+	if building_item.subcat_functional == SUBCAT_REFUGE:
+		return true
+	if building.item_id == NURSERY:
+		return _is_animal(unit) and (inside.is_empty() or inside[0] == unit.item_id)
+	if building.item_id == SACRIFICE_ALTAR:
+		return unit_item.subcat_functional != SUBCAT_SIEGE
+	if unit_item.subcat_functional == SUBCAT_PEASANT:
+		return building_item.subcat_functional in PEASANT_BUILDING_SUBCATS
+	if _is_animal(unit):
+		return building.item_id in WILD_ANIMALS[unit_item.subcat_functional]["homes"]
+	if building.item_id == FORTRESS:
+		return unit_item.attack_range > 1 and unit_item.subcat_functional != SUBCAT_SIEGE
+	return false
 
 
-## Puts the unit into the building, as the server command "push_unit" does. The
-## client starts the production time when the first unit comes in, so the port
-## sets the time of the building then. The server does not change it.
+## Puts the unit into the building, as the server command "push_unit" does, or
+## into the unit warehouse, as "add_unit_warehouse" does. The client starts the
+## time of a building when the first unit comes in (in the nursery, the second),
+## so the port sets the time of the building then. The server does not change it.
 func push_unit(unit: PlacedItem, building: PlacedItem, now: int) -> Placement:
-	if not can_enter(unit, building):
+	if not can_enter(unit, building) or can_mount(unit, building):
 		return Placement.NOT_ALLOWED
-	if units_in(building).is_empty():
+	if building.item_id == UNIT_WAREHOUSE:
+		var stored := _warehoused()
+		stored[str(unit.item_id)] = int(stored.get(str(unit.item_id), 0)) + 1
+		_remove(unit)
+		return Placement.OK
+	var starting_count := NURSERY_PAIR - 1 if building.item_id == NURSERY else 0
+	if _config.get_item(building.item_id).activation > 0 and units_in(building).size() == starting_count:
 		building._entry[4] = now
 	building._entry[6].append(unit.item_id)
 	_remove(unit)
 	return Placement.OK
+
+
+## A footman or archer of the player mounts a horse in the training stables.
+func can_mount(unit: PlacedItem, building: PlacedItem) -> bool:
+	return building.item_id == TRAINING_STABLES and is_own_unit(unit) and MOUNTED_UNITS.has(unit.item_id) \
+			and not units_in(building).is_empty()
+
+
+## The unit takes the first horse of the training stables and becomes a mounted
+## unit on the tile, as the client does with the server commands "pop_unit"
+## without a tile (the horse goes away), "sell" without refund (the unit) and
+## "buy" without cost (the mounted unit). Returns the mounted unit, or null.
+func mount(unit: PlacedItem, stables: PlacedItem, tile: Vector2i, now: int) -> PlacedItem:
+	if not can_mount(unit, stables) or not is_free(tile, unit):
+		return null
+	var horse := _take_unit(stables, 0)
+	_register_unit(horse)
+	_remove(unit)
+	var mounted := _config.get_item(MOUNTED_UNITS[unit.item_id])
+	_add_xp(mounted.xp)
+	return _add_player_unit(mounted, tile, 1, now)
 
 
 ## Takes the unit units_in(building)[index] out of the building to the nearest
@@ -599,8 +796,89 @@ func pop_unit(building: PlacedItem, index: int, now: int) -> PlacedItem:
 	if units_in(building).is_empty() and _work_time(building) > 0:
 		building._entry[7].erase("cp")
 		building._entry[4] = now
-	_register_unit(unit_id)
-	return _add_entry(_config.get_item(unit_id), tile, 0, now, {})
+	return _add_player_unit(_config.get_item(unit_id), tile, 0, now)
+
+
+## The animal that the nursery breeds when it is ready, or null for other buildings.
+func bred_unit(building: PlacedItem) -> GameConfig.ItemDef:
+	var inside := units_in(building)
+	return _config.get_item(inside[0]) if building.item_id == NURSERY and inside.size() >= NURSERY_PAIR else null
+
+
+## Sacrifices the unit in the altar when the time of the altar is over, as the
+## client does with the server command "pop_sell": the unit goes away and gives
+## back what selling it gives. Returns the unit, or null.
+func complete_sacrifice(altar: PlacedItem, now: int) -> GameConfig.ItemDef:
+	if altar.item_id != SACRIFICE_ALTAR or units_in(altar).is_empty() \
+			or now - float(altar._entry[4]) < _config.get_item(altar.item_id).activation:
+		return null
+	var unit := _config.get_item(_take_unit(altar, 0))
+	var refund := sell_refund(unit)
+	if refund > 0:
+		_add_resource(unit.cost_type, refund)
+	return unit
+
+
+## The units in the unit warehouse of the map: item id -> number.
+func warehoused_units() -> Dictionary:
+	var result := {}
+	for key: Variant in _warehoused():
+		var unit := _config.get_item(int(str(key))) if str(key).is_valid_int() else null
+		var count: Variant = _warehoused()[key]
+		if unit != null and unit.is_unit() and (count is int or count is float) and int(count) > 0:
+			result[unit.id] = int(count)
+	return result
+
+
+func warehoused_count() -> int:
+	var total := 0
+	for count: int in warehoused_units().values():
+		total += count
+	return total
+
+
+## The number of units that the warehouse holds. The server keeps it in "warehouseAditionalCapacitySingle".
+func warehouse_capacity() -> int:
+	var capacity: Variant = _map.get("warehouseAditionalCapacitySingle")
+	return int(capacity) if capacity is int or capacity is float else _config.warehouse_start_capacity
+
+
+## Pays GameConfig.warehouse_slot_price cash for one more place in the
+## warehouse, as the server command "buy_warehouse_capacity_single" does.
+func buy_warehouse_slot() -> Placement:
+	if warehouse_capacity() >= _config.warehouse_max_capacity:
+		return Placement.MAX_COUNT_REACHED
+	if get_resource("c") < _config.warehouse_slot_price:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -_config.warehouse_slot_price)
+	_map["warehouseAditionalCapacitySingle"] = warehouse_capacity() + 1
+	return Placement.OK
+
+
+## Takes a unit out of the unit warehouse to the free tile nearest to the
+## warehouse building, as the server command "place_warehoused_item" does. The
+## unit must fit in the population and the unit limit. Changes nothing when the
+## result is not OK.
+func place_warehoused(warehouse: PlacedItem, unit_id: int, now: int) -> Placement:
+	if warehouse.item_id != UNIT_WAREHOUSE or not warehoused_units().has(unit_id):
+		return Placement.NOT_ALLOWED
+	var unit := _config.get_item(unit_id)
+	if unit.units_limit > 0 and _unit_count(unit_id) >= unit.units_limit:
+		return Placement.UNIT_LIMIT_REACHED
+	if population() + unit.population > max_population():
+		return Placement.POPULATION_FULL
+	var tile := free_tile_around(_covered_tiles(warehouse))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	var stored := _warehoused()
+	for key: Variant in stored.keys():
+		if str(key) == str(unit_id):
+			stored[key] = int(stored[key]) - 1
+			if int(stored[key]) <= 0:
+				stored.erase(key)
+			break
+	_add_player_unit(unit, tile, 0, now)
+	return Placement.OK
 
 
 ## A peasant can harvest trees, stone and gold.
@@ -739,13 +1017,8 @@ func train(building: PlacedItem, now: int) -> Training:
 		return Training.QUEUE_FULL
 	if population() + unit.population > max_population():
 		return Training.POPULATION_FULL
-	if unit.units_limit > 0:
-		var count := items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == unit.id).size()
-		for other: Dictionary in _queues().values():
-			if int(other.get("unit", 0)) == unit.id:
-				count += int(other.get("amount", 0))
-		if count >= unit.units_limit:
-			return Training.UNIT_LIMIT_REACHED
+	if unit.units_limit > 0 and _unit_count(unit.id) >= unit.units_limit:
+		return Training.UNIT_LIMIT_REACHED
 	var costs := training_costs(unit)
 	for code: String in costs:
 		if get_resource(code) < costs[code]:
@@ -790,8 +1063,7 @@ func complete_training(building: PlacedItem, now: int) -> PlacedItem:
 		_queues().erase(building._entry[7]["bq"])
 		building._entry[7].erase("bq")
 	_add_xp(unit.xp)
-	_register_unit(unit.id)
-	return _add_entry(unit, tile, 0, now, {})
+	return _add_player_unit(unit, tile, 0, now)
 
 
 ## Writes the save to a temporary file, keeps the old file as <path>.bak, then
@@ -909,6 +1181,45 @@ func _take_unit(building: PlacedItem, index: int) -> int:
 	return unit_id
 
 
+## The units of this kind on the map and in training queues, for the unit limit.
+func _unit_count(unit_id: int) -> int:
+	var count := items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == unit_id).size()
+	for queue: Dictionary in _queues().values():
+		if int(queue.get("unit", 0)) == unit_id:
+			count += int(queue.get("amount", 0))
+	return count
+
+
+## Takes all units out of the building, as the client does before it removes a
+## building. A unit for which no tile is free goes away with the building.
+func _pop_all(building: PlacedItem, now: int) -> void:
+	while not units_in(building).is_empty() and pop_unit(building, 0, now) != null:
+		pass
+
+
+func _is_animal(placed: PlacedItem) -> bool:
+	var item := _config.get_item(placed.item_id)
+	return item != null and item.is_unit() and WILD_ANIMALS.has(item.subcat_functional)
+
+
+## The unit warehouse of the map, as the server keeps it: item id (text) -> number.
+func _warehoused() -> Dictionary:
+	if not _map.get("warehousedUnits") is Dictionary:
+		_map["warehousedUnits"] = {}
+	return _map["warehousedUnits"]
+
+
+## Adds a unit that comes to the player: trained, out of a building, bred or
+## mounted. The server registers it, and the client gives it to the player,
+## also when it is an animal.
+func _add_player_unit(unit: GameConfig.ItemDef, tile: Vector2i, frame: int, now: int) -> PlacedItem:
+	_register_unit(unit.id)
+	var placed := _add_entry(unit, tile, frame, now, {})
+	if _is_animal(placed):
+		_captured[placed] = true
+	return placed
+
+
 ## The server keeps a list of the units of the player's race that the player had.
 func _register_unit(unit_id: int) -> void:
 	if _config.get_item(unit_id).race == ("h" if race == "t" else "t"):
@@ -966,6 +1277,7 @@ func _set_frame(placed: PlacedItem, frame: int) -> void:
 
 
 func _remove(placed: PlacedItem) -> void:
+	_captured.erase(placed)
 	_mark_occupied(placed, -1)
 	items.erase(placed)
 	_map["items"].erase(placed._entry)

@@ -18,7 +18,7 @@ var _store: Store
 var _store_key := []  # Level and rotation period of the build menu; it changes with them.
 var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
 var _orders: UnitOrders
-var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again.
+var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again, places of new animals.
 
 
 func _ready() -> void:
@@ -58,7 +58,13 @@ func _ready() -> void:
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
 		_hud.train_requested.connect(_on_train_requested)
 		_hud.unit_out_requested.connect(_on_unit_out_requested)
+		_hud.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
+		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
 		add_child(_hud)
+		# The client spawns the wild animals when it loads the map.
+		if not _village.spawn_animals(_now(), _rng).is_empty():
+			_view.sync_items()
+			_save()
 		_update_store()
 		var clock := Timer.new()
 		clock.timeout.connect(_on_clock)
@@ -106,7 +112,18 @@ func _select(placed: Village.PlacedItem) -> void:
 			names.append(_config.get_item(id).name)
 	_hud.show_units(names)
 	if placed != null and _village.is_own_unit(placed):
-		_hud.show_message("%s: click a place to walk, a building to work in it, or a tree, stone or gold to harvest it." % item.name)
+		_hud.show_message("%s: click a place to walk, a building to go into it, or a tree, stone or gold to harvest it." % item.name)
+	elif placed != null and _village.is_wild_animal(placed):
+		_hud.show_message("A wild %s. Walk one of your units near it to capture it." % item.name)
+	if placed != null and placed.item_id == Village.UNIT_WAREHOUSE:
+		var stored := []
+		var units := _village.warehoused_units()
+		for id: int in units:
+			stored.append([id, _config.get_item(id).name, units[id]])
+		var price := _config.warehouse_slot_price if _village.warehouse_capacity() < _config.warehouse_max_capacity else 0
+		_hud.show_warehouse(stored, _village.warehoused_count(), _village.warehouse_capacity(), price)
+	else:
+		_hud.show_warehouse(null, 0, 0, 0)
 	_update_production()
 
 
@@ -120,6 +137,12 @@ func _on_clock() -> void:
 			_view.add_placed(unit)
 			_hud.show_message("%s is trained." % _config.get_item(unit.item_id).name)
 			unit = _village.complete_training(placed, now)
+		var victim := _village.complete_sacrifice(placed, now)
+		if victim != null:
+			changed = true
+			if placed == _selected:
+				_select(placed)
+			_hud.show_message("%s was sacrificed. You get %d %s." % [victim.name, Village.sell_refund(victim), VillageHud.RESOURCE_NAMES.get(victim.cost_type, victim.cost_type)])
 	for change: Array in _village.regrow(now, _rng):
 		changed = true
 		_view.remove_placed(change[0])
@@ -201,9 +224,15 @@ func _update_production() -> void:
 	var now := _now()
 	_view.update_production(now)
 	if _selected == null or not _village.is_producer(_selected):
-		_hud.show_production(null, 0, 0, 0, false, false)
+		_hud.show_production(null, 0, "", 0, false, "")
 	else:
-		_hud.show_production(_config.get_item(_selected.item_id), _village.seconds_to_ready(_selected, now), _village.collect_amount(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), _village.needs_units(_selected))
+		var item := _config.get_item(_selected.item_id)
+		var requirement := ""
+		if _selected.item_id == Village.NURSERY and _village.needs_units(_selected):
+			requirement = "Breeds a new animal from two animals of the same kind. Select a captured animal, then click the nursery."
+		elif _village.needs_units(_selected):
+			requirement = "Works only with a unit in it. Select a unit, then click the building."
+		_hud.show_production(item, _village.seconds_to_ready(_selected, now), _product_text(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), requirement)
 	var unit := _village.trained_unit(_selected) if _selected != null else null
 	if unit == null:
 		_hud.show_training(null, {}, 0, -1)
@@ -211,21 +240,31 @@ func _update_production() -> void:
 		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now))
 
 
+## What a collection from the producing building gives, for example "250 food" or "1 Sheep".
+func _product_text(placed: Village.PlacedItem) -> String:
+	var born := _village.bred_unit(placed)
+	if born != null:
+		return "1 %s" % born.name
+	var collect_type := _config.get_item(placed.item_id).collect_type
+	return "%d %s" % [_village.collect_amount(placed), VillageHud.RESOURCE_NAMES.get(collect_type, collect_type)]
+
+
 ## With hurry, the player pays cash to collect before the building is ready.
 func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	var item := _config.get_item(placed.item_id)
 	var old_level := _village.get_level()
-	var amount := _village.collect_amount(placed)
+	var product := _product_text(placed)
 	var cost := _village.collect_cost(placed)
 	var cash_before := _village.get_resource("c")
 	var result := _village.hurry(placed, _now()) if hurry else _village.collect(placed, _now())
 	match result:
 		Village.Production.OK:
+			_view.sync_items()
 			_update_production()
 		Village.Production.FARM_REMOVED:
 			if _selected == placed:
 				_select(null)
-			_view.remove_placed(placed)
+			_view.sync_items()
 		Village.Production.NOT_READY:
 			_hud.show_message("%s is not ready." % item.name)
 			return
@@ -234,6 +273,9 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 			return
 		Village.Production.NOT_ENOUGH_CASH:
 			_hud.show_message("You need %d cash to finish %s now." % [Village.HURRY_COST, item.name])
+			return
+		Village.Production.NO_FREE_TILE:
+			_hud.show_message("There is no free place next to %s for the new animal." % item.name)
 			return
 		_:
 			_hud.show_message("%s does not produce now." % item.name)
@@ -244,7 +286,7 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	if result == Village.Production.FARM_REMOVED:
 		_hud.show_message("%s needs %d wood to collect. You do not have it, so the farm is gone." % [item.name, cost])
 	else:
-		var text := "Collected %d %s from %s." % [amount, VillageHud.RESOURCE_NAMES.get(item.collect_type, item.collect_type), item.name]
+		var text := "Collected %s from %s." % [product, item.name]
 		if cost > 0:
 			text += " It cost %d wood." % cost
 		if cash_before > _village.get_resource("c"):
@@ -289,15 +331,42 @@ func _on_sell_confirmed() -> void:
 		return
 	var placed := _selected
 	var item := _config.get_item(placed.item_id)
-	var result := _village.sell(placed)
+	var result := _village.sell(placed, _now())
 	if result != Village.Placement.OK:
 		_hud.show_placement_result(result)
 		return
 	_select(null)
-	_view.remove_placed(placed)
+	_view.sync_items()
 	_update_store()
 	if _save():
 		_hud.show_message("Sold %s." % item.name)
+
+
+func _on_warehouse_unit_out_requested(unit_id: int) -> void:
+	if _selected == null:
+		return
+	var result := _village.place_warehoused(_selected, unit_id, _now())
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_view.sync_items()
+	_select(_selected)
+	_update_store()
+	if _save():
+		_hud.show_message("%s came out of the warehouse." % _config.get_item(unit_id).name)
+
+
+func _on_warehouse_slot_requested() -> void:
+	if _selected == null:
+		return
+	var result := _village.buy_warehouse_slot()
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_select(_selected)
+	_update_store()
+	if _save():
+		_hud.show_message("The warehouse has %d places now." % _village.warehouse_capacity())
 
 
 func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> void:

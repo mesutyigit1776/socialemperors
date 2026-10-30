@@ -19,6 +19,10 @@ signal work_time_chosen(work_time: int)
 signal train_requested
 ## The player wants to take Village.units_in(selected)[index] out of the selected building.
 signal unit_out_requested(index: int)
+## The player wants to take a unit with this item id out of the unit warehouse.
+signal warehouse_unit_out_requested(unit_id: int)
+## The player wants to buy one more place in the unit warehouse.
+signal warehouse_slot_requested
 
 const PANEL_WIDTH := 340
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash"}
@@ -34,6 +38,8 @@ const PLACEMENT_MESSAGES := {
 	Village.Placement.NOT_ENOUGH_RESOURCES: "You do not have enough resources.",
 	Village.Placement.UNKNOWN_RESOURCE: "This item has a cost type that the port does not support yet.",
 	Village.Placement.NOT_ALLOWED: "You cannot do this with this item.",
+	Village.Placement.POPULATION_FULL: "The population is full. Build houses for more population.",
+	Village.Placement.UNIT_LIMIT_REACHED: "You have the maximum number of this unit.",
 }
 
 var _resources := Label.new()
@@ -57,6 +63,10 @@ var _units := HFlowContainer.new()
 var _training := HBoxContainer.new()
 var _training_text := Label.new()
 var _train_button := Button.new()
+var _warehouse := VBoxContainer.new()
+var _warehouse_text := Label.new()
+var _warehouse_units := HFlowContainer.new()
+var _warehouse_slot_button := Button.new()
 
 
 func _init() -> void:
@@ -117,6 +127,12 @@ func _init() -> void:
 	_training.add_child(_train_button)
 	_training.visible = false
 	column.add_child(_training)
+	_warehouse_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_warehouse_slot_button.pressed.connect(func() -> void: warehouse_slot_requested.emit())
+	for control: Control in [_warehouse_text, _warehouse_units, _warehouse_slot_button]:
+		_warehouse.add_child(control)
+	_warehouse.visible = false
+	column.add_child(_warehouse)
 	add_child(_sell_dialog)
 	add_child(panel)
 	_category.item_selected.connect(_show_category)
@@ -188,24 +204,24 @@ func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, ca
 
 
 ## Shows the production of the selected building. item is null when the
-## selection does not produce. seconds_left is -1 when the building needs a
-## unit (needs_units) or a work time.
-func show_production(item: GameConfig.ItemDef, seconds_left: float, amount: int, wood_cost: int, can_hurry: bool, needs_units: bool) -> void:
+## selection does not produce. product is what a collection gives, for example
+## "250 food". requirement tells which units the building needs, or is empty;
+## seconds_left is -1 when the building needs units or a work time.
+func show_production(item: GameConfig.ItemDef, seconds_left: float, product: String, wood_cost: int, can_hurry: bool, requirement: String) -> void:
 	_production.visible = item != null
-	_work_times.visible = item != null and seconds_left < 0 and not needs_units
+	_work_times.visible = item != null and seconds_left < 0 and requirement.is_empty()
 	if item == null:
 		return
-	var resource: String = RESOURCE_NAMES.get(item.collect_type, item.collect_type)
 	_collect_button.visible = seconds_left == 0
 	_hurry_button.visible = can_hurry
-	if needs_units:
-		_production_text.text = "Works only with a unit in it. Select a unit, then click the building."
+	if not requirement.is_empty():
+		_production_text.text = requirement
 	elif seconds_left < 0:
 		_production_text.text = "Choose a work time:"
 	elif seconds_left > 0:
-		_production_text.text = "%d %s in %s" % [amount, resource, _duration(seconds_left)]
+		_production_text.text = "%s in %s" % [product, _duration(seconds_left)]
 	else:
-		_production_text.text = "Ready: %d %s" % [amount, resource]
+		_production_text.text = "Ready: %s" % product
 	if wood_cost > 0 and seconds_left >= 0:
 		_production_text.text += ", costs %d wood" % wood_cost
 
@@ -221,6 +237,26 @@ func show_units(names: Array[String]) -> void:
 		button.text = "Take out %s" % names[index]
 		button.pressed.connect(func() -> void: unit_out_requested.emit(index))
 		_units.add_child(button)
+
+
+## Shows the unit warehouse when the player selected it. units is a list of
+## [item id, name, number]; it is null when the selection is not the warehouse.
+## slot_price is 0 when the player cannot buy more places.
+func show_warehouse(units: Variant, used: int, capacity: int, slot_price: int) -> void:
+	for child in _warehouse_units.get_children():
+		child.queue_free()
+	_warehouse.visible = units != null
+	if units == null:
+		return
+	_warehouse_text.text = "Unit Warehouse: %d of %d places used. Units here do not count for the population. Send a unit in by selecting it and clicking the warehouse." % [used, capacity]
+	for entry: Array in units:
+		var button := Button.new()
+		button.text = "Take out %s (%d)" % [entry[1], entry[2]]
+		var unit_id: int = entry[0]
+		button.pressed.connect(func() -> void: warehouse_unit_out_requested.emit(unit_id))
+		_warehouse_units.add_child(button)
+	_warehouse_slot_button.visible = slot_price > 0
+	_warehouse_slot_button.text = "Buy 1 more place for %d cash" % slot_price
 
 
 ## Shows the training of the selected building. unit is null when the building

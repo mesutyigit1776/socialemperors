@@ -29,6 +29,9 @@ const SHEEP := 505
 ## Free tiles in land area 12 for the units of the fixtures, away from the
 ## first tiles where _buy_free puts buildings.
 const UNIT_TILES: Array[Vector2i] = [Vector2i(21, 58), Vector2i(22, 58), Vector2i(23, 58), Vector2i(24, 58), Vector2i(25, 58)]
+## A free tile in land area 14, which the fixtures do not own. An animal there is
+## wild; the client gives the animals on owned land to the player.
+const WILD_TILE := Vector2i(65, 58)
 const RESTAURANT := 232  # collect building: 8 h, 570 gold
 const CHICHEN_ITZA := 52  # wonder without population: 6 h, 600 gold
 const SAINT_BASIL := 261  # wonder that does not produce
@@ -44,12 +47,25 @@ const CHURCH := 24  # trains healers; a map can have 5
 const HEALER := 502
 const BLACKSMITH := 22
 const SPEARMAN := 509  # 30 gold
+const LIGHT_ARCHER := 516  # shoots at 5 tiles
+const LIGHT_KNIGHT := 512  # a spearman on a horse; 8 XP
+const CATAPULT := 521  # siege unit
+const COW := 504
+const HORSE := 571
+const BOAR := 584
+const TRAINING_STABLES := 227
+const SACRIFICE_ALTAR := 225  # 1.08 seconds
+const SMALL_REFUGE := 151  # 2 units
+const FORTRESS := 469
+const UNIT_WAREHOUSE := 1284
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
 const KNIGHT_TILE := Vector2i(50, 44)
 const HOUSE_TILE := Vector2i(44, 50)
 const TOWER_TILE := Vector2i(51, 47)
+## The time for the units that come out of sold buildings, where the time does not matter.
+const NOW := 1800000000
 
 var _config: GameConfig
 var _data_dir: String
@@ -77,7 +93,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_animals, _check_unit_buildings]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -210,10 +226,10 @@ func _check_move_and_sell() -> bool:
 
 	var town_hall := village.item_at(TOWN_HALL_TILE)
 	_check(village.can_move(town_hall) and not village.can_sell(town_hall), "the town hall can move but cannot be sold")
-	_check(village.sell(town_hall) == Village.Placement.NOT_ALLOWED, "selling the town hall is not allowed")
+	_check(village.sell(town_hall, NOW) == Village.Placement.NOT_ALLOWED, "selling the town hall is not allowed")
 	var tree := village.item_at(TREE_TILE)
 	_check(village.move(tree, Vector2i(41, 41)) == Village.Placement.NOT_ALLOWED, "a tree cannot move")
-	_check(village.sell(tree) == Village.Placement.NOT_ALLOWED, "a tree cannot be sold")
+	_check(village.sell(tree, NOW) == Village.Placement.NOT_ALLOWED, "a tree cannot be sold")
 	var knight := village.item_at(KNIGHT_TILE)
 	_check(village.move(knight, Vector2i(41, 41)) == Village.Placement.NOT_ALLOWED, "a unit cannot move with the move tool")
 
@@ -235,16 +251,16 @@ func _check_move_and_sell() -> bool:
 	_check(village.item_at(TOWER_TILE) == null and village.item_at(free_13) == tower_13, "the moved tower is only at its new tile")
 
 	var wood := village.get_resource("w")
-	_check(village.sell(house) == Village.Placement.OK, "a house can be sold")
+	_check(village.sell(house, NOW) == Village.Placement.OK, "a house can be sold")
 	_expect("after selling a house (30 wood)", village, {"w": wood + 1})
 	_check(village.check_location(_config.get_item(GREEN_TREE), HOUSE_TILE) == Village.Placement.OK, "the tile of a sold item is free")
 	_buy_free(village, MARKET, area_12, Village.Placement.OK)
 	wood = village.get_resource("w")
-	_check(village.sell(village.items.back()) == Village.Placement.OK, "a market can be sold")
+	_check(village.sell(village.items.back(), NOW) == Village.Placement.OK, "a market can be sold")
 	_expect("after selling a market (350 wood)", village, {"w": wood + 17})
 	_buy_free(village, BATHS, area_12, Village.Placement.OK)
 	var cash := village.get_resource("c")
-	_check(village.sell(village.items.back()) == Village.Placement.OK, "the baths can be sold")
+	_check(village.sell(village.items.back(), NOW) == Village.Placement.OK, "the baths can be sold")
 	_expect("after selling the baths (6 cash)", village, {"c": cash})
 
 	_check(village.save_to_file(path) == OK, "the village after moves and sales saves")
@@ -293,8 +309,9 @@ func _check_rotation() -> bool:
 func _check_production() -> bool:
 	const T := 1800000000
 	var units: Array = _initial["maps"][0]["items"].duplicate(true)
-	for i in UNIT_TILES.size():
-		units.append([VILLAGER if i < 3 else SHEEP, UNIT_TILES[i].x, UNIT_TILES[i].y, 0, T, 0, [], {}])
+	for i in 3:
+		units.append([VILLAGER, UNIT_TILES[i].x, UNIT_TILES[i].y, 0, T, 0, [], {}])
+	units.append([SHEEP, WILD_TILE.x, WILD_TILE.y, 0, T, 0, [], {}])
 	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": units}
 	var path := _write_fixture("production", 100, HIGHEST_LEVEL_XP, 100000, plenty)
 	var village := Village.load_from_file(path, _config)
@@ -326,7 +343,7 @@ func _check_production() -> bool:
 	_check(village.buy(_config.get_item(SHEEP_RANCH_I), ranch_tile, T) == Village.Placement.OK, "a sheep ranch is bought")
 	var ranch: Village.PlacedItem = village.items.back()
 	_check(village.collect(ranch, T + 90) == Village.Production.NO_UNITS, "a ranch without animals does not produce")
-	_check(not village.can_enter(village.item_at(UNIT_TILES[3]), ranch), "the player cannot send a wild sheep into the ranch")
+	_check(not village.can_enter(village.item_at(WILD_TILE), ranch), "the player cannot send a wild sheep into the ranch")
 
 	# A farm costs a third of its amount in wood.
 	var farm_tile := _free_tile(village, PUMPKIN_CROP, area_12)
@@ -339,7 +356,7 @@ func _check_production() -> bool:
 	_check(village.collect(farm, T + 33) == Village.Production.OK, "the farm is collected")
 	_expect("after the farm", village, {"w": wood - 8, "f": food + 25})
 
-	_check(village.sell(ranch) == Village.Placement.OK, "a producing building can be sold")
+	_check(village.sell(ranch, T) == Village.Placement.OK, "a producing building can be sold")
 	_check(village.save_to_file(path) == OK, "the village after the collections saves")
 	var saved := {}
 	for entry: Array in JSON.parse_string(FileAccess.get_file_as_string(path))["maps"][0]["items"]:
@@ -371,7 +388,9 @@ func _check_production() -> bool:
 	_check(village.units_in(ranch) == [SHEEP], "the ranch used one sheep for the collection")
 	var count := village.items.size()
 	_check(village.collect(farm, T + 100) == Village.Production.FARM_REMOVED, "a farm without enough wood is removed")
-	_check(village.items.size() == count - 1 and village.item_at(Vector2i(30, 45)) == null, "the removed farm is not on the map")
+	# The client takes the farmer out before it removes the farm.
+	_check(village.items.size() == count and village.item_at(Vector2i(30, 45)) == null, "the removed farm is not on the map")
+	_check(village.items.back().item_id == VILLAGER and village.is_own_unit(village.items.back()), "the farmer of the removed farm comes out")
 	_expect("after the removed farm", village, {"w": 7})
 	return true
 
@@ -420,14 +439,14 @@ func _check_units() -> bool:
 	var items: Array = _initial["maps"][0]["items"].duplicate(true)
 	for tile in UNIT_TILES.slice(0, 3):
 		items.append([VILLAGER, tile.x, tile.y, 0, T, 0, [], {}])
-	items.append([SHEEP, UNIT_TILES[3].x, UNIT_TILES[3].y, 0, T, 0, [], {}])
+	items.append([SHEEP, WILD_TILE.x, WILD_TILE.y, 0, T, 0, [], {}])
 	items.append([GOLD_DEPOSIT, 30, 50, 0, T, 0, [], {}])
 	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
 	var path := _write_fixture("units", 20, _config.levels[19].exp_required, 100000, plenty)
 	var village := Village.load_from_file(path, _config)
 	var area_12 := Rect2i(20, 40, 20, 20)
 	var villager := village.item_at(UNIT_TILES[0])
-	var sheep := village.item_at(UNIT_TILES[3])
+	var sheep := village.item_at(WILD_TILE)
 
 	var gold := village.get_resource("g")
 	var regrowth := village.harvest(village.item_at(Vector2i(30, 50)), 1, T + 50)
@@ -543,6 +562,184 @@ func _check_training() -> bool:
 	var poor := _write_fixture("training_poor", 20, 20000, 100000, {"food": 49})
 	village = Village.load_from_file(poor, _config)
 	_check(village.train(village.item_at(TOWN_HALL_TILE), T) == Village.Training.NOT_ENOUGH_RESOURCES, "training needs the resources")
+	return true
+
+
+## Wild animals: who owns them, the capture, the building that they go into,
+## and the animals that the client spawns when it loads the map.
+func _check_animals() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([SHEEP, WILD_TILE.x, WILD_TILE.y, 0, T, 0, [], {}])
+	items.append([SHEEP, WILD_TILE.x + 1, WILD_TILE.y, 0, T, 0, [], {}])
+	items.append([SHEEP, UNIT_TILES[0].x, UNIT_TILES[0].y, 0, T, 0, [], {}])
+	items.append([VILLAGER, UNIT_TILES[1].x, UNIT_TILES[1].y, 0, T, 0, [], {}])
+	items.append([SHEEP_RANCH_I, 37, 55, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
+	var path := _write_fixture("animals", 11, _config.levels[10].exp_required, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var wild := village.item_at(WILD_TILE)
+	var other_wild := village.item_at(WILD_TILE + Vector2i(1, 0))
+	var tame := village.item_at(UNIT_TILES[0])
+	var villager := village.item_at(UNIT_TILES[1])
+	var ranch := village.item_at(Vector2i(37, 55))
+	_check(village.is_wild_animal(wild) and not village.is_own_unit(wild), "a sheep on land that the player does not own is wild")
+	_check(village.is_own_unit(tame) and not village.is_wild_animal(tame), "a sheep on owned land belongs to the player, as in the client")
+	_check(village.can_capture(villager, WILD_TILE + Vector2i(4, 0), wild) and village.can_capture(villager, WILD_TILE + Vector2i(0, -4), wild), "a unit captures an animal at 4 tiles")
+	_check(not village.can_capture(villager, WILD_TILE + Vector2i(5, 0), wild) and not village.can_capture(villager, WILD_TILE + Vector2i(3, 3), wild), "a unit does not capture an animal further away than 4 tiles")
+	_check(not village.can_capture(other_wild, WILD_TILE, wild) and not village.can_capture(villager, WILD_TILE, tame), "a wild animal does not capture, and an own animal cannot be captured")
+	_check(not village.can_enter(wild, ranch), "a wild sheep does not go into the ranch")
+	village.capture(wild)
+	_check(village.is_own_unit(wild) and village.can_enter(wild, ranch) and village.animal_home(wild) == ranch, "a captured sheep belongs to the player and goes into the sheep ranch")
+	_check(village.animal_home(villager) == null and village.town_hall() == village.item_at(TOWN_HALL_TILE), "a villager has no ranch; the village has its town hall")
+	_check(village.push_unit(wild, ranch, T) == Village.Placement.OK and village.seconds_to_ready(ranch, T) == 90, "the sheep goes into the ranch, which starts to produce")
+	var out := village.pop_unit(ranch, 0, T + 1)
+	_check(out != null and village.is_own_unit(out), "a sheep that comes out of the ranch belongs to the player")
+	_check(not village.can_enter(villager, ranch), "a villager does not go into a ranch")
+
+	# Level 11: 7 cows, 7 sheep and 6 horses. The map has 3 sheep, and the ranch none.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var new_animals := village.spawn_animals(T + 2, rng)
+	var kinds := {}
+	for animal in new_animals:
+		kinds[animal.item_id] = kinds.get(animal.item_id, 0) + 1
+	_check(kinds == {COW: 7, SHEEP: 4, HORSE: 6}, "the client spawns animals until the map has 7 cows, 7 sheep and 6 horses: %s" % kinds)
+	_check(new_animals.all(func(animal: Village.PlacedItem) -> bool: return village.is_wild_animal(animal) and not IsoGrid.land_area_number(animal.tile / IsoGrid.LAND_TILES) in village.owned_land), "the new animals are wild and on land that the player does not own")
+	_check(village.spawn_animals(T + 3, rng).is_empty(), "a second load spawns no animals")
+	_check(village.save_to_file(path) == OK, "the village with the new animals saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	# The server counted 3 sheep at the load; the spawns add to the counts.
+	_check(saved["privateState"]["arrayAnimals"] == {"74": 7.0, "75": 7.0, "88": 6.0}, "the save counts the animals of the day: %s" % saved["privateState"]["arrayAnimals"])
+	_check(saved["privateState"]["boughtUnits"].has(float(SHEEP)), "the server lists the bought animals")
+	_check(saved["maps"][0]["items"].filter(func(entry: Array) -> bool: return int(entry[0]) == HORSE).size() == 6, "the save has the horses")
+
+	# 15 sheep in the ranch count for the day: only 5 more sheep spawn. Level 10 has no horses.
+	var counted := {"items": _initial["maps"][0]["items"].duplicate(true) + [[SHEEP_RANCH_I, 37, 55, 0, T, 0, [], {}]]}
+	counted["items"].back()[6].assign(range(15).map(func(i: int) -> int: return SHEEP))
+	village = Village.load_from_file(_write_fixture("animals_limit", 10, _config.levels[9].exp_required, 0, counted), _config)
+	kinds = {}
+	for animal in village.spawn_animals(T, rng):
+		kinds[animal.item_id] = kinds.get(animal.item_id, 0) + 1
+	_check(kinds == {COW: 7, SHEEP: 5}, "the client spawns at most 20 animals of a kind for each day: %s" % kinds)
+	village = Village.load_from_file(_write_fixture("animals_troll", 1, 0, 0, {"race": "t"}), _config)
+	kinds = {}
+	for animal in village.spawn_animals(T, rng):
+		kinds[animal.item_id] = kinds.get(animal.item_id, 0) + 1
+	_check(kinds == {BOAR: 7}, "a troll map gets boars: %s" % kinds)
+	return true
+
+
+## The training stables, the nursery, the altar, refuges, the fortress, the unit
+## warehouse, and units that come out of a sold building.
+func _check_unit_buildings() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append_array([
+		[TRAINING_STABLES, 24, 44, 0, T, 0, [], {}], [NURSERY, 28, 43, 0, T, 0, [], {}],
+		[SACRIFICE_ALTAR, 33, 44, 0, T, 0, [], {}], [SMALL_REFUGE, 37, 43, 0, T, 0, [], {}],
+		[FORTRESS, 27, 52, 0, T, 0, [], {}], [UNIT_WAREHOUSE, 35, 52, 0, T, 0, [], {}],
+		[HOUSE, 30, 41, 0, T, 0, [], {}], [HOUSE, 36, 41, 0, T, 0, [], {}],
+	])
+	var units := [HORSE, SHEEP, SHEEP, COW, SPEARMAN, LIGHT_ARCHER, VILLAGER, VILLAGER, CATAPULT, SPEARMAN, LIGHT_ARCHER]
+	for i in units.size():
+		items.append([units[i], 21 + i, 56, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items,
+			"warehousedUnits": {str(HEALER): 1}, "warehouseAditionalCapacitySingle": 3}
+	var path := _write_fixture("unit_buildings", 40, _config.levels[39].exp_required, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var at := func(x: int) -> Village.PlacedItem: return village.item_at(Vector2i(x, 56))
+	var horse: Village.PlacedItem = at.call(21)
+	var sheep: Village.PlacedItem = at.call(22)
+	var cow: Village.PlacedItem = at.call(24)
+	var spearman: Village.PlacedItem = at.call(25)
+	var archer: Village.PlacedItem = at.call(26)
+	var villager: Village.PlacedItem = at.call(27)
+	var catapult: Village.PlacedItem = at.call(29)
+	var stables := village.item_at(Vector2i(24, 44))
+	var nursery := village.item_at(Vector2i(28, 43))
+	var altar := village.item_at(Vector2i(33, 44))
+	var refuge := village.item_at(Vector2i(37, 43))
+	var fortress := village.item_at(Vector2i(27, 52))
+	var warehouse := village.item_at(Vector2i(35, 52))
+
+	# A horse goes into the training stables; a spearman there takes it and becomes a knight.
+	_check(not village.can_enter(spearman, stables) and not village.can_mount(spearman, stables), "a spearman cannot go into empty training stables")
+	_check(not village.can_enter(sheep, stables) and village.animal_home(horse) == stables, "the training stables take horses, not sheep")
+	_check(village.push_unit(horse, stables, T) == Village.Placement.OK, "the horse goes into the training stables")
+	_check(village.can_mount(spearman, stables) and not village.can_mount(villager, stables) and not village.can_mount(catapult, stables), "a spearman can mount the horse, a villager and a catapult cannot")
+	_check(village.push_unit(spearman, stables, T) == Village.Placement.NOT_ALLOWED, "mounting is not a push")
+	var population := village.population()
+	var xp := village.get_xp()
+	var knight := village.mount(spearman, stables, Vector2i(25, 46), T + 1)
+	_check(knight != null and knight.item_id == LIGHT_KNIGHT and knight.tile == Vector2i(25, 46) and knight.frame == 1, "the spearman becomes a light knight on its tile")
+	_check(not spearman in village.items and village.units_in(stables).is_empty() and village.population() == population + 1, "the spearman and the horse are gone; the knight needs 2 population")
+	_expect("after mounting (the knight gives 8 XP)", village, {"xp": xp + 8})
+	_check(village.mount(at.call(30), stables, Vector2i(26, 46), T + 1) == null, "with no horse there is nothing to mount")
+
+	# The nursery breeds an animal from two of one kind.
+	_check(village.push_unit(sheep, nursery, T) == Village.Placement.OK and not village.can_enter(cow, nursery), "a sheep goes into the nursery; a cow cannot join it")
+	_check(not village.can_enter(villager, nursery), "a villager does not go into the nursery")
+	_check(village.needs_units(nursery) and village.seconds_to_ready(nursery, T + 100000) == -1, "the nursery does not breed with one sheep")
+	_check(village.push_unit(at.call(23), nursery, T + 10) == Village.Placement.OK and village.seconds_to_ready(nursery, T + 10) == 32400, "with two sheep the nursery breeds in 9 hours")
+	_check(village.collect(nursery, T + 10 + 32399) == Village.Production.NOT_READY, "the nursery is not ready before 9 hours")
+	xp = village.get_xp()
+	var count := village.items.size()
+	_check(village.bred_unit(nursery).id == SHEEP and village.collect(nursery, T + 10 + 32400) == Village.Production.OK, "the nursery is ready after 9 hours")
+	var lamb: Village.PlacedItem = village.items.back()
+	_check(village.items.size() == count + 1 and lamb.item_id == SHEEP and village.is_own_unit(lamb) and lamb.frame == 1, "a new sheep of the player comes out of the nursery")
+	_check(Village.footprint(_config.get_item(NURSERY), nursery.tile).grow(1).has_point(lamb.tile), "the new sheep is next to the nursery")
+	_check(village.units_in(nursery) == [SHEEP, SHEEP] and village.seconds_to_ready(nursery, T + 10 + 32400) == 32400, "the nursery keeps its sheep and starts again")
+	_expect("after the nursery (15 XP)", village, {"xp": xp + 15})
+
+	# The altar sacrifices a unit after 1.08 seconds; it gives back what selling the unit gives.
+	_check(not village.can_enter(catapult, altar) and village.can_enter(cow, altar), "the altar takes all units except siege units")
+	_check(village.push_unit(villager, altar, T) == Village.Placement.OK and not village.can_enter(cow, altar), "a villager goes into the altar, which has room for one")
+	_check(village.complete_sacrifice(altar, T + 1) == null, "the sacrifice takes 1.08 seconds")
+	var food := village.get_resource("f")
+	var victim := village.complete_sacrifice(altar, T + 2)
+	_check(victim != null and victim.id == VILLAGER and village.units_in(altar).is_empty(), "the villager is sacrificed")
+	_expect("after the sacrifice (50 food / 20)", village, {"f": food + 2})
+	_check(village.complete_sacrifice(altar, T + 3) == null, "an empty altar sacrifices nothing")
+
+	# Refuges take any unit; the fortress takes units that shoot.
+	_check(village.push_unit(archer, refuge, T) == Village.Placement.OK and village.push_unit(cow, refuge, T) == Village.Placement.OK, "an archer and a cow go into the small refuge")
+	_check(not village.can_enter(at.call(28), refuge), "the small refuge has room for 2 units")
+	_check(village.can_enter(at.call(31), fortress) and not village.can_enter(at.call(30), fortress) and not village.can_enter(catapult, fortress), "an archer goes into the fortress; a spearman and a catapult do not")
+	_check(village.population() == population + 1 - 1, "units in a refuge count for the population")
+
+	# The warehouse keeps units outside the map and the population.
+	_check(village.warehouse_capacity() == 3 and village.warehoused_units() == {HEALER: 1}, "the warehouse holds 1 healer of 3 places")
+	population = village.population()
+	_check(village.push_unit(at.call(31), warehouse, T) == Village.Placement.OK and village.population() == population - 1, "an archer goes into the warehouse and leaves the population")
+	_check(village.push_unit(at.call(30), warehouse, T) == Village.Placement.OK and not village.can_enter(catapult, warehouse), "a spearman fills the warehouse")
+	_check(village.warehoused_units() == {HEALER: 1, LIGHT_ARCHER: 1, SPEARMAN: 1}, "the warehouse holds a healer, an archer and a spearman")
+	var cash := village.get_resource("c")
+	_check(village.buy_warehouse_slot() == Village.Placement.OK and village.warehouse_capacity() == 4 and village.can_enter(catapult, warehouse), "one more place costs 2 cash")
+	_expect("after the place", village, {"c": cash - 2})
+	_check(village.place_warehoused(warehouse, SPEARMAN, T + 5) == Village.Placement.OK, "the spearman comes out of the warehouse")
+	var back: Village.PlacedItem = village.items.back()
+	_check(back.item_id == SPEARMAN and Village.footprint(_config.get_item(UNIT_WAREHOUSE), warehouse.tile).grow(1).has_point(back.tile), "the spearman stands next to the warehouse")
+	_check(village.place_warehoused(warehouse, SPEARMAN, T + 5) == Village.Placement.NOT_ALLOWED, "the warehouse has no more spearmen")
+
+	# A sold building first lets its units out.
+	_check(village.sell(refuge, T + 6) == Village.Placement.OK, "the refuge with units is sold")
+	var tiles := Village.footprint(_config.get_item(SMALL_REFUGE), refuge.tile).grow(1)
+	_check(village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id in [LIGHT_ARCHER, COW] and tiles.has_point(placed.tile)).size() == 2, "the archer and the cow come out of the sold refuge")
+
+	_check(village.save_to_file(path) == OK, "the village with the unit buildings saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["maps"][0]["warehousedUnits"] == {str(HEALER): 1.0, str(LIGHT_ARCHER): 1.0} and int(saved["maps"][0]["warehouseAditionalCapacitySingle"]) == 4, "the save has the warehouse units and places")
+	_check(saved["privateState"]["boughtUnits"].has(float(LIGHT_KNIGHT)) and saved["privateState"]["boughtUnits"].has(float(HORSE)), "the server lists the knight and the horse")
+
+	# Units out of the warehouse need the population and count for the unit limit: a map can have 5 healers.
+	items = _initial["maps"][0]["items"].duplicate(true) + [[UNIT_WAREHOUSE, 35, 52, 0, T, 0, [], {}]]
+	for i in 10:
+		items.append([HEALER if i < 5 else VILLAGER, 21 + i, 56, 0, T, 0, [], {}])
+	village = Village.load_from_file(_write_fixture("warehouse_limit", 40, _config.levels[39].exp_required, 0, {"expansions": [13, 12], "items": items, "warehousedUnits": {str(HEALER): 1, str(SPEARMAN): 1}}), _config)
+	_check(village.population() > village.max_population(), "the population is over its maximum")
+	_check(village.place_warehoused(village.item_at(Vector2i(35, 52)), HEALER, T) == Village.Placement.UNIT_LIMIT_REACHED, "a sixth healer cannot come out of the warehouse")
+	_check(village.place_warehoused(village.item_at(Vector2i(35, 52)), SPEARMAN, T) == Village.Placement.POPULATION_FULL, "a unit comes out of the warehouse only when the population has room")
 	return true
 
 

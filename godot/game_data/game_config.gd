@@ -35,6 +35,7 @@ class ItemDef:
 	var units_limit: int  ## Maximum number of this unit on a map, or 0 for no limit.
 	var training_time: int  ## Seconds to train this unit.
 	var velocity: int  ## Walking speed of a unit.
+	var attack_range: int  ## Tiles; 1 for units that fight next to the enemy.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -65,6 +66,14 @@ var allies_item_ids: Array[int] = []  ## Allies buildings and markets, and the r
 var category_names: Dictionary = {}  ## Store category id -> name.
 ## Buildings that work only after the player chooses a work time, see Village.WORK_MINUTES.
 var variable_collect_ids: Array[int] = []
+## The client spawns wild animals at each start until the player has this number
+## of each kind for the day, see Village.spawn_animals().
+var animals_per_day: int
+## The Unit Warehouse holds this number of units at first. The player can buy
+## one more place for warehouse_slot_price cash, up to warehouse_max_capacity.
+var warehouse_start_capacity: int
+var warehouse_slot_price: int
+var warehouse_max_capacity: int
 
 var _items: Dictionary = {}  # int -> ItemDef
 
@@ -138,6 +147,16 @@ static func load_from_file(path: String) -> GameConfig:
 			push_error("Game configuration '%s' has an incorrect COLLECT_VARIABLE_IDS." % path)
 			return null
 		config.variable_collect_ids.append(id)
+	var capacities: Variant = globals.get("WAREHOUSE_CAPACITIES")
+	var start_capacity: Variant = to_int(capacities[0]) if capacities is Array and not capacities.is_empty() else null
+	var numbers := [to_int(globals.get("ANIMALS_PER_DAY")), start_capacity, to_int(globals.get("WAREHOUSE_CAPACITY_INCREASE_PRICE_SINGLE")), to_int(globals.get("WAREHOUSE_MAX_CAPACITY"))]
+	if null in numbers:
+		push_error("Game configuration '%s' has no ANIMALS_PER_DAY or unit warehouse settings in globals." % path)
+		return null
+	config.animals_per_day = numbers[0]
+	config.warehouse_start_capacity = numbers[1]
+	config.warehouse_slot_price = numbers[2]
+	config.warehouse_max_capacity = numbers[3]
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
@@ -161,7 +180,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -197,6 +216,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.units_limit = numbers["units_limit"]
 	item.training_time = numbers["training_time"]
 	item.velocity = numbers["velocity"]
+	item.attack_range = numbers["attack_range"]
 	return item
 
 

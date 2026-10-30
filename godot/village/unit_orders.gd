@@ -4,7 +4,8 @@ extends Node
 ## building, or harvest a tree or a deposit. The unit walks along its path in
 ## the view. The village changes when the unit arrives, because the client sends
 ## its commands then. Walks and harvests are not in the save: the client does not
-## send them either.
+## send them either. A unit of the player that comes near a wild animal
+## captures it, and the animal walks to its ranch by itself.
 
 ## The village changed. old_level is the level before the change.
 signal village_changed(message: String, old_level: int)
@@ -85,12 +86,47 @@ func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem)
 
 
 func _process(delta: float) -> void:
+	_capture_animals()
 	for walk: Walk in _walks.values():
 		_advance(walk, delta)
 	var now := Time.get_unix_time_from_system()
 	for resource: Village.PlacedItem in _harvests.keys():
 		if now >= _harvests[resource].end_time:
 			_finish_harvest(resource, int(now))
+
+
+## The client checks for each wild animal whether a unit of the player is near.
+## Units in buildings and units that harvest do not capture.
+func _capture_animals() -> void:
+	var units := []  # [unit, tile where it is now]
+	var animals: Array[Village.PlacedItem] = []
+	for placed in _village.items:
+		if _village.is_wild_animal(placed):
+			animals.append(placed)
+		elif _village.is_own_unit(placed) and not is_busy(placed):
+			units.append([placed, _walks[placed].tile if _walks.has(placed) else placed.tile])
+	for animal in animals:
+		for entry: Array in units:
+			if _village.can_capture(entry[0], entry[1], animal):
+				_village.capture(animal)
+				_send_home(animal)
+				village_changed.emit("You captured a %s." % _config.get_item(animal.item_id).name, _village.get_level())
+				break
+
+
+## A captured animal walks into the nearest building of its kind. When that
+## building is full, it walks next to it; when there is none, next to the town hall.
+func _send_home(animal: Village.PlacedItem) -> void:
+	var home := _village.animal_home(animal)
+	if home != null and _village.can_enter(animal, home):
+		order(animal, home.tile, home)
+		return
+	var goal := home if home != null else _village.town_hall()
+	if goal == null:
+		return
+	var tile := _village.free_tile_around(Village.footprint(_config.get_item(goal.item_id), goal.tile))
+	if tile != Village.ANY_TILE:
+		order(animal, tile, null)
 
 
 func _advance(walk: Walk, delta: float) -> void:
@@ -116,6 +152,13 @@ func _arrive(walk: Walk) -> void:
 	if not _village.is_free(stand, walk.unit):
 		stand = _village.free_tile_around(Rect2i(stand, Vector2i.ONE))
 	var target_exists := walk.target != null and walk.target in _village.items
+	if walk.goal == Goal.ENTER and target_exists and _village.can_mount(walk.unit, walk.target):
+		var mounted := _village.mount(walk.unit, walk.target, stand, now)
+		if mounted != null:
+			_view.remove_placed(walk.unit)
+			_view.add_placed(mounted)
+			village_changed.emit("%s took a horse and is now a %s." % [unit_name, _config.get_item(mounted.item_id).name], old_level)
+			return
 	if walk.goal == Goal.ENTER and target_exists and _village.push_unit(walk.unit, walk.target, now) == Village.Placement.OK:
 		_view.remove_placed(walk.unit)
 		village_changed.emit("%s went into %s." % [unit_name, _config.get_item(walk.target.item_id).name], old_level)

@@ -178,6 +178,18 @@ func remove_placed(placed: Village.PlacedItem) -> void:
 		_ready_marks.erase(placed)
 
 
+## Draws the items that the village gained and removes the items that it lost,
+## for changes that add or remove more than one item: for example a sold
+## building and the units that come out of it.
+func sync_items() -> void:
+	for placed: Village.PlacedItem in _nodes.keys():
+		if not placed in _village.items:
+			remove_placed(placed)
+	for placed in _village.items:
+		if not _nodes.has(placed):
+			add_placed(placed)
+
+
 ## Outlines the tiles of the item, or removes the outline when placed is null.
 func show_selection(placed: Village.PlacedItem) -> void:
 	_selection.visible = placed != null
