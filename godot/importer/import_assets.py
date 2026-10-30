@@ -59,7 +59,7 @@ def needed_items(config, villages, export_all):
 		ids = items.keys()
 	else:
 		ids = set(TERRAIN_ITEM_IDS)
-		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) == "1")
+		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) != "0")
 		for village in villages:
 			for game_map in village["maps"]:
 				ids.update(int(entry[0]) for entry in game_map["items"])

@@ -36,6 +36,9 @@ func get_sprite(img_name: String) -> ItemSprite:
 
 func _load(img_name: String) -> ItemSprite:
 	var dir := _sprites_dir.path_join(img_name)
+	if not FileAccess.file_exists(dir.path_join("meta.json")):
+		push_warning("Graphic '%s' is not imported." % img_name)
+		return null
 	var meta: Variant = JSON.parse_string(FileAccess.get_file_as_string(dir.path_join("meta.json")))
 	if not (meta is Dictionary and meta.get("frame_sizes") is Array and not meta["frame_sizes"].is_empty()):
 		push_warning("Graphic '%s' is not imported." % img_name)

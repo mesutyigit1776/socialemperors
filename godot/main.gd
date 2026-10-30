@@ -36,13 +36,14 @@ func _ready() -> void:
 		var camera := MapCamera.new()
 		camera.position = _start_position(_village)
 		add_child(camera)
-		# Only decorations for now: the client limits the number of most other
-		# buildings, and the port does not have these limits yet.
-		var store_items: Array[GameConfig.ItemDef] = []
-		for item in _config.store_items(GameConfig.CATEGORY_DECORATIONS):
-			if _sprites.get_sprite(item.img_name) != null:
-				store_items.append(item)
-		_hud = VillageHud.new(store_items)
+		var categories := []
+		for category_id in GameConfig.STORE_CATEGORIES:
+			var store_items: Array[GameConfig.ItemDef] = []
+			for item in _config.store_items(category_id, _village.race):
+				if _sprites.get_sprite(item.img_name) != null:
+					store_items.append(item)
+			categories.append([_config.category_names.get(category_id, str(category_id)), store_items])
+		_hud = VillageHud.new(categories)
 		_hud.item_selected.connect(_on_item_selected)
 		add_child(_hud)
 		_hud.refresh(_village)

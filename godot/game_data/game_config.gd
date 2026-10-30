@@ -3,7 +3,9 @@ extends RefCounted
 ## Item and level definitions from the game configuration that the importer writes (config.json).
 
 
-const CATEGORY_DECORATIONS := 4
+## Store categories that the port sells: village, defense, army buildings and decorations.
+## The wonders and the "New" category have special rules that the port does not have yet.
+const STORE_CATEGORIES: Array[int] = [1, 2, 3, 4]
 
 
 class ItemDef:
@@ -14,7 +16,8 @@ class ItemDef:
 	var width: int  ## Footprint in tiles.
 	var height: int
 	var category_id: int
-	var in_store: bool
+	var in_store: int  ## 0: not sold. 1 or 3: sold to humans. 2 or 4: sold to trolls.
+	var subcat_functional: int  ## Function of the building, for example 111 for a house.
 	var cost: int
 	var cost_type: String  ## Resource code, see Village.RESOURCE_KEYS.
 	var xp: int  ## Experience that the player gets when buying the item.
@@ -22,6 +25,15 @@ class ItemDef:
 
 	func is_unit() -> bool:
 		return type == "u"
+
+	## race is the race of the map: "h" (human) or "t" (troll).
+	func is_sold_to(race: String) -> bool:
+		match race:
+			"h":
+				return in_store == 1 or in_store == 3
+			"t":
+				return in_store == 2 or in_store == 4
+		return false
 
 
 class LevelDef:
@@ -34,6 +46,10 @@ class LevelDef:
 var levels: Array[LevelDef] = []  ## levels[n - 1] is level n.
 var start_level_mana_reward: int  ## From this level, each new level also gives mana.
 var mana_reward_per_level: int
+var townhall_house_limit: Dictionary = {}  ## Town hall item id -> number of houses that it allows.
+var worker_item_ids: Dictionary = {}  ## Item id -> true for the buildings that need workers ("social items").
+var allies_item_ids: Array[int] = []  ## Allies buildings and markets, and the recruitment prize.
+var category_names: Dictionary = {}  ## Store category id -> name.
 
 var _items: Dictionary = {}  # int -> ItemDef
 
@@ -73,6 +89,35 @@ static func load_from_file(path: String) -> GameConfig:
 		return null
 	config.start_level_mana_reward = start_mana
 	config.mana_reward_per_level = mana_per_level
+
+	var house_limits: Variant = globals.get("TOWNHALL_HOUSE_LIMIT")
+	if not house_limits is Dictionary:
+		push_error("Game configuration '%s' has no TOWNHALL_HOUSE_LIMIT in globals." % path)
+		return null
+	for key: Variant in house_limits:
+		var townhall_id: Variant = _to_int(key)
+		var limit: Variant = _to_int(house_limits[key])
+		if townhall_id == null or limit == null:
+			push_error("Game configuration '%s' has an incorrect TOWNHALL_HOUSE_LIMIT." % path)
+			return null
+		config.townhall_house_limit[townhall_id] = limit
+	for key in ["ALLIES_BUILDING", "ALLIES_MARKET", "ALLIES_MARKET_TROLLS", "RECRUITMENT_PRIZE"]:
+		var id: Variant = _to_int(globals.get(key))
+		if id == null:
+			push_error("Game configuration '%s' has no %s in globals." % [path, key])
+			return null
+		config.allies_item_ids.append(id)
+	for entry: Variant in data.get("social_items", []):
+		var id: Variant = _to_int(entry.get("id")) if entry is Dictionary else null
+		if id == null:
+			push_error("Game configuration '%s' has an incorrect social item: %s" % [path, str(entry).left(200)])
+			return null
+		config.worker_item_ids[id] = true
+	var categories: Variant = data.get("categories", {})
+	if categories is Dictionary:
+		for entry: Variant in categories.values():
+			if entry is Dictionary and _to_int(entry.get("id")) != null:
+				config.category_names[_to_int(entry["id"])] = str(entry.get("name", ""))
 	return config
 
 
@@ -80,11 +125,11 @@ func get_item(id: int) -> ItemDef:
 	return _items.get(id)
 
 
-## Items that the store sells in a category, in configuration order.
-func store_items(category_id: int) -> Array[ItemDef]:
+## Buildings that the store sells to a race in a category, in configuration order.
+func store_items(category_id: int, race: String) -> Array[ItemDef]:
 	var result: Array[ItemDef] = []
 	for item: ItemDef in _items.values():
-		if item.in_store and item.category_id == category_id:
+		if not item.is_unit() and item.is_sold_to(race) and item.category_id == category_id:
 			result.append(item)
 	return result
 
@@ -93,7 +138,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "cost", "xp", "min_level"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level"]:
 		numbers[key] = _to_int(entry.get(key, 1 if key in ["width", "height"] else 0))
 		if numbers[key] == null:
 			return null
@@ -107,7 +152,8 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.width = numbers["width"]
 	item.height = numbers["height"]
 	item.category_id = numbers["category_id"]
-	item.in_store = numbers["in_store"] == 1
+	item.in_store = numbers["in_store"]
+	item.subcat_functional = numbers["subcat_functional"]
 	item.cost = numbers["cost"]
 	item.cost_type = str(entry.get("cost_type", ""))
 	item.xp = numbers["xp"]

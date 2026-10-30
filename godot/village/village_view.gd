@@ -120,7 +120,8 @@ func _update_placement(tile: Vector2i) -> void:
 	_placing_tile = tile
 	_ghost.position = IsoGrid.tile_to_map(tile)
 	_outline.polygon = IsoGrid.footprint_outline(Village.footprint(_placing_item, tile))
-	var valid := _placing_village.check_location(_placing_item, tile) == Village.Placement.OK
+	var valid := _placing_village.check_location(_placing_item, tile) == Village.Placement.OK \
+			and _placing_village.check_limits(_placing_item, tile) == Village.Placement.OK
 	_ghost.modulate = PLACEMENT_VALID_COLOR if valid else PLACEMENT_INVALID_COLOR
 	_outline.color = Color(_ghost.modulate, 0.35)
 

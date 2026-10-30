@@ -12,10 +12,24 @@ enum Placement {
 	OUTSIDE_MAP,
 	NOT_OWNED_LAND,
 	OCCUPIED,
+	MAX_COUNT_REACHED,
+	HOUSE_LIMIT_REACHED,
+	TOWER_LIMIT_REACHED,
+	LAND_AREA_TOWER_LIMIT_REACHED,
 	LEVEL_TOO_LOW,
 	NOT_ENOUGH_RESOURCES,
 	UNKNOWN_RESOURCE,
 }
+
+## Buildings for which the server's "buy" hires no workers, in addition to
+## GameConfig.allies_item_ids.
+const ROUND_TABLE := 389
+const TROLL_ALLIES_BUILDING := 361
+## The Great Church has no place for the player's own villager.
+const GREAT_CHURCH := 470
+
+## For check_limits(): the location is not known yet.
+const ANY_TILE := Vector2i(-1, -1)
 
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
@@ -39,6 +53,7 @@ class PlacedItem:
 var items: Array[PlacedItem] = []
 var owned_land: PackedInt32Array = []  ## Land area numbers, see IsoGrid.land_area_number().
 var skin: int = 0  ## Map style; selects the land item 1000 + skin.
+var race: String  ## "h" (human) or "t" (troll).
 
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
@@ -72,12 +87,17 @@ static func load_from_file(path: String, config: GameConfig, map_index: int = 0)
 		push_error("Map %d of village '%s' has level %d. The lowest level is 1." % [map_index, path, int(game_map["level"])])
 		return null
 
+	if not game_map.get("race") in ["h", "t"]:
+		push_error("Map %d of village '%s' has no race \"h\" or \"t\"." % [map_index, path])
+		return null
+
 	var village := Village.new()
 	village._document = data
 	village._map = game_map
 	village._config = config
 	village._occupied.resize(IsoGrid.MAP_TILES * IsoGrid.MAP_TILES)
 	village.skin = int(game_map.get("skin", 0))
+	village.race = game_map["race"]
 	for area: Variant in game_map.get("expansions", []):
 		if (area is int or area is float) and int(area) >= 1 and int(area) <= IsoGrid.LAND_AREAS * IsoGrid.LAND_AREAS:
 			village.owned_land.append(int(area))
@@ -127,12 +147,61 @@ func check_location(item: GameConfig.ItemDef, tile: Vector2i) -> Placement:
 	return Placement.OK
 
 
+## Checks the limits on the number of buildings of a type. With ANY_TILE, it does
+## not check the limit of towers in the land area of the location.
+func check_limits(item: GameConfig.ItemDef, tile: Vector2i = ANY_TILE) -> Placement:
+	var same_item := 0
+	var same_subcat := 0
+	var houses := 0
+	var towers := 0
+	var townhall_id := -1
+	var groups := ConstructionLimits.ONE_PER_GROUP.filter(func(group: Array) -> bool: return item.id in group)
+	var in_group := 0
+	for placed in items:
+		var placed_item := _config.get_item(placed.item_id)
+		if placed_item == null:
+			continue
+		if placed.item_id == item.id:
+			same_item += 1
+		if placed_item.subcat_functional == item.subcat_functional:
+			same_subcat += 1
+		match placed_item.subcat_functional:
+			ConstructionLimits.SUBCAT_HOUSE:
+				if placed.item_id != ConstructionLimits.BATHS:
+					houses += 1
+			ConstructionLimits.SUBCAT_TOWER:
+				towers += 1
+			ConstructionLimits.SUBCAT_TOWNHALL:
+				townhall_id = placed.item_id
+		if not groups.is_empty() and placed.item_id in groups[0]:
+			in_group += 1
+
+	if item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
+		if towers >= owned_land.size() * ConstructionLimits.MAX_TOWERS_PER_LAND_AREA:
+			return Placement.TOWER_LIMIT_REACHED
+		if tile != ANY_TILE and _tower_tiles_in_land_area(tile) >= ConstructionLimits.MAX_TOWERS_PER_LAND_AREA:
+			return Placement.LAND_AREA_TOWER_LIMIT_REACHED
+	if item.subcat_functional == ConstructionLimits.SUBCAT_HOUSE and item.id != ConstructionLimits.BATHS:
+		if houses >= _config.townhall_house_limit.get(townhall_id, 0):
+			return Placement.HOUSE_LIMIT_REACHED
+	if item.subcat_functional in ConstructionLimits.ONE_PER_SUBCAT and same_subcat >= 1:
+		return Placement.MAX_COUNT_REACHED
+	if ConstructionLimits.MAX_PER_ITEM.has(item.id) and same_item >= ConstructionLimits.MAX_PER_ITEM[item.id]:
+		return Placement.MAX_COUNT_REACHED
+	if in_group >= 1:
+		return Placement.MAX_COUNT_REACHED
+	return Placement.OK
+
+
 ## Buys an item from the store and places it, as the server command "buy" does.
 ## Changes nothing when the result is not OK.
 func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
 	var location := check_location(item, tile)
 	if location != Placement.OK:
 		return location
+	var limit := check_limits(item, tile)
+	if limit != Placement.OK:
+		return limit
 	if get_level() < item.min_level:
 		return Placement.LEVEL_TOO_LOW
 	var available := get_resource(item.cost_type)
@@ -144,7 +213,7 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int) -> Placement:
 	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
 	_add_xp(item.xp)
 	# Entry format of the server: [item_id, x, y, orientation, timestamp, level, store, attributes].
-	_map["items"].append([item.id, tile.x, tile.y, 0, timestamp, 0, [], {}])
+	_map["items"].append([item.id, tile.x, tile.y, 0, timestamp, 0, [], _new_item_attributes(item)])
 	var placed := PlacedItem.new()
 	placed.item_id = item.id
 	placed.tile = tile
@@ -207,6 +276,32 @@ func _resource_holder(code: String) -> Dictionary:
 			return _document["playerInfo"]
 		_:
 			return _document["privateState"]
+
+
+## The server's "buy" gives a building that needs workers a list of hired
+## workers ("si"): the player's own villager ("0"), then neighbours from the
+## other saves on the server. The port cannot see these saves, so it hires only
+## the villager, as the server does when it does not know the player. The
+## player can hire the other workers in the game.
+func _new_item_attributes(item: GameConfig.ItemDef) -> Dictionary:
+	if not _config.worker_item_ids.has(item.id):
+		return {}
+	if item.id == ROUND_TABLE:
+		return {"si": [], "sif": {}}
+	if item.id == TROLL_ALLIES_BUILDING or item.id in _config.allies_item_ids or item.id == GREAT_CHURCH:
+		return {"si": []}
+	return {"si": ["0"]}
+
+
+## The client counts each tile that a tower covers, not each tower.
+func _tower_tiles_in_land_area(tile: Vector2i) -> int:
+	var area := Rect2i(tile / IsoGrid.LAND_TILES * IsoGrid.LAND_TILES, Vector2i.ONE * IsoGrid.LAND_TILES)
+	var count := 0
+	for placed in items:
+		var placed_item := _config.get_item(placed.item_id)
+		if placed_item != null and placed_item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
+			count += footprint(placed_item, placed.tile).intersection(area).get_area()
+	return count
 
 
 func _add(placed: PlacedItem) -> void:

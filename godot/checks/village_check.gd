@@ -11,6 +11,19 @@ extends SceneTree
 const YELLOW_TREE := 100  # 225 gold, 23 XP
 const BLUE_TREE := 101  # needs level 2
 const GREEN_TREE := 108  # 60 gold, 6 XP
+const HOUSE := 1
+const BATHS := 230
+const TOWER := 29
+const MARKET := 23
+const MARKET_III := 189
+const GOLD_MINE_I := 13
+const GOLD_MINE_II := 14
+const SHEEP_RANCH_I := 11
+const SHEEP_RANCH_II := 190
+const NURSERY := 226
+const ALLIES_BUILDING := 234
+const ROUND_TABLE := 389
+const HIGHEST_LEVEL_XP := 2016089205
 
 var _config: GameConfig
 var _initial: Dictionary
@@ -36,7 +49,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -109,10 +122,72 @@ func _check_highest_level() -> bool:
 	return true
 
 
-## Writes initial.json with a changed level, XP and gold, as the start of a check.
-func _write_fixture(check_name: String, level: int, xp: int, coins: int) -> String:
+## The initial village has a town hall that allows 14 houses, 2 houses, 2 towers
+## and one land area (13). This check also gives it land area 12, so that the
+## limit of towers in one land area is different from the total limit (20).
+func _check_construction_limits() -> bool:
+	var plenty := {"wood": 1000000, "stone": 1000000, "food": 1000000, "expansions": [13, 12]}
+	var path := _write_fixture("limits", 100, HIGHEST_LEVEL_XP, 1000000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var area_13 := Rect2i(40, 40, 20, 20)
+	var area_12 := Rect2i(20, 40, 20, 20)
+
+	_buy_free(village, MARKET, area_13, Village.Placement.OK)
+	_buy_free(village, MARKET_III, area_13, Village.Placement.MAX_COUNT_REACHED)  # one market of any level
+	_buy_free(village, GOLD_MINE_I, area_13, Village.Placement.OK)
+	_buy_free(village, GOLD_MINE_I, area_13, Village.Placement.MAX_COUNT_REACHED)
+	_buy_free(village, GOLD_MINE_II, area_13, Village.Placement.OK)  # each mine level is a different item
+	_buy_free(village, SHEEP_RANCH_I, area_12, Village.Placement.OK)
+	_buy_free(village, SHEEP_RANCH_II, area_12, Village.Placement.MAX_COUNT_REACHED)  # one sheep ranch of any level
+	for i in 3:
+		_buy_free(village, NURSERY, area_12, Village.Placement.OK)
+	_buy_free(village, NURSERY, area_12, Village.Placement.MAX_COUNT_REACHED)
+	_check(village.check_limits(_config.get_item(NURSERY)) == Village.Placement.MAX_COUNT_REACHED, "the store limit check without a location")
+
+	for i in 12:
+		_buy_free(village, HOUSE, area_12, Village.Placement.OK)
+	_buy_free(village, HOUSE, area_12, Village.Placement.HOUSE_LIMIT_REACHED)
+	_buy_free(village, BATHS, area_12, Village.Placement.OK)  # the baths do not count as a house
+
+	for i in 8:
+		_buy_free(village, TOWER, area_13, Village.Placement.OK)
+	_buy_free(village, TOWER, area_13, Village.Placement.LAND_AREA_TOWER_LIMIT_REACHED)
+	_check(village.check_limits(_config.get_item(TOWER)) == Village.Placement.OK, "towers are possible in another land area")
+	for i in 10:
+		_buy_free(village, TOWER, area_12, Village.Placement.OK)
+	_buy_free(village, TOWER, area_12, Village.Placement.TOWER_LIMIT_REACHED)
+
+	# The workers that the server "buy" gives when it does not know the player.
+	_buy_free(village, ALLIES_BUILDING, area_12, Village.Placement.OK)
+	_buy_free(village, ROUND_TABLE, area_12, Village.Placement.OK)
+	_check(village.save_to_file(path) == OK, "the village with the limits saves")
+	var attributes := {}
+	for entry: Array in JSON.parse_string(FileAccess.get_file_as_string(path))["maps"][0]["items"]:
+		attributes[int(entry[0])] = entry[7]
+	_check(attributes[MARKET] == {"si": ["0"]}, "a new market has the player's villager as worker")
+	_check(attributes[ALLIES_BUILDING] == {"si": []}, "a new allies building has no workers")
+	_check(attributes[ROUND_TABLE] == {"si": [], "sif": {}}, "a new round table has no workers")
+	_check(attributes[GOLD_MINE_II] == {}, "a building without workers has no attributes")
+	return true
+
+
+## Buys the item on the first tile in area where it fits.
+func _buy_free(village: Village, item_id: int, area: Rect2i, expected: Village.Placement) -> void:
+	var item := _config.get_item(item_id)
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			if village.check_location(item, Vector2i(x, y)) == Village.Placement.OK:
+				_buy(village, item_id, Vector2i(x, y), expected)
+				return
+	_check(false, "item %d fits in %s" % [item_id, area])
+
+
+## Writes initial.json with a changed level, XP and gold, and other changed map
+## values, as the start of a check.
+func _write_fixture(check_name: String, level: int, xp: int, coins: int, map_values: Dictionary = {}) -> String:
 	var document: Dictionary = _initial.duplicate(true)
 	document["maps"][0].merge({"level": level, "xp": xp, "coins": coins}, true)
+	document["maps"][0].merge(map_values, true)
 	var path := "user://checks/%s.json" % check_name
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(JSON.stringify(document, "\t", false))

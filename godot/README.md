@@ -2,11 +2,13 @@
 
 A new client for Social Empires, written in GDScript for Godot 4.7. It does not contain Social Point files. You import the graphics and the game configuration from your own copy of the socialemperors server.
 
-Status: the third milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
+Status: the fourth milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
 
-You can buy decorations from the store and place them on your own land. The port checks the map edges, the owned land, the other items (units also block a tile), the level and the resources. When the experience reaches the next level, the level goes up and the player gets the reward of that level, as in the original game. After each purchase it saves the village in the server format, with the previous version in `<save>.bak`. The server and the original client can load this save.
+You can buy buildings and decorations from the store (the village, defense, army and decoration categories) and place them on your own land. The store shows the items for the race of the map. The port checks the map edges, the owned land, the other items (units also block a tile), the construction limits, the level and the resources. The construction limits are the same as in the original client: for example one market, one mine of each level, a number of houses that the town hall sets, and 10 towers for each land area. When the experience reaches the next level, the level goes up and the player gets the reward of that level, as in the original game. After each purchase it saves the village in the server format, with the previous version in `<save>.bak`. The server and the original client can load this save.
 
-Not done yet: other building types (the client limits the number of most of them), construction time, and moving or selling items.
+A new building that needs workers gets only the player's own villager. The server also hires neighbours from its other saves, which the port cannot see. You can hire the other workers in the game.
+
+Not done yet: the wonders and the "New" store categories, moving or selling items, production and collection, and the functions of special buildings. The functions of special buildings include the graveyard, the nests and the Soul Mixer. You can buy these buildings, and the save is correct, but the port does not use them yet.
 
 ## Import the game files
 
@@ -48,7 +50,7 @@ The exit code is the number of failed checks. Run it after you change the villag
 | Path | Contents |
 |---|---|
 | `importer/` | Import tool. `swf_bounds.py` reads symbol bounds from SWF files, so the images keep the position of the original graphics. |
-| `game_data/` | Game configuration (item and level definitions) |
+| `game_data/` | Game configuration (item and level definitions) and the construction limits that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, map view, camera and screen interface |
 | `sprites/` | Loads the imported item graphics |
 | `checks/` | Headless checks of the village rules and the save format |
