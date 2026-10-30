@@ -39,7 +39,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_tower, _check_healer, _check_help_and_flight, _check_fights]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -322,6 +322,54 @@ func _check_shots() -> bool:
 	var pixels := shot.start.distance_to(shot.end)
 	_check(shot.kind == BattleProjectile.Kind.TIMED and absi(shot.frames_left - roundi(pixels / 1000.0 * 30)) <= 1, "a lightning bolt flies %.0f pixels in %d frames" % [pixels, shot.frames_left])
 	return true
+
+
+## Shots start at the shot point of the graphic, else at a part of its height,
+## and aim at a part of the height of the target; see BattleGraphic. The
+## graphics here are made up, so that the check does not need imported graphics.
+func _check_shot_points() -> bool:
+	var sim := _sim(9)
+	var archer := sim.add_item(_config.get_item(LIGHT_ARCHER), Vector2i(50, 50), PLAYER)
+	archer.graphic = BattleGraphic.of(_made_up_sprite(Vector2(40, 80), Vector2(-20, -75), null), true, 0)
+	var target := sim.add_item(_config.get_item(SPEARMAN), Vector2i(50, 54), ENEMY)
+	target.graphic = BattleGraphic.of(_made_up_sprite(Vector2(30, 60), Vector2(-15, -58), null), true, 0)
+	var arrow := BattleProjectile.fire(archer, target, sim.rng)
+	_check(arrow.start - archer.position == Vector2(0, -48), "an arrow starts at 0.6 of the height of the archer: %s" % [arrow.start - archer.position])
+	# The bottom of the target is 2 pixels below its position; an arrow aims at half its height.
+	_check(arrow.aim - target.position == Vector2(0, -28), "an arrow aims at half the height of the target: %s" % [arrow.aim - target.position])
+
+	# The middle of the bottom of a building graphic is on its position.
+	var tower := sim.add_item(_config.get_item(TOWER_I), Vector2i(60, 50), ENEMY)
+	tower.graphic = BattleGraphic.of(_made_up_sprite(Vector2(100, 200), Vector2(-50, -190), Vector2(10, -150)), false, 0)
+	var tower_arrow := BattleProjectile.fire(tower, target, sim.rng)
+	_check(tower_arrow.start - tower.position == Vector2(10, -160), "a tower arrow starts at the shot point: %s" % [tower_arrow.start - tower.position])
+	var lightning := sim.add_item(_config.get_item(LIGHTNING_TOWER), Vector2i(70, 50), ENEMY)
+	lightning.graphic = tower.graphic
+	var bolt := BattleProjectile.fire(lightning, target, sim.rng)
+	_check(bolt.start - lightning.position == Vector2(0, -150), "a timed shot of a building starts at 0.75 of its height: %s" % [bolt.start - lightning.position])
+	_check(bolt.aim - target.position == Vector2(0, -45), "a timed shot aims at 0.75 of the height of the target: %s" % [bolt.aim - target.position])
+
+	# Directions 6 to 8 mirror the graphic, and its shot point.
+	var thrower := sim.add_item(_config.get_item(SPEARMAN), Vector2i(80, 80), PLAYER)
+	thrower.graphic = BattleGraphic.of(_made_up_sprite(Vector2(40, 80), Vector2(-20, -75), Vector2(12, -40)), true, 0)
+	var right := sim.add_item(_config.get_item(SPEARMAN), Vector2i(84, 80), ENEMY)
+	var left := sim.add_item(_config.get_item(SPEARMAN), Vector2i(76, 80), ENEMY)
+	var to_right := BattleProjectile.fire(thrower, right, sim.rng).start - thrower.position
+	var to_left := BattleProjectile.fire(thrower, left, sim.rng).start - thrower.position
+	_check(right.position.x > thrower.position.x and to_right == Vector2(12, -40), "a shot to the right starts at the shot point: %s" % [to_right])
+	_check(left.position.x < thrower.position.x and to_left == Vector2(-12, -40), "a shot to the left starts at the mirrored shot point: %s" % [to_left])
+	return true
+
+
+## A graphic of 35 frames (all actions of a unit) of the same size, top-left and shot point.
+func _made_up_sprite(size: Vector2, top_left: Vector2, shot_point: Variant) -> SpriteLibrary.ItemSprite:
+	var sprite := SpriteLibrary.ItemSprite.new()
+	for i in 35:
+		sprite.frames.append(null)
+		sprite.frame_sizes.append(size)
+		sprite.frame_origins.append(top_left)
+		sprite.shot_points.append(shot_point)
+	return sprite
 
 
 ## A tower shoots at enemies within its range and keeps a target only within

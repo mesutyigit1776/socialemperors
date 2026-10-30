@@ -1,11 +1,18 @@
 class_name SpriteLibrary
 extends RefCounted
-## Item graphics that the importer writes to <data>/sprites/<img_name>/.
+## Graphics that the importer writes: the items in <data>/sprites/<img_name>/,
+## the shots and effects of battles in <data>/fx/<name>/.
 
 
 class ItemSprite:
 	var frames: Array[Texture2D] = []
 	var frame_sizes: Array[Vector2] = []  ## Size of each frame as Flash measures it.
+	## Top-left of the bounds of each frame relative to the registration point,
+	## as Flash measures them. Empty in data of an older import.
+	var frame_origins: Array[Vector2] = []
+	## For each frame, the point where the shots of the item start, relative to
+	## the registration point, or null. Empty in data of an older import.
+	var shot_points: Array = []
 	var origin: Vector2  ## Top-left of each frame image relative to the symbol registration point.
 	## For each frame of a unit graphic, the FrameClip that it plays, or null.
 	var frame_clips: Array = []
@@ -20,6 +27,15 @@ class ItemSprite:
 
 	func get_frame_size(frame: int) -> Vector2:
 		return frame_sizes[_index(frame)]
+
+	## The bounds of frame relative to the registration point, as Flash
+	## measures them. Needs frame_origins.
+	func get_frame_rect(frame: int) -> Rect2:
+		return Rect2(frame_origins[_index(frame)], frame_sizes[_index(frame)])
+
+	## The shot point of frame (Vector2), or null.
+	func get_shot_point(frame: int) -> Variant:
+		return shot_points[_index(frame)]
 
 	func _index(frame: int) -> int:
 		return clampi(frame, 0, frames.size() - 1)
@@ -60,8 +76,9 @@ var _sprites_dir: String
 var _cache: Dictionary = {}  # img_name -> ItemSprite, or null when the graphic is missing
 
 
-func _init(data_dir: String) -> void:
-	_sprites_dir = data_dir.path_join("sprites")
+## folder: "sprites" for the items, "fx" for the shots and effects.
+func _init(data_dir: String, folder := "sprites") -> void:
+	_sprites_dir = data_dir.path_join(folder)
 
 
 ## Returns null when the graphic was not imported. Reports each missing graphic once.
@@ -92,7 +109,37 @@ func _load(img_name: String) -> ItemSprite:
 		sprite.frames.append(ImageTexture.create_from_image(image))
 	if meta.has("frame_clips"):
 		sprite.frame_clips = _load_clips(img_name, dir, meta)
+	_load_shot_data(img_name, sprite, meta)
 	return sprite
+
+
+## Reads frame_origins and shot_points. Keeps both empty when the meta data
+## does not have them, as from an older import, or is not correct.
+func _load_shot_data(img_name: String, sprite: ItemSprite, meta: Dictionary) -> void:
+	var origins: Variant = meta.get("frame_origins")
+	var points: Variant = meta.get("shot_points")
+	if origins == null and points == null:
+		return
+	var count := sprite.frames.size()
+	if not (origins is Array and points is Array and origins.size() == count and points.size() == count):
+		push_warning("Graphic '%s' has no correct shot data." % img_name)
+		return
+	var frame_origins: Array[Vector2] = []
+	var shot_points := []
+	for i in count:
+		var corner: Variant = origins[i]
+		var point: Variant = points[i]
+		if not (_is_point(corner) and (point == null or _is_point(point))):
+			push_warning("Graphic '%s' has no correct shot data." % img_name)
+			return
+		frame_origins.append(Vector2(corner[0], corner[1]))
+		shot_points.append(null if point == null else Vector2(point[0], point[1]))
+	sprite.frame_origins = frame_origins
+	sprite.shot_points = shot_points
+
+
+static func _is_point(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and (value[0] is float or value[0] is int) and (value[1] is float or value[1] is int)
 
 
 ## Returns the FrameClip or null for each frame. Returns no clips when the meta

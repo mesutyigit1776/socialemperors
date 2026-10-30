@@ -52,14 +52,16 @@ func _init(battle: BattleSim, view: BattleView) -> void:
 
 ## A battle for trying the battle rules and controls until the quests come:
 ## the items of map are the enemies, except the neutral items, and the units of
-## the player start in the middle of the land area with the fewest items.
-static func practice_battle(map: Village, player: Village, config: GameConfig, rng: RandomNumberGenerator) -> BattleSim:
+## the player start in the middle of the land area with the fewest items. The
+## shots start and aim at the points of the graphics in sprites.
+static func practice_battle(map: Village, player: Village, config: GameConfig, sprites: SpriteLibrary, rng: RandomNumberGenerator) -> BattleSim:
 	var battle := BattleSim.new(rng)
 	for placed in map.items:
 		var def := config.get_item(placed.item_id)
 		if def != null:
 			var fighter := battle.add_item(def, placed.tile, BattleFighter.Team.NEUTRAL if def.race == "n" else BattleFighter.Team.ENEMY)
 			fighter.frame = placed.frame
+			fighter.graphic = BattleGraphic.of(sprites.get_sprite(def.img_name), def.is_unit(), placed.frame)
 	var units := player.items.filter(func(placed: Village.PlacedItem) -> bool: return player.is_own_unit(placed))
 	var counts := {}
 	for placed in map.items:
@@ -74,7 +76,8 @@ static func practice_battle(map: Village, player: Village, config: GameConfig, r
 	var is_free := func(tile: Vector2i) -> bool: return battle.fighter_at(tile) == null and Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).has_point(tile)
 	var tiles := BattleFormation.square_tiles(start, units.size(), is_free)
 	for i in tiles.size():
-		battle.add_item(config.get_item(units[i].item_id), tiles[i], BattleFighter.Team.PLAYER)
+		var def := config.get_item(units[i].item_id)
+		battle.add_item(def, tiles[i], BattleFighter.Team.PLAYER).graphic = BattleGraphic.of(sprites.get_sprite(def.img_name), true, 0)
 	return battle
 
 

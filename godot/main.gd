@@ -40,7 +40,7 @@ func _ready() -> void:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	elif _options.has("battle"):
 		_sprites = SpriteLibrary.new(data_dir)
-		_start_battle(_options["battle"])
+		_start_battle(_options["battle"], SpriteLibrary.new(data_dir, "fx"))
 	else:
 		_sprites = SpriteLibrary.new(data_dir)
 		_view = VillageView.new()
@@ -91,15 +91,15 @@ func _ready() -> void:
 		get_tree().quit()
 
 
-func _start_battle(map_path: String) -> void:
+func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 	var map := Village.load_from_file(map_path, _config)
 	if map == null:
 		_show_message("Cannot read the battle map %s." % map_path)
 		return
-	var battle := BattleScreen.practice_battle(map, _village, _config, _rng)
+	var battle := BattleScreen.practice_battle(map, _village, _config, _sprites, _rng)
 	var view := BattleView.new()
 	add_child(view)
-	view.show_battle(battle, _config, _sprites, map.skin, map.owned_land)
+	view.show_battle(battle, _config, _sprites, effects, map.skin, map.owned_land)
 	var camera := MapCamera.new()
 	camera.position = _start_position(map)
 	add_child(camera)

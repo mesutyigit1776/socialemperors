@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stage 1 done; stage 2 has the view and the unit control, without the graphics of shots and effects. Branch `godot-port`.
+Status: stages 1 and 2 done. Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -44,8 +44,8 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 
 - The 36 quest maps are village saves in `villages/quests/`. The port reads 34 of them. Two (`100000053`, `100000054`) have no level, so the loader refuses them; a quest map needs a looser check.
 - Each frame of a unit graphic is one action in one direction: frame = action × 5 + direction. The actions are idle, walking, attacking, dying, harvesting, repairing, and from 6 the special attacks. Each frame contains a nested clip that plays the animation; the importer exports these clips (stage 2).
-- The client starts a shot at 0.75 of the height of the graphic of the shooter and aims at the same height of the target. Stage 1 uses the anchor points of the items, so its shots fly a little shorter or longer. Stage 2 adds the heights from the graphics.
-- Projectiles and effects are in 231 files in `assets/fx/`. The importer does not read them yet.
+- The client starts a shot at a named point of the graphic of the shooter, else at 0.6 or 0.75 of its height, and aims at a part of the height of the target (`BattleGraphic`). The importer reads the bounds of each frame and the named points.
+- Projectiles and effects are in 231 files in `assets/fx/`, one symbol in each, with the name of the file. The importer exports all of them; `BattleProjectile` names the graphic of each shooter, as the client does.
 - The quest goals and scripted events are in the client quest classes, not in the data.
 
 ## Design
@@ -96,16 +96,18 @@ The rules come from the client:
 
 Not in stage 1: special attacks (except the healer), spells, units in buildings, doors in walls, buildings under construction, and what a death gives or costs in each game mode. A unit whose path becomes blocked while it walks stops, as in the client; no check covers this case.
 
-### Stage 2 so far
+### Stage 2 result
 
 | File | Contents |
 |---|---|
 | `sprites/unit_sprite.gd` | `UnitSprite`: plays the clips of a unit graphic at 30 frames per second. The village uses it too. |
 | `battle_formation.gd` | `BattleFormation`: the tiles of a group order, as in the client: a square on free ground, the rings around an own item, the rings at the range around an enemy. `BattleSim.order()` uses them. |
-| `battle_view.gd` | `BattleView`: draws the battle, the selection, the health bars and the shots. |
+| `battle_view.gd` | `BattleView`: draws the battle, the selection, the health bars, and the shots with their effects. |
 | `battle_screen.gd` | `BattleScreen`: runs the battle at 30 frames per second and turns the mouse into orders, as in the client: click, double click (units of the same kind within 10 tiles), selection box, orders to the ground or to an enemy. `--battle <file>` starts a practice battle on a quest map. |
+| `battle_graphic.gd` | `BattleGraphic`: the points of a graphic where shots start and aim, as the client measures them. |
+| `sprites/clip_sprite.gd` | `ClipSprite`: plays the animation of one frame of a graphic, for units, shots and effects. |
 
-The importer now reads the quest maps, so that their items have graphics. Not done yet in stage 2: the graphics of shots and effects from `assets/fx/` (shots are lines), the health bar and selection graphics of the client (simple shapes for now), and shot heights.
+The importer reads the quest maps, so that their items have graphics, and the graphics of the shots and effects. `BattleView` moves the shots as the client does, with the trails (smoke) and the blasts of rocks and cannonballs. The health bar and the selection mark are simple shapes, because their graphics are in the main file of the client, which the importer does not read. The shots of units with special attacks come with these units in later stages.
 
 ## How to check the result
 

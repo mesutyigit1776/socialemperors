@@ -511,7 +511,7 @@ func _update_projectiles() -> void:
 		var target := shot.target
 		if shot.kind == BattleProjectile.Kind.STEPPED:
 			# The client uses the attack of the shooter when the shot lands.
-			if not target.dead and shot.attacker in fighters and shot.end.distance_to(target.position) <= BattleProjectile.HIT_RADIUS:
+			if not target.dead and shot.attacker in fighters and shot.end.distance_to(BattleProjectile.stepped_aim(target, shot.definition["aim"])) <= BattleProjectile.HIT_RADIUS:
 				receive_attack(target, _attack_against(shot.attacker, target), shot.attacker)
 		elif _pixel_distance(shot.aim, target) <= BattleProjectile.HIT_RADIUS:
 			receive_attack(target, shot.damage, shot.attacker)

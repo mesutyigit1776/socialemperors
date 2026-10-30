@@ -14,6 +14,8 @@ var team: Team
 var tile: Vector2i
 var position: Vector2
 var frame := 0  ## The direction of the graphic of a building, as in a save.
+## The shot points of the graphic, or null: shots start and aim at the position.
+var graphic: BattleGraphic
 var health: int
 var attack: int
 var defense: int

@@ -18,6 +18,9 @@ PLACE_TAGS = {26, 70}                 # PlaceObject2, PlaceObject3
 SYMBOL_CLASS_TAG = 76
 SHOW_FRAME_TAG = 1
 REMOVE_OBJECT2_TAG = 28
+# Names of the point in a graphic where the shots of the client start. The
+# client looks for the first name; for some shots it also accepts the second.
+SHOT_POINT_NAMES = ('proyectilePoint', 'projectilePoint')
 
 
 class SwfError(Exception):
@@ -71,6 +74,16 @@ def _read_matrix(data, pos):
 	tx = bits.read_signed(n)
 	ty = bits.read_signed(n)
 	return (a, b, c, d, tx, ty), bits.byte_pos()
+
+
+def _skip_color_transform(data, pos):
+	"Returns the position after a CXFORMWITHALPHA record."
+	bits = _Bits(data, pos)
+	has_add = bits.read(1)
+	has_mult = bits.read(1)
+	n = bits.read(4)
+	bits.read(n * 4 * (has_add + has_mult))
+	return bits.byte_pos()
 
 
 def _tags(data, pos, end):
@@ -175,24 +188,26 @@ class SwfFile:
 		frames = []
 		for places in self._frame_places(pos, end):
 			rect = None
-			for char_id, matrix in places.values():
+			for char_id, matrix, _ in places.values():
 				rect = _union(rect, _transform_or_none(nested_bounds(char_id), matrix))
 			frames.append(rect)
 		return frames
 
 	def _frame_places(self, pos, end):
-		"Returns for each frame of a sprite {depth: (character id, matrix)} of the placed characters."
+		"Returns for each frame of a sprite {depth: (character id, matrix, instance name or None)} of the placed characters."
 		data = self.data
 		depth_char = {}
 		depth_matrix = {}
+		depth_name = {}
 		frames = []
 		for code, start, length in _tags(data, pos, end):
 			if code == SHOW_FRAME_TAG:
-				frames.append({depth: (char_id, depth_matrix[depth]) for depth, char_id in depth_char.items()})
+				frames.append({depth: (char_id, depth_matrix[depth], depth_name.get(depth)) for depth, char_id in depth_char.items()})
 				continue
 			if code == REMOVE_OBJECT2_TAG:
 				depth = struct.unpack_from('<H', data, start)[0]
 				depth_char.pop(depth, None)
+				depth_name.pop(depth, None)
 				continue
 			if code not in PLACE_TAGS:
 				continue
@@ -209,8 +224,16 @@ class SwfFile:
 				depth_char[depth] = struct.unpack_from('<H', data, p)[0]
 				p += 2
 				depth_matrix[depth] = (1.0, 0.0, 0.0, 1.0, 0, 0)
+				depth_name.pop(depth, None)
 			if flags & 0x04:
 				depth_matrix[depth], p = _read_matrix(data, p)
+			if flags & 0x08:
+				p = _skip_color_transform(data, p)
+			if flags & 0x10:
+				p += 2  # ratio
+			if flags & 0x20:
+				name_end = data.index(b'\0', p)
+				depth_name[depth] = data[p:name_end].decode('utf-8', 'replace')
 		return frames
 
 	def _first_frame_bounds(self, char_id):
@@ -222,20 +245,54 @@ class SwfFile:
 			self._sprite_first_frame_bounds[char_id] = frames[0] if frames else None
 		return self._sprite_first_frame_bounds[char_id]
 
-	def symbol_frame_sizes(self, class_name):
-		"""Returns (width, height) in pixels of each frame of the symbol, as Flash reports them.
-
-		The client stops nested sprites on their first frame, so they count with that frame.
-		"""
+	def _symbol_sprite(self, class_name):
 		if class_name not in self.symbols:
 			raise SwfError(f"symbol '{class_name}' is not exported")
 		char_id = self.symbols[class_name]
 		if char_id not in self.sprites:
 			raise SwfError(f"symbol '{class_name}' is not a sprite")
-		sizes = []
-		for rect in self._frame_bounds(*self.sprites[char_id], self._first_frame_bounds):
-			sizes.append((0.0, 0.0) if rect is None else ((rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20))
-		return sizes
+		return char_id
+
+	def symbol_frame_rects(self, class_name):
+		"""Returns (x, y, width, height) in pixels of each frame of the symbol, as Flash reports them:
+		the bounds relative to the registration point.
+
+		The client stops nested sprites on their first frame, so they count with that frame.
+		"""
+		rects = []
+		for rect in self._frame_bounds(*self.sprites[self._symbol_sprite(class_name)], self._first_frame_bounds):
+			rects.append((0.0, 0.0, 0.0, 0.0) if rect is None else (rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20))
+		return rects
+
+	def symbol_shot_points(self, class_name):
+		"""Returns for each frame of the symbol the point (x, y) in pixels where its shots start, or None.
+
+		The client looks for the point in the first child of the frame, a sprite.
+		The point can be in any frame of that sprite; this takes the first frame
+		that has it.
+		"""
+		points = []
+		for places in self._frame_places(*self.sprites[self._symbol_sprite(class_name)]):
+			point = None
+			if places:
+				char_id, matrix, _ = places[min(places)]
+				if char_id in self.sprites:
+					point = self._named_point(char_id, matrix)
+			points.append(point)
+		return points
+
+	def _named_point(self, sprite_id, matrix):
+		found = {}
+		for places in self._frame_places(*self.sprites[sprite_id]):
+			for _, point_matrix, name in places.values():
+				if name in SHOT_POINT_NAMES and name not in found:
+					found[name] = point_matrix
+		for name in SHOT_POINT_NAMES:
+			if name in found:
+				a, b, c, d, tx, ty = matrix
+				x, y = found[name][4], found[name][5]
+				return ((a * x + c * y + tx) / 20, (b * x + d * y + ty) / 20)
+		return None
 
 	def symbol_offset(self, class_name):
 		"Returns the top-left corner of the symbol's bounds in pixels, relative to its registration point."
@@ -258,7 +315,7 @@ class SwfFile:
 		for places in self._frame_places(*self.sprites[char_id]):
 			clips = list(places.values())
 			if len(clips) == 1 and clips[0][0] in self.sprites and len(self._frame_places(*self.sprites[clips[0][0]])) > 1:
-				result.append(clips[0])
+				result.append(clips[0][:2])
 			else:
 				result.append(None)
 		return result

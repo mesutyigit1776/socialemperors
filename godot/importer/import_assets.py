@@ -8,6 +8,7 @@ socialemperors server folder that the user supplies and writes:
   <out>/sprites/<img_name>/<n>.png   frame n of the item graphic (1-based)
   <out>/sprites/<img_name>/meta.json registration offset and frame count
   <out>/sprites/<img_name>/clips/<id>/<n>.png  frame n of an animation of a unit
+  <out>/fx/<name>/...                shots and effects of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
@@ -152,9 +153,9 @@ def copy_frames(frames, folder):
 		shutil.copyfile(frame, os.path.join(folder, f"{index}.png"))
 
 
-def import_clips(jpexs, swf, swf_path, img_name, sprite_dir):
-	"""Exports the clips of a unit graphic. Returns the meta entries "clips" and "frame_clips"."""
-	frame_clips = swf.symbol_frame_clips(img_name)
+def import_clips(jpexs, swf, swf_path, symbol, sprite_dir):
+	"""Exports the clips of a graphic. Returns the meta entries "clips" and "frame_clips"."""
+	frame_clips = swf.symbol_frame_clips(symbol)
 	clip_ids = sorted({clip[0] for clip in frame_clips if clip is not None})
 	clips = {}
 	if clip_ids:
@@ -171,24 +172,30 @@ def import_clips(jpexs, swf, swf_path, img_name, sprite_dir):
 	return clips, entries
 
 
-def import_sprite(jpexs, swf_path, img_name, out_dir, is_unit):
+def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated):
+	"""Exports the frames of a symbol to sprite_dir. animated: the frames contain
+	clips that play, as in units and in the graphics of shots."""
 	swf = SwfFile(swf_path)
-	offset_x, offset_y, _, _ = swf.symbol_offset(img_name)
-	frame_sizes = swf.symbol_frame_sizes(img_name)
-	sprite_dir = os.path.join(out_dir, "sprites", img_name)
+	offset_x, offset_y, _, _ = swf.symbol_offset(symbol)
+	frame_rects = swf.symbol_frame_rects(symbol)
 	with tempfile.TemporaryDirectory() as work_dir:
-		run_jpexs(jpexs, swf_path, ["-selectclass", img_name], work_dir)
-		frames = exported_frames(work_dir, lambda d: d.endswith(f"_{img_name}"), f"symbol '{img_name}' from {swf_path}")
+		run_jpexs(jpexs, swf_path, ["-selectclass", symbol], work_dir)
+		frames = exported_frames(work_dir, lambda d: d.endswith(f"_{symbol}"), f"symbol '{symbol}' from {swf_path}")
 		copy_frames(frames, sprite_dir)
-	if len(frame_sizes) != len(frames):
-		raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_sizes)}")
+	if len(frame_rects) != len(frames):
+		raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_rects)}")
 	meta = {
 		"origin_x": offset_x,   # top-left of every PNG relative to the symbol registration point
 		"origin_y": offset_y,
-		"frame_sizes": frame_sizes,   # [width, height] of each frame as Flash measures it; the client places graphics by it
+		# The bounds of each frame as Flash measures them: [width, height], and
+		# [x, y] of the top-left relative to the registration point. The client
+		# places graphics and aims shots by them.
+		"frame_sizes": [rect[2:] for rect in frame_rects],
+		"frame_origins": [rect[:2] for rect in frame_rects],
+		"shot_points": swf.symbol_shot_points(symbol),   # [x, y] where the shots of the frame start, or null
 	}
-	if is_unit:
-		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, img_name, sprite_dir)
+	if animated:
+		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, symbol, sprite_dir)
 	with open(os.path.join(sprite_dir, "meta.json"), 'w', encoding='utf-8') as f:
 		json.dump(meta, f, indent='\t')
 
@@ -224,29 +231,34 @@ def main():
 		shutil.copyfile(path, os.path.join(out_dir, "villages", os.path.basename(path)))
 
 	sprite_dir = os.path.join(source, "assets", "buildingsprites")
-	failed = []
 	items = needed_items(config, villages, shop, args.all)
+	# Each file in assets/fx has one symbol with the name of the file. The
+	# client loads them by name; the port maps the shooters to the names.
+	fx_names = sorted(os.path.basename(path)[:-4] for path in glob.glob(os.path.join(source, "assets", "fx", "*.swf")))
+	# (name shown in the progress, SWF file, symbol, output folder, animated)
+	jobs = [(img_name, os.path.join(sprite_dir, f"{img_name}.swf"), img_name, os.path.join(out_dir, "sprites", img_name), items[img_name]["type"] == "u") for img_name in sorted(items)]
+	jobs += [(f"fx/{name}", os.path.join(source, "assets", "fx", f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in fx_names]
 
-	def import_one(img_name):
-		swf_path = os.path.join(sprite_dir, f"{img_name}.swf")
+	def import_one(job):
+		_, swf_path, symbol, folder, animated = job
 		if not os.path.exists(swf_path):
 			return "no SWF file"
 		try:
-			import_sprite(args.jpexs, swf_path, img_name, out_dir, items[img_name]["type"] == "u")
+			import_sprite(args.jpexs, swf_path, symbol, folder, animated)
 		except (SwfError, RuntimeError) as e:
 			return str(e)
 		return None
 
+	failed = []
 	with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-		results = pool.map(import_one, sorted(items))
-		for count, (img_name, error) in enumerate(zip(sorted(items), results), start=1):
+		for count, (job, error) in enumerate(zip(jobs, pool.map(import_one, jobs)), start=1):
 			if error is not None:
-				failed.append((img_name, error))
-			print(f"[{count}/{len(items)}] {img_name}", flush=True)
+				failed.append((job[0], error))
+			print(f"[{count}/{len(jobs)}] {job[0]}", flush=True)
 
-	for img_name, reason in failed:
-		print(f"not imported: {img_name}: {reason}", file=sys.stderr)
-	print(f"done: {len(items) - len(failed)} sprites in {out_dir}")
+	for name, reason in failed:
+		print(f"not imported: {name}: {reason}", file=sys.stderr)
+	print(f"done: {len(jobs) - len(failed)} graphics in {out_dir}")
 
 
 if __name__ == "__main__":
