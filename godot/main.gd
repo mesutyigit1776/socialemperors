@@ -18,7 +18,7 @@ var _store: Store
 var _store_key := []  # Level and rotation period of the build menu; it changes with them.
 var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
 var _orders: UnitOrders
-var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again, places of new animals.
+var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again, places of new animals, idle units.
 
 
 func _ready() -> void:
@@ -41,7 +41,7 @@ func _ready() -> void:
 		_view.placement_confirmed.connect(_on_placement_confirmed)
 		_view.move_confirmed.connect(_on_move_confirmed)
 		_view.map_clicked.connect(_on_map_clicked)
-		_orders = UnitOrders.new(_village, _view, _config)
+		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
 		add_child(_orders)
@@ -57,6 +57,7 @@ func _ready() -> void:
 		_hud.hurry_requested.connect(func() -> void: _collect(_selected, true))
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
 		_hud.train_requested.connect(_on_train_requested)
+		_hud.speed_up_requested.connect(_on_speed_up_requested)
 		_hud.unit_out_requested.connect(_on_unit_out_requested)
 		_hud.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
 		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
@@ -131,12 +132,7 @@ func _on_clock() -> void:
 	var now := _now()
 	var changed := false
 	for placed in _village.items.duplicate():
-		var unit := _village.complete_training(placed, now)
-		while unit != null:
-			changed = true
-			_view.add_placed(unit)
-			_hud.show_message("%s is trained." % _config.get_item(unit.item_id).name)
-			unit = _village.complete_training(placed, now)
+		changed = _complete_training(placed, now) or changed
 		var victim := _village.complete_sacrifice(placed, now)
 		if victim != null:
 			changed = true
@@ -151,6 +147,17 @@ func _on_clock() -> void:
 		_save()
 	_update_production()
 	_update_store()
+
+
+## Puts the trained units of the building on the map. Returns true when a unit came out.
+func _complete_training(building: Village.PlacedItem, now: int) -> bool:
+	var unit := _village.complete_training(building, now)
+	var trained := unit != null
+	while unit != null:
+		_view.add_placed(unit)
+		_hud.show_message("%s is trained." % _config.get_item(unit.item_id).name)
+		unit = _village.complete_training(building, now)
+	return trained
 
 
 ## A unit arrived, went into a building or finished a harvest.
@@ -182,6 +189,24 @@ func _on_train_requested() -> void:
 	_update_production()
 	if _save():
 		_hud.show_message("%s is in training." % unit.name)
+
+
+func _on_speed_up_requested() -> void:
+	if _selected == null:
+		return
+	var now := _now()
+	var cost := _village.speed_up_cost(_selected, now)
+	var result := _village.speed_up_training(_selected, now)
+	if result != Village.Training.OK:
+		_hud.show_message("You do not have enough cash." if result == Village.Training.NOT_ENOUGH_CASH else "No units are in training.")
+		return
+	_complete_training(_selected, now)
+	if _village.queued_units(_selected) > 0:
+		_hud.show_message("The training is finished, but there is no free place for all units.")
+	_update_store()
+	_update_production()
+	if _save() and _village.queued_units(_selected) == 0:
+		_hud.show_message("The training is finished for %d cash." % cost)
 
 
 func _on_unit_out_requested(index: int) -> void:
@@ -235,9 +260,9 @@ func _update_production() -> void:
 		_hud.show_production(item, _village.seconds_to_ready(_selected, now), _product_text(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), requirement)
 	var unit := _village.trained_unit(_selected) if _selected != null else null
 	if unit == null:
-		_hud.show_training(null, {}, 0, -1)
+		_hud.show_training(null, {}, 0, -1, 0)
 	else:
-		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now))
+		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now), _village.speed_up_cost(_selected, now))
 
 
 ## What a collection from the producing building gives, for example "250 food" or "1 Sheep".

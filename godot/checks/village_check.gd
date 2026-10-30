@@ -58,6 +58,9 @@ const SACRIFICE_ALTAR := 225  # 1.08 seconds
 const SMALL_REFUGE := 151  # 2 units
 const FORTRESS := 469
 const UNIT_WAREHOUSE := 1284
+const GHOST_BARRACKS := 1246  # 3x3; trains ghosts: 5 cash and 10 food, 25 seconds
+const GHOST := 734
+const RAM_BARRACKS := 1491  # 3x3; trains orc battering rams: 1500 seconds
 const HIGHEST_LEVEL_XP := 2016089205
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
@@ -93,7 +96,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_animals, _check_unit_buildings]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -562,6 +565,79 @@ func _check_training() -> bool:
 	var poor := _write_fixture("training_poor", 20, 20000, 100000, {"food": 49})
 	village = Village.load_from_file(poor, _config)
 	_check(village.train(village.item_at(TOWN_HALL_TILE), T) == Village.Training.NOT_ENOUGH_RESOURCES, "training needs the resources")
+	return true
+
+
+## Units that cost cash, and cash that finishes a training queue.
+func _check_cash_training() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	for i in 6:
+		items.append([HOUSE, 21 + 2 * i, 41, 0, T, 0, [], {}])
+	items.append([GHOST_BARRACKS, 25, 45, 0, T, 0, [], {}])
+	items.append([RAM_BARRACKS, 30, 45, 0, T, 0, [], {}])
+	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
+	var path := _write_fixture("cash_training", 100, HIGHEST_LEVEL_XP, 100000, plenty)
+	var village := Village.load_from_file(path, _config)
+	var ghost_barracks := village.item_at(Vector2i(25, 45))
+	var ram_barracks := village.item_at(Vector2i(30, 45))
+	_check(village.training_costs(_config.get_item(GHOST)) == {"c": 5, "f": 10}, "a ghost costs 5 cash and 10 food")
+	var cash := village.get_resource("c")
+	var food := village.get_resource("f")
+	_check(village.speed_up_training(ghost_barracks, T) == Village.Training.NOTHING_TO_FINISH and village.speed_up_cost(ghost_barracks, T) == 0, "an empty queue has nothing to finish")
+	_check(village.train(ghost_barracks, T) == Village.Training.OK, "a ghost is in training")
+	_expect("after the ghost training starts", village, {"c": cash - 5, "f": food - 10})
+	_check(village.speed_up_cost(ghost_barracks, T + 10) == 1, "1 cash finishes a queue of 15 seconds")
+	_check(village.speed_up_training(ghost_barracks, T + 10) == Village.Training.OK, "the ghost training finishes with cash")
+	_expect("after the speed-up", village, {"c": cash - 6})
+	var ghost := village.complete_training(ghost_barracks, T + 10)
+	_check(ghost != null and ghost.item_id == GHOST and village.queued_units(ghost_barracks) == 0, "the ghost comes out at once")
+	_check(village.speed_up_training(ghost_barracks, T + 10) == Village.Training.NOTHING_TO_FINISH, "a finished queue has nothing to finish")
+
+	for i in 3:
+		village.train(ram_barracks, T)
+	# The server charges only for the next unit, 1 cash; the client shows and takes 2.
+	_check(village.speed_up_cost(ram_barracks, T) == 2, "2 cash finish 3 rams (75 minutes)")
+	_check(village.speed_up_cost(ram_barracks, T + 1000) == 1, "1 cash finishes the rams after 1000 seconds")
+	_check(village.speed_up_training(ram_barracks, T + 1000) == Village.Training.OK, "the ram training finishes with cash")
+	for i in 3:
+		_check(village.complete_training(ram_barracks, T + 1000) != null, "ram %d comes out at once" % (i + 1))
+	_check(village.save_to_file(path) == OK, "the village after the speed-ups saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["privateState"]["barracksQueues"].is_empty(), "the save has no training queues")
+
+	saved["playerInfo"]["cash"] = 5
+	var poor := "user://checks/cash_training_poor.json"
+	var file := FileAccess.open(poor, FileAccess.WRITE)
+	file.store_string(JSON.stringify(saved, "\t", false))
+	file.close()
+	village = Village.load_from_file(poor, _config)
+	ghost_barracks = village.item_at(Vector2i(25, 45))
+	_check(village.train(ghost_barracks, T) == Village.Training.OK and village.train(ghost_barracks, T) == Village.Training.NOT_ENOUGH_RESOURCES, "the second ghost needs 5 more cash")
+	_check(village.speed_up_training(ghost_barracks, T) == Village.Training.NOT_ENOUGH_CASH and village.queued_units(ghost_barracks) == 1, "the speed-up needs the cash")
+	return true
+
+
+## Units that stand on a building or on another unit, which the client moves away.
+func _check_crowded_units() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([PUMPKIN_CROP, 33, 45, 0, T, 0, [], {}])
+	for tile: Vector2i in [UNIT_TILES[0], UNIT_TILES[0], UNIT_TILES[1], HOUSE_TILE, Vector2i(33, 45)]:
+		items.append([VILLAGER, tile.x, tile.y, 0, T, 0, [], {}])
+	var path := _write_fixture("crowded_units", 20, 20000, 100000, {"expansions": [13, 12], "items": items})
+	var village := Village.load_from_file(path, _config)
+	var on_tile := village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == VILLAGER and placed.tile == UNIT_TILES[0])
+	_check(on_tile.size() == 2 and not village.is_crowded(on_tile[0]) and village.is_crowded(on_tile[1]), "of two units on one tile, the second must move")
+	var on_house: Village.PlacedItem = village.items[-2]
+	var on_farm: Village.PlacedItem = village.items[-1]
+	_check(village.is_crowded(on_house) and not village.is_crowded(on_farm), "a unit on a house must move, a unit on a farm can stay")
+	_check(not village.is_crowded(village.item_at(UNIT_TILES[1])), "a unit alone on its tile can stay")
+	var rng := RandomNumberGenerator.new()
+	for i in 20:
+		var tile := village.random_free_tile_near(UNIT_TILES[0], Village.CROWD_SEARCH_RINGS, rng)
+		var distance := (tile - UNIT_TILES[0]).abs()
+		_check(village.is_free(tile) and maxi(distance.x, distance.y) == 1, "the free tile %s is next to the crowded unit" % tile)
 	return true
 
 

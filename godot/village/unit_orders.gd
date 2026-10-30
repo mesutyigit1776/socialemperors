@@ -6,6 +6,10 @@ extends Node
 ## its commands then. Walks and harvests are not in the save: the client does not
 ## send them either. A unit of the player that comes near a wild animal
 ## captures it, and the animal walks to its ranch by itself.
+##
+## Idle units do not walk by themselves. Like in the client, they now and then
+## turn toward a neighbouring tile, which only the view shows, and a unit of the
+## player that stands on a building or on another unit walks to a free tile.
 
 ## The village changed. old_level is the level before the change.
 signal village_changed(message: String, old_level: int)
@@ -14,6 +18,10 @@ signal order_failed(message: String)
 
 ## Tiles per second for each point of the velocity of a unit. Only the view uses it.
 const SPEED_PER_VELOCITY := 0.8
+## The client runs the AI of the units every 61 frames, at 30 frames per second.
+const AI_INTERVAL := 61.0 / 30.0
+## The chance at each AI run that an idle unit turns.
+const IDLE_TURN_CHANCE := 0.04
 
 enum Goal { TILE, ENTER, HARVEST }
 
@@ -39,12 +47,15 @@ var _config: GameConfig
 var _walks: Dictionary = {}  # Village.PlacedItem (unit) -> Walk
 var _harvests: Dictionary = {}  # Village.PlacedItem (resource) -> Harvest
 var _harvesting: Dictionary = {}  # Village.PlacedItem (unit) -> Village.PlacedItem (resource)
+var _rng: RandomNumberGenerator
+var _ai_time := 0.0  # Seconds since the last AI run.
 
 
-func _init(village: Village, view: VillageView, config: GameConfig) -> void:
+func _init(village: Village, view: VillageView, config: GameConfig, rng: RandomNumberGenerator) -> void:
 	_village = village
 	_view = view
 	_config = config
+	_rng = rng
 
 
 func is_busy(unit: Village.PlacedItem) -> bool:
@@ -87,6 +98,10 @@ func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem)
 
 func _process(delta: float) -> void:
 	_capture_animals()
+	_ai_time += delta
+	if _ai_time >= AI_INTERVAL:
+		_ai_time = fmod(_ai_time, AI_INTERVAL)
+		_update_idle_units()
 	for walk: Walk in _walks.values():
 		_advance(walk, delta)
 	var now := Time.get_unix_time_from_system()
@@ -112,6 +127,26 @@ func _capture_animals() -> void:
 				_send_home(animal)
 				village_changed.emit("You captured a %s." % _config.get_item(animal.item_id).name, _village.get_level())
 				break
+
+
+## Units that do not walk and do not harvest. A unit that stands on a building or
+## on another unit walks away; the others sometimes turn.
+func _update_idle_units() -> void:
+	for placed in _village.items:
+		var item := _config.get_item(placed.item_id)
+		if item == null or not item.is_unit() or _walks.has(placed) or is_busy(placed):
+			continue
+		# The client moves wild animals too, but it does not send their moves to
+		# the server. The port keeps them in place, so that the village and the
+		# save show the same tile.
+		if _village.is_own_unit(placed) and _village.is_crowded(placed):
+			var tile := _village.random_free_tile_near(placed.tile, Village.CROWD_SEARCH_RINGS, _rng)
+			if tile != Village.ANY_TILE:
+				order(placed, tile, null)
+		elif _rng.randf() < IDLE_TURN_CHANCE:
+			var toward := placed.tile + Vector2i(roundi(_rng.randf() * 2) - 1, roundi(_rng.randf() * 2) - 1)
+			if toward != placed.tile:
+				_view.show_unit(placed, IsoGrid.tile_to_map(placed.tile), VillageView.unit_direction(placed.tile, toward), false)
 
 
 ## A captured animal walks into the nearest building of its kind. When that

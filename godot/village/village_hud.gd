@@ -17,6 +17,8 @@ signal hurry_requested
 signal work_time_chosen(work_time: int)
 ## The player wants to train a unit in the selected building.
 signal train_requested
+## The player wants to pay cash so that all units in training are ready at once.
+signal speed_up_requested
 ## The player wants to take Village.units_in(selected)[index] out of the selected building.
 signal unit_out_requested(index: int)
 ## The player wants to take a unit with this item id out of the unit warehouse.
@@ -60,9 +62,10 @@ var _collect_button := Button.new()
 var _hurry_button := Button.new()
 var _work_times := HBoxContainer.new()
 var _units := HFlowContainer.new()
-var _training := HBoxContainer.new()
+var _training := VBoxContainer.new()
 var _training_text := Label.new()
 var _train_button := Button.new()
+var _speed_up_button := Button.new()
 var _warehouse := VBoxContainer.new()
 var _warehouse_text := Label.new()
 var _warehouse_units := HFlowContainer.new()
@@ -125,6 +128,8 @@ func _init() -> void:
 	_train_button.pressed.connect(func() -> void: train_requested.emit())
 	_training.add_child(_training_text)
 	_training.add_child(_train_button)
+	_speed_up_button.pressed.connect(func() -> void: speed_up_requested.emit())
+	_training.add_child(_speed_up_button)
 	_training.visible = false
 	column.add_child(_training)
 	_warehouse_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -260,8 +265,9 @@ func show_warehouse(units: Variant, used: int, capacity: int, slot_price: int) -
 
 
 ## Shows the training of the selected building. unit is null when the building
-## does not train. seconds_left is -1 when the queue is empty.
-func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, seconds_left: float) -> void:
+## does not train. seconds_left is -1 when the queue is empty. speed_up_cost
+## is the cash that finishes the queue, or 0 when there is nothing to finish.
+func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, seconds_left: float, speed_up_cost: int) -> void:
 	_training.visible = unit != null
 	if unit == null:
 		return
@@ -270,6 +276,8 @@ func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, sec
 		prices.append("%d %s" % [costs[code], RESOURCE_NAMES.get(code, code)])
 	_train_button.text = "Train %s (%s)" % [unit.name, ", ".join(prices)]
 	_training_text.text = "No units in training." if queued == 0 else "%d in training, next in %s" % [queued, _duration(seconds_left)]
+	_speed_up_button.visible = speed_up_cost > 0
+	_speed_up_button.text = "Finish all for %d cash" % speed_up_cost
 
 
 static func _duration(seconds: float) -> String:

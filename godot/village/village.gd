@@ -31,6 +31,8 @@ enum Training {
 	POPULATION_FULL,
 	UNIT_LIMIT_REACHED,
 	NOT_ENOUGH_RESOURCES,
+	NOTHING_TO_FINISH,  ## The queue is empty, or all its units are trained.
+	NOT_ENOUGH_CASH,
 }
 
 enum Production {
@@ -112,6 +114,11 @@ const SUBCAT_UNIVERSITY := 134
 const BLACKSMITH_UNIT_SUBCATS: Array[int] = [78, 79, 80]
 const UNIVERSITY_UNIT_SUBCATS: Array[int] = [81]
 const SUBCAT_SIEGE := 81
+## Cash for each started hour of training time that is left in a queue. The
+## client and the server both have this value; the configuration does not.
+const SPEED_UP_COST_PER_HOUR := 1
+## The client looks this many rings around a crowded unit for a free tile, see is_crowded().
+const CROWD_SEARCH_RINGS := 5
 
 ## Wild animals, by unit subcat: the unit that the client spawns, how many it
 ## keeps on the map, the level from which it spawns, the map race, and the
@@ -588,13 +595,50 @@ func is_free(tile: Vector2i, ignored: PlacedItem = null) -> bool:
 ## The free tile nearest to the area, in rings around it, or ANY_TILE.
 func free_tile_around(area: Rect2i) -> Vector2i:
 	for ring in range(1, IsoGrid.MAP_TILES):
-		var around := area.grow(ring)
-		for y in range(around.position.y, around.end.y):
-			for x in range(around.position.x, around.end.x):
-				var on_edge := x == around.position.x or x == around.end.x - 1 or y == around.position.y or y == around.end.y - 1
-				if on_edge and is_free(Vector2i(x, y)):
-					return Vector2i(x, y)
+		var tiles := _free_tiles_in_ring(area, ring)
+		if not tiles.is_empty():
+			return tiles[0]
 	return ANY_TILE
+
+
+## A free tile at random from the nearest ring around the tile that has one,
+## or ANY_TILE when the first max_rings rings have none.
+func random_free_tile_near(tile: Vector2i, max_rings: int, rng: RandomNumberGenerator) -> Vector2i:
+	for ring in range(1, max_rings + 1):
+		var tiles := _free_tiles_in_ring(Rect2i(tile, Vector2i.ONE), ring)
+		if not tiles.is_empty():
+			return tiles[rng.randi_range(0, tiles.size() - 1)]
+	return ANY_TILE
+
+
+## True when the unit stands on a building other than a farm, or on a unit that
+## is before it in the item list. The client then moves the unit to a free tile
+## near it, see CROWD_SEARCH_RINGS. Saves from the server or the client can have
+## such units; the port does not put units on occupied tiles.
+func is_crowded(unit: PlacedItem) -> bool:
+	if is_free(unit.tile, unit):
+		return false
+	var before := true
+	for placed in items:
+		var item := _config.get_item(placed.item_id)
+		if placed == unit:
+			before = false
+		elif item != null and _covered_tiles(placed).has_point(unit.tile) \
+				and ((item.is_unit() and before) or (not item.is_unit() and item.subcat_functional != SUBCAT_FARM)):
+			return true
+	return false
+
+
+## The free tiles on the ring around the area, row by row.
+func _free_tiles_in_ring(area: Rect2i, ring: int) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = []
+	var around := area.grow(ring)
+	for y in range(around.position.y, around.end.y):
+		for x in range(around.position.x, around.end.x):
+			var on_edge := x == around.position.x or x == around.end.x - 1 or y == around.position.y or y == around.end.y - 1
+			if on_edge and is_free(Vector2i(x, y)):
+				tiles.append(Vector2i(x, y))
+	return tiles
 
 
 ## A unit that the player commands, as the client decides it from the race.
@@ -1041,6 +1085,35 @@ func seconds_to_trained(building: PlacedItem, now: float) -> float:
 	if queue.is_empty():
 		return -1
 	return maxf(float(queue["ts"]) + _config.get_item(int(queue["unit"])).training_time - now, 0)
+
+
+## Seconds until the last unit of the queue is ready, or 0 when the queue is empty.
+func seconds_to_queue_end(building: PlacedItem, now: float) -> float:
+	var first := seconds_to_trained(building, now)
+	if first < 0:
+		return 0
+	return first + (queued_units(building) - 1) * _config.get_item(int(_queue(building)["unit"])).training_time
+
+
+## The cash that finishes the whole training queue at once.
+func speed_up_cost(building: PlacedItem, now: float) -> int:
+	return ceili(seconds_to_queue_end(building, now) / 3600.0) * SPEED_UP_COST_PER_HOUR
+
+
+## Pays cash so that all units of the queue are ready, as the command
+## "speed_up_queue" does. The server sets the time of the queue to 0, and then
+## complete_training() gives the units. The server charges only for the time of
+## the next unit; the port charges the price that the client shows and takes
+## from the player, which counts the whole queue.
+func speed_up_training(building: PlacedItem, now: int) -> Training:
+	if seconds_to_queue_end(building, now) == 0:
+		return Training.NOTHING_TO_FINISH
+	var cost := speed_up_cost(building, now)
+	if get_resource("c") < cost:
+		return Training.NOT_ENOUGH_CASH
+	_add_resource("c", -cost)
+	_queue(building)["ts"] = 0
+	return Training.OK
 
 
 ## Puts the next trained unit on the free tile nearest to the building, as the
