@@ -42,6 +42,7 @@ class ItemDef:
 	var attack_interval: int  ## Frames between two attacks, at 30 frames per second.
 	var flying: bool  ## Flying units walk over buildings.
 	var elevation: int  ## 0 for flat items, for example roads, on which units can stand.
+	var size: int  ## 2 for large units, which keep the tiles around them free in a formation; else 0.
 	var breeding_order: int  ## Power of a unit in the Soul Mixer, or 0 when the unit cannot go into it.
 	var sm_training_time: int  ## Seconds that the Soul Mixer needs to make this unit.
 	var potion: int  ## Potions that bring this unit back from the graveyard.
@@ -218,7 +219,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "life", "attack", "defense", "attack_interval", "flying", "elevation", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "life", "attack", "defense", "attack_interval", "flying", "elevation", "size", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -261,6 +262,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.attack_interval = numbers["attack_interval"]
 	item.flying = numbers["flying"] == 1
 	item.elevation = numbers["elevation"]
+	item.size = numbers["size"]
 	item.breeding_order = numbers["breeding_order"]
 	item.sm_training_time = numbers["sm_training_time"]
 	item.potion = numbers["potion"]

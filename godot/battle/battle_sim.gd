@@ -54,6 +54,7 @@ const SUBCAT_FARM := 122
 const SUBCAT_HEALING := 137
 const SUBCAT_CLERIC := 72
 const SUBCAT_SIEGE := 81
+const RESOURCE_SUBCATS: Array[int] = [125, 126, 127]  ## Trees, stone and gold.
 const CATEGORY_TERRAIN := 6
 ## Towers, castles, dragon killers and town halls shoot, except Town Hall I.
 const SHOOTING_SUBCATS: Array[int] = [211, 231, 1711, 135]
@@ -151,16 +152,32 @@ func order_walk(unit: BattleFighter, tile: Vector2i) -> bool:
 	return walk(unit, tile)
 
 
-## An order of the player: the unit walks next to target and attacks it.
-func order_attack(unit: BattleFighter, target: BattleFighter) -> void:
-	var stand: Variant = _formation_tile(target, unit)
-	if stand == null:
-		return
-	unit.ai.state = BattleAI.State.FORCED_MOVE
-	unit.attacking = true
-	set_target(unit, target)
-	if not walk(unit, stand):
-		set_target(unit, null)
+## An order of the player to units of the player, as the client gives it when
+## the player clicks tile: the units walk to tile in a formation, see
+## BattleFormation. They attack an enemy on tile, and they stand around an own
+## item or a tree or deposit on tile.
+func order(units: Array[BattleFighter], tile: Vector2i) -> void:
+	var living: Array[BattleFighter] = units.filter(func(unit: BattleFighter) -> bool: return not unit.dead)
+	var item: BattleFighter = _tiles.get(tile)
+	var stands := {}
+	if item != null and (item.team == BattleFighter.Team.ENEMY or item.def.subcat_functional in RESOURCE_SUBCATS):
+		var can_stand := func(candidate: Vector2i) -> bool: return _is_standable(candidate) or _tiles.get(candidate) in living
+		stands = BattleFormation.attack_tiles(item, living, can_stand)
+	else:
+		var is_free := func(candidate: Vector2i) -> bool: return _on_map(candidate) and not _tiles.has(candidate)
+		var tiles := BattleFormation.spiral_tiles(item.tile, living.size(), is_free) if item != null \
+				else BattleFormation.square_tiles(tile, living.size(), is_free)
+		for i in tiles.size():
+			stands[living[i]] = tiles[i]
+	for unit: BattleFighter in stands:
+		if item != null and item.team == BattleFighter.Team.ENEMY:
+			unit.ai.state = BattleAI.State.FORCED_MOVE
+			unit.attacking = true
+			set_target(unit, item)
+			if not walk(unit, stands[unit]):
+				set_target(unit, null)
+		else:
+			order_walk(unit, stands[unit])
 
 
 ## The unit attacks target; it walks next to it when it is out of range.
@@ -558,14 +575,7 @@ func _formation_tile(target: BattleFighter, unit: BattleFighter) -> Variant:
 	for ring in range(unit.attack_range + size.x / 2, IsoGrid.MAP_TILES):
 		var best: Variant = null
 		var best_squared := 0
-		var candidates: Array[Vector2i] = []
-		for x in range(centre.x - ring + even, centre.x + ring + 1):
-			candidates.append(Vector2i(x, centre.y + ring))
-			candidates.append(Vector2i(x, centre.y - ring + even))
-		for y in range(centre.y - ring + 1 + even, centre.y + ring):
-			candidates.append(Vector2i(centre.x - ring + even, y))
-			candidates.append(Vector2i(centre.x + ring, y))
-		for tile in candidates:
+		for tile in BattleFormation.ring_tiles(centre, ring, even):
 			if not (_is_standable(tile) or _tiles.get(tile) == unit):
 				continue
 			var offset := tile - unit.tile

@@ -12,6 +12,7 @@ const HEALER := 502  # life 25, heals 15, range 5, every 120 frames
 const SPEARMAN := 509  # life 40, attack 8, defense 1, range 1, every 35 frames, speed 3
 const LIGHT_ARCHER := 516  # life 30, attack 5, range 5: arrows of 30 pixels per frame
 const CATAPULT := 521  # siege unit: half damage to units
+const GIANT_YETI := 545  # large unit (size 2), range 2
 const TOWER_I := 29  # life 300, attack 4, range 7, every 35 frames
 const LIGHTNING_TOWER := 214  # timed shots that fly straight, every 15 frames
 const HOUSE := 1  # 2x2, no attack: not a target
@@ -38,7 +39,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_shots, _check_tower, _check_healer, _check_help_and_flight, _check_fights]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_tower, _check_healer, _check_help_and_flight, _check_fights]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -233,6 +234,57 @@ func _check_formation() -> bool:
 	_check(sim.distance(archer, archer.target) <= 5 and archer.target == mill, "the archer stands within its range of the mill")
 	_check(mill.health < 100000, "both attack the mill")
 	return true
+
+
+## Orders of the player to a group, as in the client: a square on free ground,
+## the rings around an own unit, and the rings at the range around an enemy.
+func _check_group_orders() -> bool:
+	var sim := _sim(13)
+	var units: Array[BattleFighter] = []
+	for i in 8:
+		units.append(sim.add_item(_config.get_item(SPEARMAN), Vector2i(20 + i, 20), PLAYER))
+	var own := sim.add_item(_config.get_item(SPEARMAN), Vector2i(41, 30), PLAYER)
+	sim.order(units, Vector2i(40, 30))
+	var square := [Vector2i(40, 30), Vector2i(41, 31), Vector2i(40, 31), Vector2i(42, 30), Vector2i(42, 31), Vector2i(42, 32), Vector2i(41, 32), Vector2i(40, 32)]
+	_check(units.map(_goal) == square, "on free ground the group fills a square that grows to the right and down, around a taken tile")
+	_check(units.all(func(unit: BattleFighter) -> bool: return unit.ai.state == BattleAI.State.FORCED_MOVE and unit.target == null), "the units only walk")
+	sim.order(units.slice(0, 3), own.tile)
+	_check(units.slice(0, 3).map(_goal) == [Vector2i(41, 31), Vector2i(40, 31), Vector2i(40, 29)], "around an own unit the group takes the first free tiles of the ring, nearest first")
+
+	sim = _sim(14)
+	var tower := sim.add_item(_config.get_item(TOWER_I), Vector2i(50, 50), ENEMY)
+	tower.health = 100000
+	var spearman := sim.add_item(_config.get_item(SPEARMAN), Vector2i(60, 54), PLAYER)
+	var archers: Array[BattleFighter] = [sim.add_item(_config.get_item(LIGHT_ARCHER), Vector2i(60, 50), PLAYER), sim.add_item(_config.get_item(LIGHT_ARCHER), Vector2i(60, 52), PLAYER)]
+	var group: Array[BattleFighter] = [spearman, archers[0], archers[1]]
+	for unit in group:
+		unit.health = 100000
+	sim.order(group, tower.tile)
+	_check(group.map(_goal) == [Vector2i(51, 51), Vector2i(55, 50), Vector2i(55, 52)], "around an enemy each unit takes the tile nearest to it at its range: %s" % [group.map(_goal)])
+	_check(group.all(func(unit: BattleFighter) -> bool: return unit.target == tower and unit.attacking and unit.ai.state == BattleAI.State.FORCED_MOVE), "the units attack the enemy after the walk")
+	var attackers := {}
+	sim.hit.connect(func(target: BattleFighter, attacker: BattleFighter, _d: int, _c: bool) -> void:
+		if target == tower:
+			attackers[attacker] = true)
+	_run_until(sim, func() -> bool: return attackers.size() == 3, 600)
+	_check(attackers.size() == 3, "all three attack the tower")
+
+	sim = _sim(15)
+	tower = sim.add_item(_config.get_item(TOWER_I), Vector2i(50, 50), ENEMY)
+	spearman = sim.add_item(_config.get_item(SPEARMAN), Vector2i(61, 50), PLAYER)
+	var yetis: Array[BattleFighter] = [sim.add_item(_config.get_item(GIANT_YETI), Vector2i(60, 50), PLAYER), sim.add_item(_config.get_item(GIANT_YETI), Vector2i(60, 51), PLAYER)]
+	group = [spearman, yetis[0], yetis[1]]
+	sim.order(group, tower.tile)
+	_check(yetis.map(_goal) == [Vector2i(52, 50), Vector2i(52, 52)], "a large unit keeps the tiles around its tile free: %s" % [yetis.map(_goal)])
+	# The yetis (range 2) choose before the spearman (range 1). The tiles (50, 51)
+	# and (50, 49) are equally near to the spearman; it takes the first one.
+	_check(_goal(spearman) == Vector2i(50, 51), "the units with the longest range choose first: the spearman gets %s" % _goal(spearman))
+	return true
+
+
+## The last tile of the walk of a unit.
+func _goal(unit: BattleFighter) -> Vector2i:
+	return unit.path.back() if not unit.path.is_empty() else IsoGrid.nearest_tile(unit.walk_point)
 
 
 ## Arrows fly 30 pixels per frame and hurt when they land, not when they leave.
