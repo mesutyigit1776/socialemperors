@@ -16,8 +16,8 @@ signal village_changed(message: String, old_level: int)
 ## A unit could not do what the player ordered.
 signal order_failed(message: String)
 
-## Tiles per second for each point of the velocity of a unit. Only the view uses it.
-const SPEED_PER_VELOCITY := 0.8
+## Walks move in frames of the client, see IsoGrid.step_toward().
+const FRAME_SECONDS := 1.0 / 30.0
 ## The client runs the AI of the units every 61 frames, at 30 frames per second.
 const AI_INTERVAL := 61.0 / 30.0
 ## The chance at each AI run that an idle unit turns.
@@ -30,9 +30,11 @@ class Walk:
 	var unit: Village.PlacedItem
 	var goal: Goal
 	var target: Village.PlacedItem  ## The building or the resource, or null.
-	var path: Array[Vector2i] = []  ## The tiles that are still in front of the unit.
-	var tile: Vector2i  ## The tile where the current step starts.
-	var progress := 0.0  ## From 0 to 1 along the current step.
+	var path: Array[Vector2i] = []  ## The tiles after the one that the unit walks to.
+	var tile: Vector2i  ## The tile nearest to the unit.
+	var position: Vector2  ## Map pixels.
+	var point: Vector2  ## The point of the tile that the unit walks to.
+	var speed: int  ## Pixels per frame.
 	var direction := 5
 
 
@@ -49,6 +51,7 @@ var _harvests: Dictionary = {}  # Village.PlacedItem (resource) -> Harvest
 var _harvesting: Dictionary = {}  # Village.PlacedItem (unit) -> Village.PlacedItem (resource)
 var _rng: RandomNumberGenerator
 var _ai_time := 0.0  # Seconds since the last AI run.
+var _frame_time := 0.0  # Seconds that the walks have not moved yet.
 
 
 func _init(village: Village, view: VillageView, config: GameConfig, rng: RandomNumberGenerator) -> void:
@@ -92,6 +95,12 @@ func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem)
 	walk.path = Pathfinder.find_path(walk.tile, is_goal, func(candidate: Vector2i) -> bool: return _village.is_free(candidate, unit))
 	if walk.path.is_empty() and not is_goal.call(walk.tile):
 		return "%s cannot find a way there." % unit_item.name
+	walk.position = _walks[unit].position if _walks.has(unit) else IsoGrid.tile_to_map(unit.tile)
+	walk.point = walk.position
+	if not walk.path.is_empty():
+		walk.direction = VillageView.unit_direction(walk.tile, walk.path[0])
+		walk.point = IsoGrid.tile_to_map(walk.path.pop_front())
+	walk.speed = maxi(_village.walking_speed(unit), 1)
 	_walks[unit] = walk
 	return ""
 
@@ -102,8 +111,13 @@ func _process(delta: float) -> void:
 	if _ai_time >= AI_INTERVAL:
 		_ai_time = fmod(_ai_time, AI_INTERVAL)
 		_update_idle_units()
+	_frame_time += delta
+	while _frame_time >= FRAME_SECONDS:
+		_frame_time -= FRAME_SECONDS
+		for walk: Walk in _walks.values():
+			_advance(walk)
 	for walk: Walk in _walks.values():
-		_advance(walk, delta)
+		_view.show_unit(walk.unit, walk.position, walk.direction, true)
 	var now := Time.get_unix_time_from_system()
 	for resource: Village.PlacedItem in _harvests.keys():
 		if now >= _harvests[resource].end_time:
@@ -164,17 +178,18 @@ func _send_home(animal: Village.PlacedItem) -> void:
 		order(animal, tile, null)
 
 
-func _advance(walk: Walk, delta: float) -> void:
-	walk.progress += delta * maxf(_config.get_item(walk.unit.item_id).velocity, 1) * SPEED_PER_VELOCITY
-	while walk.progress >= 1 and not walk.path.is_empty():
-		walk.tile = walk.path.pop_front()
-		walk.progress -= 1
-	if walk.path.is_empty():
+## One frame of a walk. Like in the client, the unit stops for one frame at
+## each tile of its path.
+func _advance(walk: Walk) -> void:
+	if walk.position != walk.point:
+		walk.position = IsoGrid.step_toward(walk.position, walk.point, walk.speed)
+		walk.tile = IsoGrid.nearest_tile(walk.position)
+	elif walk.path.is_empty():
 		_arrive(walk)
-		return
-	walk.direction = VillageView.unit_direction(walk.tile, walk.path[0])
-	var position := IsoGrid.tile_to_map(walk.tile).lerp(IsoGrid.tile_to_map(walk.path[0]), walk.progress)
-	_view.show_unit(walk.unit, position, walk.direction, true)
+	else:
+		var next: Vector2i = walk.path.pop_front()
+		walk.direction = VillageView.unit_direction(IsoGrid.nearest_tile(walk.point), next)
+		walk.point = IsoGrid.tile_to_map(next)
 
 
 func _arrive(walk: Walk) -> void:

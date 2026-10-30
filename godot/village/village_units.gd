@@ -52,6 +52,13 @@ const RACE_ALL := "a"
 ## Units that work in mines, mills and farms, and harvest trees and deposits.
 const SUBCAT_PEASANT := 71
 const PEASANT_BUILDING_SUBCATS: Array[int] = [121, 122, 124]
+## Peasants walk at a speed (pixels per frame) that comes from the level of the
+## town hall (0 when there is none), not from their velocity. A fitness centre
+## or a troll coliseum adds FITNESS_SPEED.
+const PEASANT_SPEEDS: Array[int] = [3, 5, 5, 6, 6, 7]
+const TOWN_HALL_LEVELS := {26: 1, 289: 1, 139: 2, 321: 2, 140: 3, 322: 3, 141: 4, 412: 5}
+const FITNESS_BUILDINGS: Array[int] = [221, 325]
+const FITNESS_SPEED := 2
 const SUBCAT_RANCH := 123
 ## Trees, stone and gold. A peasant harvests them, and then they go away.
 const HARVEST_SUBCATS: Array[int] = [125, 126, 127]
@@ -325,6 +332,19 @@ func is_crowded(unit: PlacedItem) -> bool:
 func is_own_unit(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL or _captured.has(placed))
+
+
+## The pixels per frame that a unit walks, see IsoGrid.step_toward().
+func walking_speed(placed: PlacedItem) -> int:
+	var item := _config.get_item(placed.item_id)
+	if item.subcat_functional != SUBCAT_PEASANT:
+		return item.velocity
+	var hall := town_hall()
+	var speed: int = PEASANT_SPEEDS[TOWN_HALL_LEVELS.get(hall.item_id, 0) if hall != null else 0]
+	for other in items:
+		if other.item_id in FITNESS_BUILDINGS:
+			return speed + FITNESS_SPEED
+	return speed
 
 
 ## An animal that does not belong to the player yet.

@@ -40,6 +40,7 @@ const DIAMOND_CASTLE := 1234  # only for gold members
 const CASH_WONDER := 1299  # in the "New" category, not in the rotation
 const COW_RANCH := 12
 const KNIGHT := 512
+const FITNESS_CENTRE := 221
 const GOLD_DEPOSIT := 73  # 10 gold, times 3 at level 20
 const GOLD_REGROWTH := 80  # grows into a gold deposit after 3 hours
 const TOWN_HALL := 26  # trains villagers: 50 food, 5 seconds, 5 XP
@@ -78,6 +79,7 @@ const SOUL_MIXER := 1529  # 3x3
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
 const KNIGHT_TILE := Vector2i(50, 44)
+const FITNESS_TILE := Vector2i(42, 58)
 const HOUSE_TILE := Vector2i(44, 50)
 const TOWER_TILE := Vector2i(51, 47)
 ## The time for the units that come out of sold buildings, where the time does not matter.
@@ -681,6 +683,7 @@ func _check_animals() -> bool:
 	items.append([SHEEP, UNIT_TILES[0].x, UNIT_TILES[0].y, 0, T, 0, [], {}])
 	items.append([VILLAGER, UNIT_TILES[1].x, UNIT_TILES[1].y, 0, T, 0, [], {}])
 	items.append([SHEEP_RANCH_I, 37, 55, 0, T, 0, [], {}])
+	items.append([FITNESS_CENTRE, FITNESS_TILE.x, FITNESS_TILE.y, 0, T, 0, [], {}])
 	var plenty := {"wood": 100000, "stone": 100000, "food": 100000, "expansions": [13, 12], "items": items}
 	var path := _write_fixture("animals", 11, _config.levels[10].exp_required, 100000, plenty)
 	var village := Village.load_from_file(path, _config)
@@ -698,6 +701,8 @@ func _check_animals() -> bool:
 	village.capture(wild)
 	_check(village.is_own_unit(wild) and village.can_enter(wild, ranch) and village.animal_home(wild) == ranch, "a captured sheep belongs to the player and goes into the sheep ranch")
 	_check(village.animal_home(villager) == null and village.town_hall() == village.item_at(TOWN_HALL_TILE), "a villager has no ranch; the village has its town hall")
+	_check(village.walking_speed(tame) == _config.get_item(SHEEP).velocity and village.walking_speed(villager) == 7, "a sheep walks at its velocity; a villager at the speed of town hall I plus the fitness centre")
+	_check(village.sell(village.item_at(FITNESS_TILE), T) == Village.Placement.OK and village.walking_speed(villager) == 5, "without the fitness centre, a villager walks at the speed of town hall I")
 	_check(village.push_unit(wild, ranch, T) == Village.Placement.OK and village.seconds_to_ready(ranch, T) == 90, "the sheep goes into the ranch, which starts to produce")
 	var out := village.pop_unit(ranch, 0, T + 1)
 	_check(out != null and village.is_own_unit(out), "a sheep that comes out of the ranch belongs to the player")

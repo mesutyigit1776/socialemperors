@@ -21,6 +21,33 @@ static func map_to_tile(point: Vector2) -> Vector2i:
 	return Vector2i(roundi((a + b) / 2.0), roundi((b - a) / 2.0))
 
 
+## The tile whose point (tile_to_map()) is nearest to a map point. The client
+## puts a walking unit on this tile.
+static func nearest_tile(point: Vector2) -> Vector2i:
+	var a := point.x / 54.0
+	var b := (point.y + 81.0) / 27.0
+	return Vector2i(floori((a + b) / 2.0 + 0.5), floori((b - a) / 2.0 + 0.5))
+
+
+## One frame of a walk in the client, in villages and in battles: the unit moves
+## up to speed pixels toward point on the longer axis, and the other axis in
+## proportion.
+static func step_toward(position: Vector2, point: Vector2, speed: float) -> Vector2:
+	var delta := point - position
+	var share := Vector2.ONE
+	if absf(delta.y) > absf(delta.x):
+		share.x = absf(delta.x) / absf(delta.y)
+	else:
+		share.y = absf(delta.y) / absf(delta.x)
+	var moved := position
+	for axis in 2:
+		if absf(delta[axis]) > speed:
+			moved[axis] += signf(delta[axis]) * speed * share[axis]
+		else:
+			moved[axis] = point[axis]
+	return moved
+
+
 ## Returns the four corners of the diamond that a rectangle of tiles covers on the map.
 static func footprint_outline(footprint: Rect2i) -> PackedVector2Array:
 	var first := footprint.position

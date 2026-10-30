@@ -380,8 +380,8 @@ func _update_attack(unit: BattleFighter) -> void:
 		unit.reattack_frames = FOLLOW_WAIT_FRAMES
 
 
-## The client moves a unit up to its speed in pixels on the longer axis of its
-## step in each frame, and stops for one frame at each tile of its path.
+## The client moves a unit with IsoGrid.step_toward() in each frame, and stops
+## for one frame at each tile of its path.
 func _update_walk(unit: BattleFighter) -> void:
 	if unit.walk_point == null or unit.speed <= 0:
 		unit.moving = false
@@ -403,20 +403,8 @@ func _update_walk(unit: BattleFighter) -> void:
 			unit.ai.on_arrived()
 	if unit.position == unit.next_point:
 		return
-	var delta := unit.next_point - unit.position
-	var share := Vector2.ONE
-	if absf(delta.y) > absf(delta.x):
-		share.x = absf(delta.x) / absf(delta.y)
-	else:
-		share.y = absf(delta.y) / absf(delta.x)
-	var moved := unit.position
-	for axis in 2:
-		if absf(delta[axis]) > unit.speed:
-			moved[axis] += signf(delta[axis]) * unit.speed * share[axis]
-		else:
-			moved[axis] = unit.next_point[axis]
-	unit.position = moved
-	var tile := _tile_at(moved)
+	unit.position = IsoGrid.step_toward(unit.position, unit.next_point, unit.speed)
+	var tile := IsoGrid.nearest_tile(unit.position)
 	if tile != unit.tile:
 		if _tiles.get(unit.tile) == unit:
 			_tiles.erase(unit.tile)
@@ -660,13 +648,6 @@ static func _line(start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
 		tile += (goal - tile).sign()
 		result.append(tile)
 	return result
-
-
-## The tile whose point (IsoGrid.tile_to_map()) is nearest to a map point.
-static func _tile_at(point: Vector2) -> Vector2i:
-	var a := point.x / 54.0
-	var b := (point.y + 81.0) / 27.0
-	return Vector2i(floori((a + b) / 2.0 + 0.5), floori((b - a) / 2.0 + 0.5))
 
 
 static func _on_map(tile: Vector2i) -> bool:
