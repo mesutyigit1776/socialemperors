@@ -34,16 +34,16 @@ func _init() -> void:
 	_initial = initial
 	DirAccess.make_dir_recursive_absolute("user://checks")
 
-	_check_placement_and_save()
-	_check_several_levels()
-	_check_mana_reward()
-	_check_highest_level()
+	# A script error stops only the function in which it occurs, so a scenario
+	# that does not return true has stopped before its end.
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level]:
+		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
 
 
 ## The placement rules in order, then the save that the purchases wrote.
-func _check_placement_and_save() -> void:
+func _check_placement_and_save() -> bool:
 	var path := _write_fixture("placement", 1, 4, 500)
 	var before := FileAccess.get_file_as_string(path)
 	var village := Village.load_from_file(path, _config)
@@ -82,27 +82,31 @@ func _check_placement_and_save() -> void:
 	_check(_keys(text) == _keys(before), "the save keeps the key order")
 	var reloaded := Village.load_from_file(path, _config)
 	_check(reloaded != null and reloaded.get_level() == 2 and reloaded.items.size() == village.items.size(), "the saved village loads again")
+	return true
 
 
 ## One purchase can reach more than one level. Each level gives its own reward.
-func _check_several_levels() -> void:
+func _check_several_levels() -> bool:
 	var village := Village.load_from_file(_write_fixture("levels", 1, 95, 500), _config)
 	_buy(village, GREEN_TREE, Vector2i(56, 47), Village.Placement.OK)
 	# 101 XP: level 2 (+50 wood), level 3 (+50 food), level 4 (+400 wood). Level 5 needs 200.
 	_expect("after several levels", village, {"level": 4, "xp": 101, "w": 1300, "f": 750, "c": 20})
+	return true
 
 
 ## From level 36, a new level also gives 2 mana.
-func _check_mana_reward() -> void:
+func _check_mana_reward() -> bool:
 	var village := Village.load_from_file(_write_fixture("mana", 35, 80150 - 6, 500), _config)
 	_buy(village, GREEN_TREE, Vector2i(56, 47), Village.Placement.OK)
 	_expect("after level 36", village, {"level": 36, "c": 21, "m": 2})
+	return true
 
 
-func _check_highest_level() -> void:
+func _check_highest_level() -> bool:
 	var village := Village.load_from_file(_write_fixture("highest", 100, 2016089205, 500), _config)
 	_buy(village, GREEN_TREE, Vector2i(56, 47), Village.Placement.OK)
 	_expect("at the highest level", village, {"level": 100, "xp": 2016089211, "c": 20, "m": 0})
+	return true
 
 
 ## Writes initial.json with a changed level, XP and gold, as the start of a check.
