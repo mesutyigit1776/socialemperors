@@ -152,6 +152,57 @@ const FORTRESS := 469
 ## The unit warehouse keeps units outside the map and outside the population.
 const UNIT_WAREHOUSE := 1284
 
+## A collection from the Treasure Mine gives an item of a collection, see
+## find_collectible(), instead of a resource.
+const TREASURE_MINE := 218
+## Collections give decorations even when the player has one; see _reward_allowed().
+const SUBCAT_DECORATION := 411
+## The nests grow their units, one after the other, in NEST_STEPS steps of care.
+## After each step the player waits NEST_STEP_SECONDS or pays cash: "wait_cash"
+## is [cash for the 1st, 3rd, ... unit, cash for the 2nd, 4th, ... unit]. "keys"
+## are the values of the nest in privateState: active, unit number, step and
+## the time of the last step. The client contains these values, not the configuration.
+const DRAGON_NEST := 1233
+const MONSTERS_NEST := 1255
+const NESTS := {
+	DRAGON_NEST: {"units": [638, 649, 651, 684, 698, 695], "wait_cash": [3, 15], "keys": ["dragonNestActive", "dragonNumber", "stepNumber", "timeStampTakeCare"]},
+	MONSTERS_NEST: {"units": [717, 713, 742, 653], "wait_cash": [7, 7], "keys": ["monsterNestActive", "monsterNumber", "stepMonsterNumber", "timeStampTakeCareMonster"]},
+}
+const NEST_STEPS := 10
+const NEST_STEP_SECONDS := 21600
+## The Rider Academy trains the rider of type n as RIDER_UNITS[n - 1], in steps
+## (GameConfig.dragon_riders). After each step the player waits
+## RIDER_STEP_SECONDS. The save keeps the rider type, step and time of the last
+## step in RIDER_KEYS of privateState.
+const RIDER_ACADEMY := 1345
+const RIDER_UNITS: Array[int] = [822, 823, 824]
+const RIDER_STEP_SECONDS := 54000
+const RIDER_KEYS: Array[String] = ["riderNumber", "riderStepNumber", "riderTimeStamp"]
+## A rider and a dragon of the rider's type go into Dragon Riding and become a
+## tamed dragon, see GameConfig.dragons.
+const DRAGON_RIDING := 1346
+## The graveyard brings units back for potions; the Heroes Grave brings heroes
+## back for their cost_unit_cash times RESURRECT_GOLD_PER_CASH gold.
+const GRAVEYARD := 486
+const HEROES_GRAVE := 239
+const RESURRECT_GOLD_PER_CASH := 500
+## The Soul Mixer makes a new unit from the power ("breeding order") of two
+## units, which come back out after it. The result has the power
+## SOUL_MIX_STRONG_SHARE of the stronger unit plus the rest of the weaker one,
+## at least SOUL_MIX_MIN_POWER, plus a random part below SOUL_MIX_RANDOM_POWER.
+## A result above SOUL_MIX_TOP_POWER is a random unit of the top powers.
+const SOUL_MIXER := 1529
+const SOUL_MIX_STRONG_SHARE := 0.7
+const SOUL_MIX_MIN_POWER := 10
+const SOUL_MIX_RANDOM_POWER := 12
+const SOUL_MIX_TOP_POWER := 400
+## Below this level, the Soul Mixer does not mix these dragons of other games.
+const SOUL_MIX_PROMOTION_LEVEL := 20
+const SOUL_MIX_PROMOTION_UNITS: Array[int] = [2048, 2037, 777, 758]
+## The client gives a free dragon nest, and a free Soul Mixer from
+## GameConfig.soul_mixer_min_level, at the free place nearest to these tiles.
+const FREE_BUILDING_TILES := {DRAGON_NEST: Vector2i(30, 59), SOUL_MIXER: Vector2i(59, 59)}
+
 ## Resource codes in item costs and level rewards, and where the save keeps each
 ## resource. "map" values are in the map, "player" values in playerInfo and
 ## "private" values in privateState.
@@ -162,6 +213,7 @@ const RESOURCE_KEYS := {
 	"f": ["map", "food"],
 	"c": ["player", "cash"],
 	"m": ["private", "mana"],
+	"p": ["private", "potion"],
 }
 
 
@@ -186,6 +238,9 @@ var _occupied := PackedByteArray()  # Number of items that cover each tile, row 
 # land when it loads the map, the animals that units capture, and the animals
 # that come out of buildings.
 var _captured: Dictionary = {}
+# The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
+# {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
+var _soul_mixes: Dictionary = {}
 
 
 ## Returns null and reports an error when the file is missing or not a valid save.
@@ -347,6 +402,7 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 
 
 	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
 	_add_xp(item.xp)
+	_register_unit(item.id)
 	_add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
 	return Placement.OK
 
@@ -435,13 +491,13 @@ func sell(placed: PlacedItem, now: int) -> Placement:
 	return Placement.OK
 
 
-## Buildings that produce a resource for the player, and the nursery, which
-## produces an animal. Trees and deposits are not included: units collect them.
-## Items that produce potions or other special resources are not included yet.
+## Buildings that produce a resource for the player, the nursery, which
+## produces an animal, and the Treasure Mine. Trees and deposits are not
+## included: units collect them.
 func is_producer(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and not item.is_unit() and item.activation > 0 and item.collect > 0 \
-			and (RESOURCE_KEYS.has(item.collect_type) or placed.item_id == NURSERY) \
+			and (RESOURCE_KEYS.has(item.collect_type) or placed.item_id in [NURSERY, TREASURE_MINE]) \
 			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
 
 
@@ -556,7 +612,8 @@ func _collect_now(placed: PlacedItem, now: int) -> Production:
 	if born != null and tile == ANY_TILE:
 		return Production.NO_FREE_TILE
 	_add_resource("w", -cost)
-	if born == null:
+	# The server gives nothing for the Treasure Mine; the client then calls find_collectible().
+	if born == null and placed.item_id != TREASURE_MINE:
 		_add_resource(item.collect_type, collect_amount(placed))
 	_add_xp(item.collect_xp)
 	placed._entry[4] = now
@@ -784,6 +841,12 @@ func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
 		return building.item_id in WILD_ANIMALS[unit_item.subcat_functional]["homes"]
 	if building.item_id == FORTRESS:
 		return unit_item.attack_range > 1 and unit_item.subcat_functional != SUBCAT_SIEGE
+	if building.item_id == DRAGON_RIDING:
+		# A rider and a dragon; the client checks their types when they tame, see tame().
+		var kind := func(id: int) -> int: return 1 if _config.dragons.has(id) else 2 if id in RIDER_UNITS else 0
+		return kind.call(unit.item_id) != 0 and (inside.is_empty() or kind.call(unit.item_id) != kind.call(inside[0]))
+	if building.item_id == SOUL_MIXER:
+		return unit_item.breeding_order > 0 and _queue(building).is_empty()
 	return false
 
 
@@ -1007,9 +1070,11 @@ func population() -> int:
 			total += item.population
 		for id in units_in(placed):
 			total += _config.get_item(id).population
-	for queue: Dictionary in _queues().values():
+	# The unit that the Soul Mixer makes counts only when it comes out.
+	for placed in items:
+		var queue := _queue(placed)
 		var unit := _config.get_item(int(queue.get("unit", 0)))
-		if unit != null:
+		if unit != null and placed.item_id != SOUL_MIXER:
 			total += unit.population * int(queue.get("amount", 0))
 	return total
 
@@ -1079,12 +1144,31 @@ func train(building: PlacedItem, now: int) -> Training:
 	return Training.OK
 
 
+## Takes the last unit out of the training queue of the building and gives
+## back what the player paid for it, as the server command "unqueue_unit" does.
+## The client also takes the last unit. The server refunds the costs that the
+## queue keeps for the unit, or the current costs when the queue has none.
+func unqueue_unit(building: PlacedItem) -> Training:
+	if trained_unit(building) == null:
+		return Training.NOT_TRAINER
+	var queue := _queue(building)
+	if queue.is_empty() or int(queue["amount"]) <= 0:
+		return Training.NOTHING_TO_FINISH
+	var unit := _config.get_item(int(queue["unit"]))
+	var paid: Variant = queue["r"].get(str(queue["amount"]))
+	var costs: Dictionary = paid if paid is Dictionary else training_costs(unit)
+	for code: String in costs:
+		_add_resource(code, int(costs[code]))
+	_drop_last_queued(building)
+	return Training.OK
+
+
 ## Seconds until the next unit of the queue is ready, or -1 when the queue is empty.
 func seconds_to_trained(building: PlacedItem, now: float) -> float:
 	var queue := _queue(building)
 	if queue.is_empty():
 		return -1
-	return maxf(float(queue["ts"]) + _config.get_item(int(queue["unit"])).training_time - now, 0)
+	return maxf(float(queue["ts"]) + _unit_seconds(building) - now, 0)
 
 
 ## Seconds until the last unit of the queue is ready, or 0 when the queue is empty.
@@ -1092,7 +1176,7 @@ func seconds_to_queue_end(building: PlacedItem, now: float) -> float:
 	var first := seconds_to_trained(building, now)
 	if first < 0:
 		return 0
-	return first + (queued_units(building) - 1) * _config.get_item(int(_queue(building)["unit"])).training_time
+	return first + (queued_units(building) - 1) * _unit_seconds(building)
 
 
 ## The cash that finishes the whole training queue at once.
@@ -1122,21 +1206,608 @@ func speed_up_training(building: PlacedItem, now: int) -> Training:
 ## change the time of the queue, so after a reload all units of a queue are
 ## ready after the time of one. The port moves the time to the next unit.
 func complete_training(building: PlacedItem, now: int) -> PlacedItem:
-	if seconds_to_trained(building, now) != 0:
+	if seconds_to_trained(building, now) != 0 or building.item_id == SOUL_MIXER:
 		return null
 	var tile := free_tile_around(_covered_tiles(building))
 	if tile == ANY_TILE:
 		return null
 	var queue := _queue(building)
 	var unit := _config.get_item(int(queue["unit"]))
-	queue["r"].erase(str(queue["amount"]))
-	queue["amount"] = int(queue["amount"]) - 1
-	queue["ts"] = float(queue["ts"]) + unit.training_time
-	if int(queue["amount"]) <= 0:
-		_queues().erase(building._entry[7]["bq"])
-		building._entry[7].erase("bq")
+	queue["ts"] = float(queue["ts"]) + _unit_seconds(building)
+	_drop_last_queued(building)
 	_add_xp(unit.xp)
 	return _add_player_unit(unit, tile, 0, now)
+
+
+## The number of items of the collection that the player has; index is 1 to
+## Collections.ITEMS_PER_COLLECTION.
+func collected(collection: int, index: int) -> int:
+	return int(_collection(collection)[index])
+
+
+## The player finds an item of a collection, as the client does after a
+## harvest and after a collection from the Treasure Mine, with the server
+## command "add_collectable". Trolls find nothing. Returns Vector2i(collection,
+## item index), or Vector2i.ZERO.
+func find_collectible(from_treasure_mine: bool, rng: RandomNumberGenerator) -> Vector2i:
+	if race != "h":
+		return Vector2i.ZERO
+	var source := rng.randi_range(0, Collections.Source.size() - 1) if from_treasure_mine else Collections.Source.HARVEST
+	var roll := rng.randf() * (Collections.TREASURE_ROLL if from_treasure_mine else Collections.HARVEST_ROLL)
+	var found := Collections.loot(source, roll, rng)
+	if found != Vector2i.ZERO:
+		var counts := _collection(found.x)
+		counts[found.y] = int(counts[found.y]) + 1
+	return found
+
+
+## True when the player has each item of the collection, and the client allows
+## its reward: a unit or building reward only when the player does not have one
+## yet, on the map or in the item store.
+func can_complete_collection(collection: int) -> bool:
+	for index in range(1, Collections.ITEMS_PER_COLLECTION + 1):
+		if collected(collection, index) <= 0:
+			return false
+	return _reward_allowed(collection)
+
+
+## The cash that completes the collection without all its items, or 0 when the
+## player cannot buy it.
+func collection_cash_price(collection: int) -> int:
+	if collection in Collections.NO_CASH_COLLECTIONS or not _reward_allowed(collection):
+		return 0
+	var price := Collections.CASH_PRICES[collection]
+	if collection in Collections.FIXED_PRICE_COLLECTIONS:
+		return price
+	for index in range(1, Collections.ITEMS_PER_COLLECTION + 1):
+		if collected(collection, index) > 0:
+			price -= 1
+	return maxi(price, 1)
+
+
+## Completes the collection, as the server command "finish_collection" does: it
+## uses one of each item, or with_cash it pays collection_cash_price() and
+## keeps the items. The reward goes into the item store of the map, see
+## place_stored(). Changes nothing when the result is not OK.
+func complete_collection(collection: int, with_cash: bool) -> Placement:
+	if collection < 1 or collection > Collections.count():
+		return Placement.NOT_ALLOWED
+	var counts := _collection(collection)
+	if with_cash:
+		var price := collection_cash_price(collection)
+		if price == 0:
+			return Placement.NOT_ALLOWED
+		if get_resource("c") < price:
+			return Placement.NOT_ENOUGH_RESOURCES
+		_add_resource("c", -price)
+	else:
+		if not can_complete_collection(collection):
+			return Placement.NOT_ALLOWED
+		for index in range(1, Collections.ITEMS_PER_COLLECTION + 1):
+			counts[index] = int(counts[index]) - 1
+	counts[0] = 1
+	if not _document["privateState"].get("collectionsCompleted") is Array:
+		_document["privateState"]["collectionsCompleted"] = []
+	var completed: Array = _document["privateState"]["collectionsCompleted"]
+	if not completed.has(collection) and not completed.has(float(collection)):
+		completed.append(collection)
+	var reward := _config.collection_rewards[collection]
+	_stored()[str(reward)] = int(_stored().get(str(reward), 0)) + 1
+	_register_unit(reward)
+	return Placement.OK
+
+
+## The items in the item store of the map: item id -> number.
+func stored_items() -> Dictionary:
+	var result := {}
+	for key: Variant in _stored():
+		var item := _config.get_item(int(str(key))) if str(key).is_valid_int() else null
+		var count: Variant = _stored()[key]
+		if item != null and (count is int or count is float) and int(count) > 0:
+			result[item.id] = int(count)
+	return result
+
+
+## Places an item from the item store, as the server command
+## "place_stored_item" does. It checks the same location and limits as buy(),
+## but costs nothing and gives no experience. Changes nothing when the result
+## is not OK.
+func place_stored(item: GameConfig.ItemDef, tile: Vector2i, now: int, frame: int = 0) -> Placement:
+	if not stored_items().has(item.id) or frame < 0 or frame >= item.max_frame:
+		return Placement.NOT_ALLOWED
+	var location := check_location(item, tile)
+	if location != Placement.OK:
+		return location
+	var limit := check_limits(item, tile)
+	if limit != Placement.OK:
+		return limit
+	var stored := _stored()
+	for key: Variant in stored.keys():
+		if str(key) == str(item.id):
+			stored[key] = int(stored[key]) - 1
+			if int(stored[key]) <= 0:
+				stored.erase(key)
+			break
+	_register_unit(item.id)
+	if item.is_unit():
+		_add_player_unit(item, tile, frame, now)
+	else:
+		_add_entry(item, tile, frame, now, _new_item_attributes(item))
+	return Placement.OK
+
+
+## Places a free dragon nest, and from GameConfig.soul_mixer_min_level a free
+## Soul Mixer, when the map and the item store have none, as the client does
+## when it loads the map and at a new level. It sends "buy" without cost, which
+## gives the experience of the item. Returns the new buildings.
+func add_free_buildings(now: int) -> Array[PlacedItem]:
+	var added: Array[PlacedItem] = []
+	for id: int in FREE_BUILDING_TILES:
+		if id == SOUL_MIXER and get_level() < _config.soul_mixer_min_level:
+			continue
+		if items.any(func(placed: PlacedItem) -> bool: return placed.item_id == id) or stored_items().has(id) or _gifted(id):
+			continue
+		var item := _config.get_item(id)
+		var tile := _free_place_near(item, FREE_BUILDING_TILES[id])
+		if tile == ANY_TILE:
+			continue
+		_add_xp(item.xp)
+		added.append(_add_entry(item, tile, 0, now, _new_item_attributes(item)))
+	return added
+
+
+## True when the nest grows units now; the player starts it with activate_nest().
+func is_nest_active(nest: PlacedItem) -> bool:
+	return NESTS.has(nest.item_id) and _private_int(NESTS[nest.item_id]["keys"][0]) == 1
+
+
+## The unit that grows in the nest now.
+func nest_unit(nest: PlacedItem) -> GameConfig.ItemDef:
+	var units: Array = NESTS[nest.item_id]["units"]
+	return _config.get_item(units[clampi(_private_int(NESTS[nest.item_id]["keys"][1]), 0, units.size() - 1)])
+
+
+## The steps of care that are over, from 0 to NEST_STEPS. A step counts when its wait is over.
+func nest_steps_done(nest: PlacedItem, now: float) -> int:
+	return _private_int(NESTS[nest.item_id]["keys"][2]) - (1 if nest_wait_seconds(nest, now) > 0 else 0)
+
+
+## Seconds until the player can care for the nest again, or 0.
+func nest_wait_seconds(nest: PlacedItem, now: float) -> float:
+	var last_step := _private_int(NESTS[nest.item_id]["keys"][3])
+	return maxf(NEST_STEP_SECONDS - (now - last_step), 0) if last_step != 0 else 0.0
+
+
+## The cash that ends the wait of the nest at once.
+func nest_wait_cash(nest: PlacedItem) -> int:
+	return NESTS[nest.item_id]["wait_cash"][_private_int(NESTS[nest.item_id]["keys"][1]) % 2]
+
+
+## Starts the nest for gold ("g") or cash ("c"), as the server commands
+## "activate_dragon" and "activate_monster" do.
+func activate_nest(nest: PlacedItem, code: String) -> Placement:
+	var costs: Dictionary = _config.dragon_nest_costs if nest.item_id == DRAGON_NEST else _config.monster_nest_costs
+	if not NESTS.has(nest.item_id) or is_nest_active(nest) or not costs.has(code):
+		return Placement.NOT_ALLOWED
+	if get_resource(code) < costs[code]:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource(code, -costs[code])
+	_set_private(NESTS[nest.item_id]["keys"], [1, 0, 0, 0])
+	return Placement.OK
+
+
+## Cares for the unit in the nest: one more step, then a wait. The server
+## commands are "next_step" and "next_monster_step".
+func care_for_nest(nest: PlacedItem, now: int) -> Placement:
+	if not is_nest_active(nest) or nest_wait_seconds(nest, now) > 0 or nest_steps_done(nest, now) >= NEST_STEPS:
+		return Placement.NOT_ALLOWED
+	var keys: Array = NESTS[nest.item_id]["keys"]
+	_set_private([keys[2], keys[3]], [_private_int(keys[2]) + 1, now])
+	return Placement.OK
+
+
+## Pays nest_wait_cash() to end the wait, as the server commands
+## "buy_step_cash" and "buy_monster_step_cash" do.
+func end_nest_wait(nest: PlacedItem, now: int) -> Placement:
+	if not is_nest_active(nest) or nest_wait_seconds(nest, now) == 0:
+		return Placement.NOT_ALLOWED
+	if get_resource("c") < nest_wait_cash(nest):
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -nest_wait_cash(nest))
+	_set_private([NESTS[nest.item_id]["keys"][3]], [0])
+	return Placement.OK
+
+
+## Takes the grown unit out of the nest to the free tile nearest to it, with
+## "buy" without cost, and starts the next unit with "next_dragon" or
+## "next_monster". After the last unit, the nest stops, as the client does with
+## "desactivate_dragon" or "desactivate_monster".
+func take_nest_unit(nest: PlacedItem, now: int) -> Placement:
+	if not is_nest_active(nest) or nest_steps_done(nest, now) < NEST_STEPS:
+		return Placement.NOT_ALLOWED
+	var tile := free_tile_around(_covered_tiles(nest))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	var unit := nest_unit(nest)
+	_add_xp(unit.xp)
+	_add_player_unit(unit, tile, 0, now)
+	var keys: Array = NESTS[nest.item_id]["keys"]
+	var next := _private_int(keys[1]) + 1
+	_set_private(keys, [1, next, 0, 0] if next < NESTS[nest.item_id]["units"].size() else [0, 0, 0, 0])
+	return Placement.OK
+
+
+## The rider type that the Rider Academy trains, from 1, or 0.
+func rider_type() -> int:
+	return clampi(_private_int(RIDER_KEYS[0]), 0, RIDER_UNITS.size())
+
+
+func rider_steps_done(now: float) -> int:
+	return _private_int(RIDER_KEYS[1]) - (1 if rider_wait_seconds(now) > 0 else 0)
+
+
+func rider_wait_seconds(now: float) -> float:
+	var last_step := _private_int(RIDER_KEYS[2])
+	return maxf(RIDER_STEP_SECONDS - (now - last_step), 0) if last_step != 0 else 0.0
+
+
+## Chooses the rider that the Rider Academy trains, as the server command "rider_select" does.
+func select_rider(new_type: int) -> Placement:
+	if rider_type() != 0 or new_type < 1 or new_type > RIDER_UNITS.size():
+		return Placement.NOT_ALLOWED
+	if get_level() < _config.dragon_riders[new_type - 1]["level"]:
+		return Placement.LEVEL_TOO_LOW
+	_set_private(RIDER_KEYS, [new_type, 0, 0])
+	return Placement.OK
+
+
+## One training step of the rider, as the server command "rider_next_step"
+## does. In the client the player must win a mini-game first; the port does
+## not have the mini-game.
+func train_rider(now: int) -> Placement:
+	if rider_type() == 0 or rider_wait_seconds(now) > 0 or _private_int(RIDER_KEYS[1]) >= _config.dragon_riders[rider_type() - 1]["steps"]:
+		return Placement.NOT_ALLOWED
+	_set_private([RIDER_KEYS[1], RIDER_KEYS[2]], [_private_int(RIDER_KEYS[1]) + 1, now])
+	return Placement.OK
+
+
+## Pays the cash of the rider type to end the wait, as "rider_buy_step_cash" does.
+func end_rider_wait(now: int) -> Placement:
+	if rider_type() == 0 or rider_wait_seconds(now) == 0:
+		return Placement.NOT_ALLOWED
+	var cash: int = _config.dragon_riders[rider_type() - 1]["cash"]
+	if get_resource("c") < cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cash)
+	_set_private([RIDER_KEYS[2]], [0])
+	return Placement.OK
+
+
+## Puts the trained rider next to the academy with "buy" without cost, then
+## clears the academy with "rider_select" 0.
+func take_rider(academy: PlacedItem, now: int) -> Placement:
+	if academy.item_id != RIDER_ACADEMY or rider_type() == 0 or rider_steps_done(now) < _config.dragon_riders[rider_type() - 1]["steps"]:
+		return Placement.NOT_ALLOWED
+	var tile := free_tile_around(_covered_tiles(academy))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	var rider := _config.get_item(RIDER_UNITS[rider_type() - 1])
+	_add_xp(rider.xp)
+	_add_player_unit(rider, tile, 0, now)
+	_set_private(RIDER_KEYS, [0, 0, 0])
+	return Placement.OK
+
+
+## The rider and the dragon in Dragon Riding become the tamed dragon next to the
+## building, as the client does with "pop_unit" without a tile for both and
+## "buy" without cost. The dragon must be of the rider's type. In the client the
+## player must win a mini-game first; the port does not have the mini-game.
+func tame(building: PlacedItem, now: int) -> Placement:
+	var inside := units_in(building)
+	if building.item_id != DRAGON_RIDING or inside.size() != 2:
+		return Placement.NOT_ALLOWED
+	var dragon := inside[0] if _config.dragons.has(inside[0]) else inside[1]
+	var rider := inside[1] if dragon == inside[0] else inside[0]
+	if not _config.dragons.has(dragon) or RIDER_UNITS.find(rider) + 1 != _config.dragons[dragon][0]:
+		return Placement.NOT_ALLOWED
+	var tile := free_tile_around(_covered_tiles(building))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	_take_unit(building, 1)
+	_take_unit(building, 0)
+	var tamed := _config.get_item(_config.dragons[dragon][1])
+	_add_xp(tamed.xp)
+	_add_player_unit(tamed, tile, 0, now)
+	return Placement.OK
+
+
+## The units in the graveyard, which the server adds after battles: item id -> number.
+func graveyard_units() -> Dictionary:
+	var result := {}
+	var listed: Variant = _document["privateState"].get("resurrectableUnits")
+	for id: Variant in listed if listed is Array else []:
+		if (id is int or id is float) and _config.get_item(int(id)) != null:
+			result[int(id)] = int(result.get(int(id), 0)) + 1
+	return result
+
+
+## The dead heroes of the Heroes Grave: item id -> number.
+func dead_heroes() -> Dictionary:
+	var result := {}
+	var dead: Variant = _document["privateState"].get("deadHeroes")
+	for key: Variant in dead if dead is Dictionary else {}:
+		var hero := _config.get_item(int(str(key))) if str(key).is_valid_int() else null
+		if hero != null and (dead[key] is int or dead[key] is float) and int(dead[key]) > 0:
+			result[hero.id] = int(dead[key])
+	return result
+
+
+## Brings a unit back from the graveyard for its potions, next to the
+## graveyard, as the server command "resurrect_hero" does. The unit must fit
+## in the population and the unit limit.
+func resurrect(graveyard: PlacedItem, unit_id: int, now: int) -> Placement:
+	if graveyard.item_id != GRAVEYARD or not graveyard_units().has(unit_id):
+		return Placement.NOT_ALLOWED
+	var unit := _config.get_item(unit_id)
+	if population() + unit.population > max_population():
+		return Placement.POPULATION_FULL
+	if unit.units_limit > 0 and _unit_count(unit_id) >= unit.units_limit:
+		return Placement.UNIT_LIMIT_REACHED
+	if get_resource("p") < unit.potion:
+		return Placement.NOT_ENOUGH_RESOURCES
+	var tile := free_tile_around(_covered_tiles(graveyard))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	_add_resource("p", -unit.potion)
+	var listed: Array = _document["privateState"]["resurrectableUnits"]
+	for i in listed.size():
+		if int(listed[i]) == unit_id:
+			listed.remove_at(i)
+			break
+	_add_player_unit(unit, tile, 0, now)
+	return Placement.OK
+
+
+## Buys GameConfig.graveyard_potions potions, as "graveyard_buy_potions" does.
+func buy_potions() -> Placement:
+	if get_resource("c") < _config.graveyard_potions_price:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -_config.graveyard_potions_price)
+	_add_resource("p", _config.graveyard_potions)
+	return Placement.OK
+
+
+## Brings a dead hero back for gold, next to the Heroes Grave, as the server
+## command "resurrect_hero" does for the grave.
+func resurrect_hero(grave: PlacedItem, hero_id: int, now: int) -> Placement:
+	if grave.item_id != HEROES_GRAVE or not dead_heroes().has(hero_id):
+		return Placement.NOT_ALLOWED
+	var hero := _config.get_item(hero_id)
+	var gold := hero.cost_unit_cash * RESURRECT_GOLD_PER_CASH
+	if get_resource("g") < gold:
+		return Placement.NOT_ENOUGH_RESOURCES
+	var tile := free_tile_around(_covered_tiles(grave))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	_add_resource("g", -gold)
+	var dead: Dictionary = _document["privateState"]["deadHeroes"]
+	for key: Variant in dead.keys():
+		if str(key) == str(hero_id):
+			dead[key] = int(dead[key]) - 1
+			if int(dead[key]) <= 0:
+				dead.erase(key)
+			break
+	_add_player_unit(hero, tile, 0, now)
+	return Placement.OK
+
+
+## The unit that the Soul Mixer makes from its two units, or null when it does
+## not have two units or already mixes. The client chooses it at random when
+## the second unit goes in and keeps it until it mixes; it does not save it.
+func soul_mix_result(mixer: PlacedItem, rng: RandomNumberGenerator) -> GameConfig.ItemDef:
+	var inside := units_in(mixer)
+	if mixer.item_id != SOUL_MIXER or inside.size() != 2 or not _queue(mixer).is_empty():
+		_soul_mixes.erase(mixer)
+		return null
+	var mix: Dictionary = _soul_mixes.get(mixer, {})
+	if mix.get("inside") != inside:
+		var powers := [_config.get_item(inside[0]).breeding_order, _config.get_item(inside[1]).breeding_order]
+		var power := maxi(ceili(powers.min() * (1.0 - SOUL_MIX_STRONG_SHARE) + powers.max() * SOUL_MIX_STRONG_SHARE), SOUL_MIX_MIN_POWER)
+		power += rng.randi_range(0, SOUL_MIX_RANDOM_POWER - 1)
+		if power == powers.max():
+			power += 1
+		mix = {"inside": inside, "excluded": inside.duplicate(), "level": 0}
+		mix["unit"] = _soul_unit_by_power(power, mix["excluded"], rng)
+		_soul_mixes[mixer] = mix
+	return _config.get_item(mix["unit"])
+
+
+## The cash of the next power-up of the Soul Mixer.
+func soul_power_up_cash(mixer: PlacedItem) -> int:
+	var level: int = _soul_mixes.get(mixer, {}).get("level", 0)
+	return _config.soul_mixer_powerups[mini(level, _config.soul_mixer_powerups.size() - 1)][0]
+
+
+## The cash of the power-ups that the player chose; mix_souls() pays it.
+func soul_power_ups_cash(mixer: PlacedItem) -> int:
+	var total := 0
+	for level in _soul_mixes.get(mixer, {}).get("level", 0):
+		total += _config.soul_mixer_powerups[mini(level, _config.soul_mixer_powerups.size() - 1)][0]
+	return total
+
+
+## Makes the result of the Soul Mixer stronger: a unit some places higher in
+## the order of power. The client sends the "buy_powerups" commands, and the
+## server takes the cash, only when the player mixes.
+func power_up_soul_mix(mixer: PlacedItem, rng: RandomNumberGenerator) -> Placement:
+	var result := soul_mix_result(mixer, rng)
+	if result == null:
+		return Placement.NOT_ALLOWED
+	if _soul_promotion_blocked(mixer):
+		return Placement.LEVEL_TOO_LOW
+	if get_resource("c") < soul_power_ups_cash(mixer) + soul_power_up_cash(mixer):
+		return Placement.NOT_ENOUGH_RESOURCES
+	var mix: Dictionary = _soul_mixes[mixer]
+	var increment: int = _config.soul_mixer_powerups[mini(mix["level"], _config.soul_mixer_powerups.size() - 1)][1]
+	mix["level"] += 1
+	mix["excluded"].append(result.id)
+	var order := _soul_order()
+	var index: int
+	if result.breeding_order >= SOUL_MIX_TOP_POWER:
+		index = order.find(_soul_unit_by_power(_top_soul_power(rng), mix["excluded"], rng))
+	else:
+		index = mini(order.find(_soul_unit_by_power(result.breeding_order, mix["excluded"], rng)) + increment, order.size() - 1)
+		while order[index] in mix["excluded"] and index < order.size() - 1:
+			index += 1
+	mix["unit"] = order[index]
+	mix["excluded"].append(order[index])
+	return Placement.OK
+
+
+## Pays the power-ups and starts to make the result, as the client does with
+## "buy_powerups" and "push_queue_unit" without cost. The Soul Mixer needs the
+## sm_training_time of the unit; speed_up_training() can end it with cash.
+func mix_souls(mixer: PlacedItem, now: int, rng: RandomNumberGenerator) -> Placement:
+	var result := soul_mix_result(mixer, rng)
+	if result == null:
+		return Placement.NOT_ALLOWED
+	if _soul_promotion_blocked(mixer):
+		return Placement.LEVEL_TOO_LOW
+	if result.units_limit > 0 and _unit_count(result.id) >= result.units_limit:
+		return Placement.UNIT_LIMIT_REACHED
+	var cash := soul_power_ups_cash(mixer)
+	if get_resource("c") < cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cash)
+	var id := str(_next_queue_id())
+	mixer._entry[7]["bq"] = id
+	_queues()[id] = {"ts": now, "amount": 1, "unit": result.id, "r": {"1": null}}
+	_soul_mixes.erase(mixer)
+	return Placement.OK
+
+
+## The unit that the Soul Mixer makes now, or 0 when it does not mix.
+func soul_mix_unit_id(mixer: PlacedItem) -> int:
+	return int(_queue(mixer).get("unit", 0)) if mixer.item_id == SOUL_MIXER else 0
+
+
+## Puts the mixed unit next to the Soul Mixer, without experience, and takes
+## the two units out, as the client does with "pop_queue_unit" and "pop_unit".
+## The unit must fit in the population.
+func take_soul_mix(mixer: PlacedItem, now: int) -> Placement:
+	if mixer.item_id != SOUL_MIXER or seconds_to_trained(mixer, now) != 0:
+		return Placement.NOT_ALLOWED
+	var unit := _config.get_item(int(_queue(mixer)["unit"]))
+	if population() + unit.population > max_population():
+		return Placement.POPULATION_FULL
+	var tile := free_tile_around(_covered_tiles(mixer))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	_drop_last_queued(mixer)
+	_add_player_unit(unit, tile, 0, now)
+	_pop_all(mixer, now)
+	return Placement.OK
+
+
+## The client does not mix some dragons of other games below SOUL_MIX_PROMOTION_LEVEL.
+func _soul_promotion_blocked(mixer: PlacedItem) -> bool:
+	return get_level() < SOUL_MIX_PROMOTION_LEVEL and units_in(mixer).any(func(id: int) -> bool: return id in SOUL_MIX_PROMOTION_UNITS)
+
+
+## The units that the Soul Mixer can make, in the order of their power.
+func _soul_order() -> Array[int]:
+	var units := _config.items().filter(func(item: GameConfig.ItemDef) -> bool: return item.breeding_order > 0)
+	units.sort_custom(func(a: GameConfig.ItemDef, b: GameConfig.ItemDef) -> bool: return a.breeding_order < b.breeding_order)
+	var order: Array[int] = []
+	order.assign(units.map(func(item: GameConfig.ItemDef) -> int: return item.id))
+	return order
+
+
+func _top_soul_power(rng: RandomNumberGenerator) -> int:
+	var highest := 0
+	for item in _config.items():
+		highest = maxi(highest, item.breeding_order)
+	return rng.randi_range(SOUL_MIX_TOP_POWER, maxi(highest - 1, SOUL_MIX_TOP_POWER))
+
+
+## The first unit in the order of power with at least the power, which is not
+## excluded, or the strongest unit. Above SOUL_MIX_TOP_POWER, a random top power.
+func _soul_unit_by_power(power: int, excluded: Array, rng: RandomNumberGenerator) -> int:
+	if power > SOUL_MIX_TOP_POWER:
+		power = _top_soul_power(rng)
+	var order := _soul_order()
+	for id in order:
+		if not id in excluded and _config.get_item(id).breeding_order >= power:
+			return id
+	return order.back()
+
+
+## The counts of a collection in the save: [completed, item 1, ..., item 5].
+## The server keeps one list for each collection, by collection number.
+func _collection(collection: int) -> Array:
+	if not _document["privateState"].get("collections") is Array:
+		_document["privateState"]["collections"] = [[]]
+	var lists: Array = _document["privateState"]["collections"]
+	while lists.size() <= collection:
+		lists.append([0, 0, 0, 0, 0, 0])
+	if not lists[collection] is Array or lists[collection].size() < Collections.ITEMS_PER_COLLECTION + 1:
+		lists[collection] = [0, 0, 0, 0, 0, 0]
+	return lists[collection]
+
+
+## The client gives a unit or building reward only when the player has none
+## yet, and the rewards of Collections.UNIQUE_COLLECTIONS only while the item
+## store has none. Decorations it always gives.
+func _reward_allowed(collection: int) -> bool:
+	var reward := _config.get_item(_config.collection_rewards[collection])
+	if reward == null:
+		return false
+	var owned := stored_items().has(reward.id) or _gifted(reward.id)
+	if collection in Collections.UNIQUE_COLLECTIONS:
+		return not owned
+	if reward.subcat_functional == SUBCAT_DECORATION:
+		return true
+	return not owned and not items.any(func(placed: PlacedItem) -> bool: return placed.item_id == reward.id)
+
+
+func _gifted(item_id: int) -> bool:
+	var gifts: Variant = _document["privateState"].get("gifts")
+	return gifts is Dictionary and gifts.keys().any(func(key: Variant) -> bool: return str(key) == str(item_id))
+
+
+## The item store of the map, as the server keeps it: item id (text) -> number.
+func _stored() -> Dictionary:
+	if not _map.get("store") is Dictionary:
+		_map["store"] = {}
+	return _map["store"]
+
+
+## The free place for the item nearest to the tile, in rings around it, as the
+## client finds a place for a free building, or ANY_TILE.
+func _free_place_near(item: GameConfig.ItemDef, center: Vector2i) -> Vector2i:
+	for ring in IsoGrid.MAP_TILES:
+		var best := ANY_TILE
+		var around := Rect2i(center, Vector2i.ONE).grow(ring)
+		for y in range(around.position.y, around.end.y):
+			for x in range(around.position.x, around.end.x):
+				var on_edge := x == around.position.x or x == around.end.x - 1 or y == around.position.y or y == around.end.y - 1
+				var tile := Vector2i(x, y)
+				if on_edge and check_location(item, tile) == Placement.OK \
+						and (best == ANY_TILE or (tile - center).length_squared() < (best - center).length_squared()):
+					best = tile
+		if best != ANY_TILE:
+			return best
+	return ANY_TILE
+
+
+func _private_int(key: String) -> int:
+	var value: Variant = _document["privateState"].get(key, 0)
+	return int(value) if value is int or value is float else 0
+
+
+func _set_private(keys: Array, values: Array) -> void:
+	for i in keys.size():
+		_document["privateState"][keys[i]] = values[i]
 
 
 ## Writes the save to a temporary file, keeps the old file as <path>.bak, then
@@ -1178,7 +1849,7 @@ func _add_xp(amount: int) -> void:
 func _add_resource(code: String, amount: int) -> void:
 	if not RESOURCE_KEYS.has(code):
 		# The levels in the configuration give only g, w, s, f and c. The server
-		# also knows "p" (potions) and "all"; the port does not need them yet.
+		# also knows "all"; the port does not need it yet.
 		push_warning("Ignored a reward of %d with the unknown resource code '%s'." % [amount, code])
 		return
 	var key: String = RESOURCE_KEYS[code][1]
@@ -1293,15 +1964,23 @@ func _add_player_unit(unit: GameConfig.ItemDef, tile: Vector2i, frame: int, now:
 	return placed
 
 
-## The server keeps a list of the units of the player's race that the player had.
+## The server keeps a list of the units of the player's race that the player
+## had. It ignores buildings, which collection rewards and stored items can be.
 func _register_unit(unit_id: int) -> void:
-	if _config.get_item(unit_id).race == ("h" if race == "t" else "t"):
+	var item := _config.get_item(unit_id)
+	if not item.is_unit() or item.race == ("h" if race == "t" else "t"):
 		return
 	if not _document["privateState"].get("boughtUnits") is Array:
 		_document["privateState"]["boughtUnits"] = []
 	var bought: Array = _document["privateState"]["boughtUnits"]
 	if not bought.has(unit_id) and not bought.has(float(unit_id)):
 		bought.append(unit_id)
+
+
+## Seconds to make one unit of the queue of the building.
+func _unit_seconds(building: PlacedItem) -> int:
+	var unit := _config.get_item(int(_queue(building)["unit"]))
+	return unit.sm_training_time if building.item_id == SOUL_MIXER else unit.training_time
 
 
 ## The training queues of the save, by queue id.
@@ -1316,6 +1995,17 @@ func _queue(building: PlacedItem) -> Dictionary:
 	var id: Variant = building._entry[7].get("bq")
 	var queue: Variant = _queues().get(str(id)) if id != null else null
 	return queue if queue is Dictionary and queue.get("r") is Dictionary else {}
+
+
+## Removes the last unit of the training queue of the building, and the queue
+## when it is empty. The queue keeps the costs of each unit by its place.
+func _drop_last_queued(building: PlacedItem) -> void:
+	var queue := _queue(building)
+	queue["r"].erase(str(queue["amount"]))
+	queue["amount"] = int(queue["amount"]) - 1
+	if int(queue["amount"]) <= 0:
+		_queues().erase(building._entry[7]["bq"])
+		building._entry[7].erase("bq")
 
 
 ## The client numbers the queues from the highest number in use.

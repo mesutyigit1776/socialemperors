@@ -14,6 +14,7 @@ It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
 
 import argparse
 import concurrent.futures
+import glob
 import json
 import os
 import shutil
@@ -28,6 +29,9 @@ NEUTRAL_RESOURCE_SUBCATS = {"125", "126", "127", "128"}  # trees, stone, gold an
 WILD_ANIMAL_SUBCATS = {"74", "75", "88", "90"}  # cow, sheep, horse and boar; see Village.WILD_ANIMALS
 # The units that footmen and archers become in the training stables; see Village.MOUNTED_UNITS.
 MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
+# The units of the dragon and monster nests, the riders of the Rider Academy and
+# the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
+SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
 
 
 def load_game_config(source):
@@ -67,13 +71,31 @@ def load_village(path):
 	return village
 
 
+def save_item_ids(village):
+	"""Returns the ids of the items that a save has on its maps, in buildings,
+	in the unit warehouse, in training queues, in the item store, in the gifts
+	and in the graveyards. The game can put each of them on the map."""
+	ids = set()
+	private = village.get("privateState", {})
+	for game_map in village["maps"]:
+		ids.update(int(entry[0]) for entry in game_map["items"])
+		ids.update(int(unit_id) for entry in game_map["items"] for unit_id in entry[6])
+		for key in ("warehousedUnits", "store"):
+			ids.update(int(item_id) for item_id in game_map.get(key) or {})
+	ids.update(int(queue["unit"]) for queue in (private.get("barracksQueues") or {}).values() if "unit" in queue)
+	for key in ("gifts", "deadHeroes"):
+		ids.update(int(item_id) for item_id in private.get(key) or {})
+	ids.update(int(item_id) for item_id in private.get("resurrectableUnits") or [])
+	return ids
+
+
 def needed_items(config, villages, shop, export_all):
 	"""Returns {img_name: item} for the items whose graphics must be exported.
 
 	By default these are the land, the store buildings, all items of the store
 	rotation, the units that these buildings train, the trees and deposits, the
-	wild animals, the mounted units of the training stables, and the items in
-	the villages.
+	wild animals, the mounted units of the training stables, the items that the
+	special buildings and the collections give, and the items in the villages.
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
@@ -84,12 +106,16 @@ def needed_items(config, villages, shop, export_all):
 		ids.update(item_id for item_id, item in items.items() if str(item["subcat_functional"]) in NEUTRAL_RESOURCE_SUBCATS)
 		ids.update(item_id for item_id, item in items.items() if item["type"] == "u" and str(item["subcat_functional"]) in WILD_ANIMAL_SUBCATS)
 		ids.update(MOUNTED_UNIT_IDS)
+		ids.update(SPECIAL_BUILDING_ITEM_IDS)
+		cfg_globals = config["globals"]
+		for dragon_id, dragon in cfg_globals["DRAGONS"].items():
+			ids.update((int(dragon_id), int(dragon["tamedId"])))
+		ids.update(int(item_id) for item_id in cfg_globals["COLLECTION_REWARDS"])
+		ids.update(item_id for item_id, item in items.items() if int(item.get("breeding_order") or 0) > 0)
 		for group in shop["factions"].values():
 			ids.update(int(item_id) for item_id in group)
 		for village in villages:
-			for game_map in village["maps"]:
-				ids.update(int(entry[0]) for entry in game_map["items"])
-				ids.update(int(unit_id) for entry in game_map["items"] for unit_id in entry[6])
+			ids.update(save_item_ids(village))
 		ids.update(int(items[item_id]["trains"]) for item_id in list(ids) if item_id in items and str(items[item_id]["trains"]) != "0")
 	result = {}
 	for item_id in ids:
@@ -151,6 +177,9 @@ def main():
 	out_dir = os.path.abspath(args.out)
 	village_paths = args.village or [os.path.join(source, "villages", "initial.json")]
 	villages = [load_village(path) for path in village_paths]
+	# The graphics also cover the player saves of the server, so that the port can open each of them.
+	player_saves = sorted(glob.glob(os.path.join(source, "saves", "*.save.json")))
+	villages += [load_village(path) for path in player_saves if os.path.abspath(path) not in map(os.path.abspath, village_paths)]
 
 	config = load_game_config(source)
 	shop = load_shop(source)

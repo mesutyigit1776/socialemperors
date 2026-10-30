@@ -18,7 +18,10 @@ var _store: Store
 var _store_key := []  # Level and rotation period of the build menu; it changes with them.
 var _selected: Village.PlacedItem  # The item that the player clicked on the map, or null.
 var _orders: UnitOrders
-var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again, places of new animals, idle units.
+var _rng := RandomNumberGenerator.new()  # Kinds of the deposits that grow again, places of new animals, idle units, finds, Soul Mixer.
+var _specials: SpecialActions
+var _panel := SpecialActions.View.NONE  # What the action panel of the HUD shows.
+var _placing_stored := false  # The item that the player places comes from the item store.
 
 
 func _ready() -> void:
@@ -41,6 +44,7 @@ func _ready() -> void:
 		_view.placement_confirmed.connect(_on_placement_confirmed)
 		_view.move_confirmed.connect(_on_move_confirmed)
 		_view.map_clicked.connect(_on_map_clicked)
+		_specials = SpecialActions.new(_village, _config, _rng)
 		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
@@ -58,9 +62,13 @@ func _ready() -> void:
 		_hud.work_time_chosen.connect(_on_work_time_chosen)
 		_hud.train_requested.connect(_on_train_requested)
 		_hud.speed_up_requested.connect(_on_speed_up_requested)
+		_hud.unqueue_requested.connect(_on_unqueue_requested)
 		_hud.unit_out_requested.connect(_on_unit_out_requested)
 		_hud.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
 		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
+		_hud.action_requested.connect(_on_action_requested)
+		_hud.collections_requested.connect(func() -> void: _show_panel(SpecialActions.View.COLLECTIONS))
+		_hud.stored_items_requested.connect(func() -> void: _show_panel(SpecialActions.View.STORE))
 		add_child(_hud)
 		# The client spawns the wild animals when it loads the map.
 		if not _village.spawn_animals(_now(), _rng).is_empty():
@@ -80,6 +88,7 @@ func _ready() -> void:
 
 func _on_item_selected(item: GameConfig.ItemDef) -> void:
 	_select(null)
+	_placing_stored = false
 	_view.begin_placement(item)
 	_hud.show_message("Place %s." % item.name)
 
@@ -104,6 +113,7 @@ func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
 
 func _select(placed: Village.PlacedItem) -> void:
 	_selected = placed
+	_panel = SpecialActions.View.BUILDING if placed != null else SpecialActions.View.NONE
 	_view.show_selection(placed)
 	var item := _config.get_item(placed.item_id) if placed != null else null
 	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed))
@@ -209,6 +219,15 @@ func _on_speed_up_requested() -> void:
 		_hud.show_message("The training is finished for %d cash." % cost)
 
 
+func _on_unqueue_requested() -> void:
+	if _selected == null or _village.unqueue_unit(_selected) != Village.Training.OK:
+		return
+	_update_store()
+	_update_production()
+	if _save():
+		_hud.show_message("%s left the training queue. You got its cost back." % _village.trained_unit(_selected).name)
+
+
 func _on_unit_out_requested(index: int) -> void:
 	if _selected == null:
 		return
@@ -229,6 +248,13 @@ func _update_store() -> void:
 	var key := [_village.get_level(), _store.rotation_end(now)]
 	if key != _store_key:
 		_store_key = key
+		# The client gives the free buildings when it loads the map and at a new level.
+		var free := _village.add_free_buildings(now)
+		for placed in free:
+			_view.add_placed(placed)
+		if not free.is_empty():
+			_save()
+			_hud.show_message("You got a free %s." % " and a free ".join(free.map(func(placed: Village.PlacedItem) -> String: return _config.get_item(placed.item_id).name)))
 		var categories := []
 		for category_id in Store.CATEGORIES:
 			var offered: Array[GameConfig.ItemDef] = []
@@ -263,6 +289,32 @@ func _update_production() -> void:
 		_hud.show_training(null, {}, 0, -1, 0)
 	else:
 		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now), _village.speed_up_cost(_selected, now))
+	var panel := _specials.describe(_panel, _selected, now)
+	_hud.show_actions(panel[0], panel[1])
+
+
+func _show_panel(panel: SpecialActions.View) -> void:
+	_select(null)
+	_panel = panel
+	_update_production()
+
+
+func _on_action_requested(id: String) -> void:
+	var outcome := _specials.run(id, _selected, _now())
+	if outcome.place != null:
+		_select(null)
+		_placing_stored = _view.begin_placement(outcome.place)
+		if not _placing_stored:
+			outcome.text = "The graphic of %s is not imported. Import the game files again; see README.md." % outcome.place.name
+	elif outcome.changed:
+		_view.sync_items()
+		_update_store()
+		if _selected != null:
+			_select(_selected)
+		if not _save():
+			return
+	_update_production()
+	_hud.show_message(outcome.text)
 
 
 ## What a collection from the producing building gives, for example "250 food" or "1 Sheep".
@@ -270,6 +322,8 @@ func _product_text(placed: Village.PlacedItem) -> String:
 	var born := _village.bred_unit(placed)
 	if born != null:
 		return "1 %s" % born.name
+	if placed.item_id == Village.TREASURE_MINE:
+		return "1 collection item"
 	var collect_type := _config.get_item(placed.item_id).collect_type
 	return "%d %s" % [_village.collect_amount(placed), VillageHud.RESOURCE_NAMES.get(collect_type, collect_type)]
 
@@ -284,6 +338,9 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	var result := _village.hurry(placed, _now()) if hurry else _village.collect(placed, _now())
 	match result:
 		Village.Production.OK:
+			if placed.item_id == Village.TREASURE_MINE:
+				var found := _village.find_collectible(true, _rng)
+				product = "nothing" if found == Vector2i.ZERO else SpecialActions.found_text(_config, found)
 			_view.sync_items()
 			_update_production()
 		Village.Production.FARM_REMOVED:
@@ -396,7 +453,7 @@ func _on_warehouse_slot_requested() -> void:
 
 func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> void:
 	var old_level := _village.get_level()
-	var result := _village.buy(item, tile, _now(), frame)
+	var result := _village.place_stored(item, tile, _now(), frame) if _placing_stored else _village.buy(item, tile, _now(), frame)
 	if result != Village.Placement.OK:
 		_hud.show_placement_result(result)
 		return
@@ -405,7 +462,8 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 	_update_store()
 	if not _save():
 		return
-	_hud.show_message("Built %s.%s" % [item.name, _level_up_text(old_level)])
+	_hud.show_message(("Placed %s from the item store." % item.name) if _placing_stored else "Built %s.%s" % [item.name, _level_up_text(old_level)])
+	_placing_stored = false
 
 
 ## The levels that the player reached since old_level, with their rewards.

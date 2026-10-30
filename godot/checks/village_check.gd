@@ -62,6 +62,19 @@ const GHOST_BARRACKS := 1246  # 3x3; trains ghosts: 5 cash and 10 food, 25 secon
 const GHOST := 734
 const RAM_BARRACKS := 1491  # 3x3; trains orc battering rams: 1500 seconds
 const HIGHEST_LEVEL_XP := 2016089205
+const TREASURE_MINE := 218  # 24 hours, gives an item of a collection
+const GARDEN := 178  # 3x3 decoration; the reward of collection 3
+const DRAGON_NEST := 1233  # 4x4
+const DRAGGY := 638  # the first dragon of the nest; Soul Mixer power 68
+const FURIOUS_DRAGON := 649  # the second dragon of the nest; tamed by Dragon Rider I
+const RIDER_ACADEMY := 1345
+const DRAGON_RIDING := 1346
+const DRAGON_RIDER_I := 822  # 5 training steps, 15 cash for each wait
+const FURIOUS_DRAGON_RIDER := 832
+const EPIC_TWO_HEAD_DRAGON := 736  # tamed by Dragon Rider II
+const GRAVEYARD := 486  # 4x4
+const HEROES_GRAVE := 239  # 3x3
+const SOUL_MIXER := 1529  # 3x3
 const TOWN_HALL_TILE := Vector2i(52, 52)
 const TREE_TILE := Vector2i(50, 58)
 const KNIGHT_TILE := Vector2i(50, 44)
@@ -96,7 +109,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -607,6 +620,7 @@ func _check_cash_training() -> bool:
 	_check(saved["privateState"]["barracksQueues"].is_empty(), "the save has no training queues")
 
 	saved["playerInfo"]["cash"] = 5
+	saved["maps"][0]["food"] = 100000  # for the rams of the cancel check
 	var poor := "user://checks/cash_training_poor.json"
 	var file := FileAccess.open(poor, FileAccess.WRITE)
 	file.store_string(JSON.stringify(saved, "\t", false))
@@ -615,6 +629,22 @@ func _check_cash_training() -> bool:
 	ghost_barracks = village.item_at(Vector2i(25, 45))
 	_check(village.train(ghost_barracks, T) == Village.Training.OK and village.train(ghost_barracks, T) == Village.Training.NOT_ENOUGH_RESOURCES, "the second ghost needs 5 more cash")
 	_check(village.speed_up_training(ghost_barracks, T) == Village.Training.NOT_ENOUGH_CASH and village.queued_units(ghost_barracks) == 1, "the speed-up needs the cash")
+
+	# Cancel: the last unit leaves the queue, and its costs come back.
+	food = village.get_resource("f")
+	_check(village.unqueue_unit(ghost_barracks) == Village.Training.OK, "the ghost leaves the training queue")
+	_expect("after the ghost leaves the queue", village, {"c": 5, "f": food + 10})
+	_check(village.queued_units(ghost_barracks) == 0 and not ghost_barracks._entry[7].has("bq"), "the empty queue is removed")
+	_check(village.unqueue_unit(ghost_barracks) == Village.Training.NOTHING_TO_FINISH, "an empty queue has no unit to cancel")
+	ram_barracks = village.item_at(Vector2i(30, 45))
+	village.train(ram_barracks, T)
+	var after_one := [village.get_resource("g"), village.get_resource("f")]
+	var population := village.population()
+	village.train(ram_barracks, T + 100)
+	_check(village.unqueue_unit(ram_barracks) == Village.Training.OK and village.queued_units(ram_barracks) == 1, "the second ram leaves the queue, the first stays")
+	_check([village.get_resource("g"), village.get_resource("f")] == after_one and village.population() == population, "the second ram's costs and population come back")
+	_check(is_equal_approx(village.seconds_to_trained(ram_barracks, T), village.trained_unit(ram_barracks).training_time), "the first ram keeps its training time")
+	_check(village.save_to_file(poor) == OK, "the village after the cancels saves")
 	return true
 
 
@@ -867,6 +897,251 @@ func _check_store() -> bool:
 	_check(not DRAGONS_STATUE in ids.call(4, "h", 19, day) and DRAGONS_STATUE in ids.call(4, "h", 20, day), "the store shows an item from its store level")
 	_check(not DIAMOND_CASTLE in ids.call(2, "h", 100, day), "the store does not offer the items for gold members")
 	return true
+
+
+## The Treasure Mine, the items of the collections, their rewards and the item store.
+func _check_collections() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([TREASURE_MINE, 25, 45, 0, T, 0, [], {}])
+	var path := _write_fixture("collections", 20, 20000, 100000, {"expansions": [13, 12], "items": items})
+	var collections := [[]]
+	for i in Collections.count():
+		collections.append([0, 0, 0, 0, 0, 0])
+	collections[3] = [0, 1, 1, 1, 1, 2]
+	collections[1] = [0, 1, 0, 3, 0, 0]
+	_patch_private(path, {"collections": collections}, 20)
+	var village := Village.load_from_file(path, _config)
+	var mine := village.item_at(Vector2i(25, 45))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	_check(Collections.loot(Collections.Source.HARVEST, 4.0, rng) == Vector2i.ZERO, "a harvest roll of 4 finds nothing")
+	var found := Collections.loot(Collections.Source.HARVEST, 0.2, rng)
+	_check(found != Vector2i.ZERO and Collections.TABLE[found.x - 1][1][found.y - 1][1] == Collections.Source.HARVEST and Collections.TABLE[found.x - 1][1][found.y - 1][2] == Collections.Rarity.EPIC, "a harvest roll of 0.2 finds an epic item of a harvest")
+	found = Collections.loot(Collections.Source.HARVEST, 3.0, rng)
+	_check(found != Vector2i.ZERO and Collections.TABLE[found.x - 1][1][found.y - 1][2] == Collections.Rarity.UNCOMMON, "a harvest roll of 3 finds an uncommon item")
+	found = Collections.loot(Collections.Source.CHEST, 0.2, rng)
+	_check(found.x in [19, 20], "a chest roll of 0.2 finds an epic item; only collections 19 and 20 have epic chest items")
+	_check(Collections.loot(Collections.Source.CHEST, 3.0, rng) == Vector2i.ZERO, "a chest roll of 3 finds nothing, because chests have no uncommon items")
+	var hardcore := 0
+	for i in 200:
+		hardcore += 1 if Collections.loot(Collections.Source.HARDCORE, 0.2, rng) != Vector2i.ZERO else 0
+	_check(hardcore > 60 and hardcore < 140, "the hardcore source drops about half of the time: %d of 200" % hardcore)
+	_check(village.is_producer(mine) and village.seconds_to_ready(mine, T + 86399) > 0 and village.seconds_to_ready(mine, T + 86400) == 0, "the Treasure Mine is ready after 24 hours")
+	var gold := village.get_resource("g")
+	var xp := village.get_xp()
+	_check(village.collect(mine, T + 86400) == Village.Production.OK, "the Treasure Mine collects")
+	_expect("after the Treasure Mine", village, {"g": gold, "xp": xp + 1})
+
+	_check(not village.can_complete_collection(1) and village.collection_cash_price(1) == 3, "collection 1 with 2 kinds costs 5 - 2 cash")
+	_check(village.collection_cash_price(10) == 15 and village.collection_cash_price(23) == 0, "collection 10 has a fixed price; collection 23 has no price")
+	_check(village.can_complete_collection(3) and village.collection_cash_price(3) == 1, "collection 3 is complete; for cash it costs at least 1")
+	_check(village.complete_collection(3, false) == Village.Placement.OK, "collection 3 gives its reward")
+	_check(village.collected(3, 1) == 0 and village.collected(3, 5) == 1 and village.stored_items() == {GARDEN: 1}, "the items are used and the garden is in the item store")
+	var cash := village.get_resource("c")
+	_check(village.complete_collection(1, true) == Village.Placement.OK and village.get_resource("c") == cash - 3 and village.collected(1, 3) == 3, "collection 1 for cash keeps the items")
+	_check(village.save_to_file(path) == OK, "the village with the rewards saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["privateState"]["collectionsCompleted"] == [3.0, 1.0] and saved["privateState"]["collections"][3][0] == 1.0, "the save keeps the completed collections")
+	_check(saved["maps"][0]["store"] == {"178": 1.0, "176": 1.0}, "the save keeps the rewards in the item store")
+	var garden := _config.get_item(GARDEN)
+	gold = village.get_resource("g")
+	xp = village.get_xp()
+	_check(village.place_stored(garden, Vector2i(5, 5), T) == Village.Placement.NOT_OWNED_LAND, "a stored item needs own land")
+	var tile := _free_tile(village, GARDEN, Rect2i(20, 40, 20, 20))
+	_check(village.place_stored(garden, tile, T) == Village.Placement.OK and village.item_at(tile).item_id == GARDEN, "the garden is placed from the item store")
+	_expect("after the stored item", village, {"g": gold, "xp": xp})
+	_check(not village.stored_items().has(GARDEN) and village.place_stored(garden, tile + Vector2i(4, 0), T) == Village.Placement.NOT_ALLOWED, "the item store has no garden now")
+	_check(village.get_resource("p") == 0, "potions are a resource")
+	var count_items := func() -> int:
+		var total := 0
+		for collection in range(1, Collections.count() + 1):
+			for index in range(1, Collections.ITEMS_PER_COLLECTION + 1):
+				total += village.collected(collection, index)
+		return total
+	var before: int = count_items.call()
+	var finds := 0
+	for i in 20:
+		finds += 1 if village.find_collectible(true, rng) != Vector2i.ZERO else 0
+	_check(finds > 0 and count_items.call() == before + finds, "the items that the Treasure Mine finds are counted: %d of 20" % finds)
+	return true
+
+
+## The free dragon nest and Soul Mixer, and the care of the dragon nest.
+func _check_nests() -> bool:
+	const T := 1800000000
+	var path := _write_fixture("nests", 5, _config.levels[4].exp_required, 200000, {"expansions": [13, 12]})
+	# The initial save has active nests.
+	_patch_private(path, {"dragonNestActive": 0, "dragonNumber": 0, "stepNumber": 0, "timeStampTakeCare": 0}, 100)
+	var village := Village.load_from_file(path, _config)
+	var free := village.add_free_buildings(T)
+	_check(free.size() == 1 and free[0].item_id == DRAGON_NEST and village.check_location(_config.get_item(DRAGON_NEST), free[0].tile, free[0]) == Village.Placement.OK, "below level 8 the client gives only a free dragon nest, on free own land")
+	_check(village.add_free_buildings(T).is_empty(), "the client gives the nest only once")
+	var nest := free[0]
+	_check(not village.is_nest_active(nest) and village.care_for_nest(nest, T) == Village.Placement.NOT_ALLOWED, "an inactive nest cannot have care")
+	var gold := village.get_resource("g")
+	_check(village.activate_nest(nest, "g") == Village.Placement.OK, "the nest starts for gold")
+	_expect("after the nest starts", village, {"g": gold - 100000})
+	_check(village.nest_unit(nest).id == DRAGGY and village.nest_wait_cash(nest) == 3, "the first dragon is Draggy, and a wait costs 3 cash")
+	var cash := village.get_resource("c")
+	var now := T
+	for step in Village.NEST_STEPS:
+		_check(village.care_for_nest(nest, now) == Village.Placement.OK, "care step %d" % (step + 1))
+		_check(village.nest_steps_done(nest, now) == step and village.care_for_nest(nest, now + 100) == Village.Placement.NOT_ALLOWED, "step %d counts only after its wait" % (step + 1))
+		if step % 2 == 0:
+			now += Village.NEST_STEP_SECONDS
+		else:
+			_check(village.end_nest_wait(nest, now) == Village.Placement.OK, "cash ends the wait of step %d" % (step + 1))
+	_expect("after 5 waits with cash", village, {"c": cash - 15})
+	_check(village.nest_steps_done(nest, now) == Village.NEST_STEPS, "the dragon has all steps")
+	var xp := village.get_xp()
+	_check(village.take_nest_unit(nest, now) == Village.Placement.OK and village.items.back().item_id == DRAGGY, "Draggy comes out of the nest")
+	_expect("after Draggy", village, {"xp": xp + _config.get_item(DRAGGY).xp})
+	_check(village.nest_unit(nest).id == FURIOUS_DRAGON and village.nest_steps_done(nest, now) == 0 and village.nest_wait_cash(nest) == 15, "the second dragon starts, and a wait costs 15 cash")
+	_check(village.save_to_file(path) == OK, "the village with the nest saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var state: Dictionary = saved["privateState"]
+	_check([state["dragonNestActive"], state["dragonNumber"], state["stepNumber"], state["timeStampTakeCare"]] == [1.0, 1.0, 0.0, 0.0], "the save has the state of the nest")
+
+	var last_path := "user://checks/nests_last.json"
+	DirAccess.copy_absolute(path, last_path)
+	_patch_private(last_path, {"dragonNestActive": 1, "dragonNumber": 5, "stepNumber": 10, "timeStampTakeCare": 0}, 100)
+	village = Village.load_from_file(last_path, _config)
+	nest = village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == DRAGON_NEST)[0]
+	_check(village.take_nest_unit(nest, now) == Village.Placement.OK and not village.is_nest_active(nest), "after the last dragon the nest stops")
+	return true
+
+
+## The Rider Academy and Dragon Riding.
+func _check_riders() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([RIDER_ACADEMY, 25, 45, 0, T, 0, [], {}])
+	items.append([DRAGON_RIDING, 30, 45, 0, T, 0, [], {}])
+	var path := _write_fixture("riders", 34, 2000000, 200000, {"expansions": [13, 12], "items": items})
+	_patch_private(path, {}, 100)
+	var village := Village.load_from_file(path, _config)
+	_check(village.select_rider(1) == Village.Placement.LEVEL_TOO_LOW, "Dragon Rider I needs level 35")
+	path = _write_fixture("riders", 50, HIGHEST_LEVEL_XP, 200000, {"expansions": [13, 12], "items": items})
+	_patch_private(path, {}, 100)
+	village = Village.load_from_file(path, _config)
+	var academy := village.item_at(Vector2i(25, 45))
+	var riding := village.item_at(Vector2i(30, 45))
+	var free := village.add_free_buildings(T)
+	_check(free.map(func(placed: Village.PlacedItem) -> int: return placed.item_id) == [DRAGON_NEST, SOUL_MIXER], "from level 8 the client also gives a free Soul Mixer")
+	_check(village.select_rider(1) == Village.Placement.OK and village.select_rider(2) == Village.Placement.NOT_ALLOWED, "the academy trains one rider at a time")
+	var cash := village.get_resource("c")
+	var now := T
+	for step in 5:
+		_check(village.train_rider(now) == Village.Placement.OK and village.train_rider(now) == Village.Placement.NOT_ALLOWED, "training step %d, then a wait" % (step + 1))
+		_check(village.end_rider_wait(now) == Village.Placement.OK, "cash ends the wait of step %d" % (step + 1))
+	_expect("after 5 waits with cash", village, {"c": cash - 75})
+	_check(village.train_rider(now) == Village.Placement.NOT_ALLOWED and village.take_rider(academy, now) == Village.Placement.OK, "after 5 steps the rider is trained")
+	var rider: Village.PlacedItem = village.items.back()
+	_check(rider.item_id == DRAGON_RIDER_I and village.rider_type() == 0, "Dragon Rider I comes out, and the academy is free")
+
+	village.buy(_config.get_item(FURIOUS_DRAGON), _free_tile(village, FURIOUS_DRAGON, Rect2i(20, 40, 20, 20)), T)
+	var dragon: Village.PlacedItem = village.items.back()
+	village.buy(_config.get_item(EPIC_TWO_HEAD_DRAGON), _free_tile(village, EPIC_TWO_HEAD_DRAGON, Rect2i(20, 40, 20, 20)), T)
+	var wrong_dragon: Village.PlacedItem = village.items.back()
+	_check(village.push_unit(dragon, riding, T) == Village.Placement.OK and not village.can_enter(wrong_dragon, riding), "a second dragon cannot go into Dragon Riding")
+	_check(village.tame(riding, T) == Village.Placement.NOT_ALLOWED, "a dragon alone cannot be tamed")
+	_check(village.push_unit(rider, riding, T) == Village.Placement.OK, "the rider goes in")
+	var xp := village.get_xp()
+	_check(village.tame(riding, T) == Village.Placement.OK and village.units_in(riding).is_empty() and village.items.back().item_id == FURIOUS_DRAGON_RIDER, "the rider tames the dragon")
+	_expect("after the taming", village, {"xp": xp + _config.get_item(FURIOUS_DRAGON_RIDER).xp})
+	village.buy(_config.get_item(DRAGON_RIDER_I), _free_tile(village, DRAGON_RIDER_I, Rect2i(20, 40, 20, 20)), T)
+	village.push_unit(village.items.back(), riding, T)
+	village.push_unit(wrong_dragon, riding, T)
+	_check(village.units_in(riding).size() == 2 and village.tame(riding, T) == Village.Placement.NOT_ALLOWED, "Dragon Rider I cannot tame a dragon for Dragon Rider II")
+	_check(village.save_to_file(path) == OK, "the village after the riders saves")
+	return true
+
+
+## The graveyard, the potions and the Heroes Grave.
+func _check_graveyards() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([GRAVEYARD, 25, 45, 0, T, 0, [], {}])
+	items.append([HEROES_GRAVE, 30, 45, 0, T, 0, [], {}])
+	for i in 6:
+		items.append([HOUSE, 21 + 2 * i, 41, 0, T, 0, [], {}])
+	var path := _write_fixture("graveyards", 20, 20000, 10000, {"expansions": [13, 12], "items": items})
+	_patch_private(path, {"resurrectableUnits": [FURIOUS_DRAGON, SPEARMAN, FURIOUS_DRAGON], "deadHeroes": {str(HEALER): 1}, "potion": 2}, 10)
+	var village := Village.load_from_file(path, _config)
+	var graveyard := village.item_at(Vector2i(25, 45))
+	var grave := village.item_at(Vector2i(30, 45))
+	_check(village.graveyard_units() == {FURIOUS_DRAGON: 2, SPEARMAN: 1} and village.dead_heroes() == {HEALER: 1}, "the graveyards list the dead units")
+	_check(village.resurrect(graveyard, FURIOUS_DRAGON, T) == Village.Placement.NOT_ENOUGH_RESOURCES, "the dragon needs 4 potions")
+	_check(village.buy_potions() == Village.Placement.OK, "the graveyard sells potions")
+	_expect("after the potions", village, {"c": 5, "p": 27})
+	var xp := village.get_xp()
+	_check(village.resurrect(graveyard, FURIOUS_DRAGON, T) == Village.Placement.OK and village.items.back().item_id == FURIOUS_DRAGON, "the dragon comes back")
+	_expect("after the dragon", village, {"p": 23, "xp": xp})
+	_check(village.graveyard_units() == {FURIOUS_DRAGON: 1, SPEARMAN: 1}, "one dragon is still in the graveyard")
+	_check(village.resurrect_hero(grave, HEALER, T) == Village.Placement.OK and village.dead_heroes().is_empty(), "the healer comes back")
+	_expect("after the healer", village, {"g": 10000 - 4 * Village.RESURRECT_GOLD_PER_CASH})
+	_check(village.save_to_file(path) == OK, "the village after the graveyards saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["privateState"]["resurrectableUnits"] == [float(SPEARMAN), float(FURIOUS_DRAGON)] and saved["privateState"]["deadHeroes"].is_empty() and saved["privateState"]["potion"] == 23.0, "the save has the graveyards")
+	return true
+
+
+## The Soul Mixer: the result, a power-up, the mix and the units that come back.
+func _check_soul_mixer() -> bool:
+	const T := 1800000000
+	var items: Array = _initial["maps"][0]["items"].duplicate(true)
+	items.append([SOUL_MIXER, 25, 45, 0, T, 0, [], {}])
+	for i in 6:
+		items.append([HOUSE, 21 + 2 * i, 41, 0, T, 0, [], {}])
+	items.append([SPEARMAN, UNIT_TILES[0].x, UNIT_TILES[0].y, 0, T, 0, [], {}])
+	items.append([LIGHT_KNIGHT, UNIT_TILES[1].x, UNIT_TILES[1].y, 0, T, 0, [], {}])
+	items.append([VILLAGER, UNIT_TILES[2].x, UNIT_TILES[2].y, 0, T, 0, [], {}])
+	var path := _write_fixture("soul_mixer", 20, 20000, 10000, {"expansions": [13, 12], "items": items})
+	_patch_private(path, {}, 100)
+	var village := Village.load_from_file(path, _config)
+	var mixer := village.item_at(Vector2i(25, 45))
+	var spearman := village.item_at(UNIT_TILES[0])
+	var knight := village.item_at(UNIT_TILES[1])
+	var count_units := func(ids: Array) -> int: return village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id in ids).size()
+	var units_before: int = count_units.call([SPEARMAN, LIGHT_KNIGHT])
+	_check(not village.can_enter(village.item_at(UNIT_TILES[2]), mixer), "a villager has no soul power")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	village.push_unit(spearman, mixer, T)
+	_check(village.soul_mix_result(mixer, rng) == null, "one unit does not mix")
+	village.push_unit(knight, mixer, T)
+	var result := village.soul_mix_result(mixer, rng)
+	# Powers 12 and 19: ceil(12 * 0.3 + 19 * 0.7) = 17, plus 0 to 11.
+	_check(result != null and result.breeding_order >= 17 and not result.id in [SPEARMAN, LIGHT_KNIGHT], "the result is stronger than 17 and is not one of the two units")
+	_check(village.soul_mix_result(mixer, rng) == result, "the result stays until the mix")
+	var population := village.population()
+	_check(village.power_up_soul_mix(mixer, rng) == Village.Placement.OK, "a power-up")
+	var stronger := village.soul_mix_result(mixer, rng)
+	_check(stronger.breeding_order >= result.breeding_order and stronger != result and village.soul_power_ups_cash(mixer) == 1, "the power-up gives a stronger unit for 1 cash")
+	var cash := village.get_resource("c")
+	var xp := village.get_xp()
+	_check(village.mix_souls(mixer, T, rng) == Village.Placement.OK and village.get_resource("c") == cash - 1, "the mix pays the power-up")
+	_check(village.population() == population and not village.can_enter(village.item_at(UNIT_TILES[2]), mixer), "the mix does not count for the population yet")
+	_check(village.complete_training(mixer, T + stronger.sm_training_time) == null, "the client does not take the mixed unit out by itself")
+	_check(village.take_soul_mix(mixer, T) == Village.Placement.NOT_ALLOWED, "the mix needs its time")
+	_check(village.speed_up_cost(mixer, T) == ceili(stronger.sm_training_time / 3600.0) and village.speed_up_training(mixer, T) == Village.Training.OK, "cash ends the mix")
+	_check(village.take_soul_mix(mixer, T) == Village.Placement.OK, "the mixed unit comes out")
+	_check(village.units_in(mixer).is_empty() and count_units.call([SPEARMAN, LIGHT_KNIGHT]) == units_before and count_units.call([stronger.id]) >= 1, "the two units come back out with the new unit")
+	_expect("after the mix", village, {"xp": xp})
+	_check(village.unqueue_unit(mixer) == Village.Training.NOT_TRAINER, "the Soul Mixer has no training queue to cancel")
+	_check(village.save_to_file(path) == OK, "the village after the mix saves")
+	return true
+
+
+## Sets privateState values and the cash of the fixture at path.
+func _patch_private(path: String, values: Dictionary, cash: int) -> void:
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	document["privateState"].merge(values, true)
+	document["playerInfo"]["cash"] = cash
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(document, "\t", false))
+	file.close()
 
 
 ## The first tile in area where the item fits.

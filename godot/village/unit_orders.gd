@@ -231,4 +231,8 @@ func _finish_harvest(resource: Village.PlacedItem, now: int) -> void:
 	for unit in harvest.units:
 		_harvesting.erase(unit)
 		_view.set_item_visible(unit, true)
-	village_changed.emit("Harvested %d %s from %s." % [amount, VillageHud.RESOURCE_NAMES.get(item.collect_type, item.collect_type), item.name], old_level)
+	var text := "Harvested %d %s from %s." % [amount, VillageHud.RESOURCE_NAMES.get(item.collect_type, item.collect_type), item.name]
+	var found := _village.find_collectible(false, _rng)
+	if found != Vector2i.ZERO:
+		text += " You found %s." % SpecialActions.found_text(_config, found)
+	village_changed.emit(text, old_level)

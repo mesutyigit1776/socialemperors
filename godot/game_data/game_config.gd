@@ -36,6 +36,10 @@ class ItemDef:
 	var training_time: int  ## Seconds to train this unit.
 	var velocity: int  ## Walking speed of a unit.
 	var attack_range: int  ## Tiles; 1 for units that fight next to the enemy.
+	var breeding_order: int  ## Power of a unit in the Soul Mixer, or 0 when the unit cannot go into it.
+	var sm_training_time: int  ## Seconds that the Soul Mixer needs to make this unit.
+	var potion: int  ## Potions that bring this unit back from the graveyard.
+	var cost_unit_cash: int  ## The Heroes Grave brings a hero back for this value times Village.RESURRECT_GOLD_PER_CASH gold.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -74,6 +78,23 @@ var animals_per_day: int
 var warehouse_start_capacity: int
 var warehouse_slot_price: int
 var warehouse_max_capacity: int
+## Cost of starting the dragon nest and the monster nest: resource code -> amount.
+var dragon_nest_costs: Dictionary = {}
+var monster_nest_costs: Dictionary = {}
+## Riders of the Rider Academy, for rider types 1 to 3: {"level": unlock level,
+## "steps": training steps, "cash": cash that ends the wait after a step}.
+var dragon_riders: Array[Dictionary] = []
+## Dragons that a rider can tame: dragon id -> [rider type, id of the tamed dragon].
+var dragons: Dictionary = {}
+## The graveyard sells graveyard_potions potions for graveyard_potions_price cash.
+var graveyard_potions: int
+var graveyard_potions_price: int
+## Power-ups of the Soul Mixer, in order: [cash, steps up in the list of units].
+var soul_mixer_powerups: Array[Array] = []
+var soul_mixer_min_level: int  ## The client gives a free Soul Mixer from this level.
+## collection_rewards[n] is the item that collection n gives; index 0 is not used.
+var collection_rewards: Array[int] = []
+var _texts: Dictionary = {}  # Language text name, for example "COLECCION_ROSA_ROJA" -> text.
 
 var _items: Dictionary = {}  # int -> ItemDef
 
@@ -157,6 +178,12 @@ static func load_from_file(path: String) -> GameConfig:
 	config.warehouse_start_capacity = numbers[1]
 	config.warehouse_slot_price = numbers[2]
 	config.warehouse_max_capacity = numbers[3]
+	if not _parse_special_globals(config, globals):
+		push_error("Game configuration '%s' has no correct nest, rider, dragon, graveyard, Soul Mixer or collection settings in globals." % path)
+		return null
+	for entry: Variant in data.get("localization_strings", []):
+		if entry is Dictionary and entry.get("name") is String:
+			config._texts[entry["name"]] = str(entry.get("text", ""))
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
@@ -167,6 +194,11 @@ static func load_from_file(path: String) -> GameConfig:
 
 func get_item(id: int) -> ItemDef:
 	return _items.get(id)
+
+
+## The language text with this name, or the name when the configuration has no such text.
+func text(name: String) -> String:
+	return _texts.get(name, name)
 
 
 ## All items in configuration order.
@@ -180,7 +212,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -217,7 +249,61 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.training_time = numbers["training_time"]
 	item.velocity = numbers["velocity"]
 	item.attack_range = numbers["attack_range"]
+	item.breeding_order = numbers["breeding_order"]
+	item.sm_training_time = numbers["sm_training_time"]
+	item.potion = numbers["potion"]
+	item.cost_unit_cash = numbers["cost_unit_cash"]
 	return item
+
+
+## Reads the globals of the nests, the riders, the graveyard, the Soul Mixer
+## and the collections. Returns false when one is missing or not correct.
+static func _parse_special_globals(config: GameConfig, globals: Dictionary) -> bool:
+	for pair: Array in [[config.dragon_nest_costs, "DRAGON"], [config.monster_nest_costs, "MONSTER"]]:
+		for code: String in ["g", "c"]:
+			var cost: Variant = to_int(globals.get("ACTIVATE_%s_NEST_%s" % [pair[1], "GOLD" if code == "g" else "CASH"]))
+			if cost == null:
+				return false
+			pair[0][code] = cost
+	var riders: Variant = globals.get("DRAGON_RIDERS")
+	for rider_type in range(1, 4):
+		var rider: Variant = riders.get(str(rider_type)) if riders is Dictionary else null
+		var values := [to_int(rider.get("unlockLevel")), to_int(rider.get("steps")), to_int(rider.get("stepCost"))] if rider is Dictionary else [null]
+		if null in values:
+			return false
+		config.dragon_riders.append({"level": values[0], "steps": values[1], "cash": values[2]})
+	var dragons: Variant = globals.get("DRAGONS")
+	if not dragons is Dictionary:
+		return false
+	for key: Variant in dragons:
+		var values := [to_int(key), to_int(dragons[key].get("rider")), to_int(dragons[key].get("tamedId"))] if dragons[key] is Dictionary else [null]
+		if null in values:
+			return false
+		config.dragons[values[0]] = [values[1], values[2]]
+	var potions: Variant = globals.get("GRAVEYARD_POTIONS")
+	var potion_values := [to_int(potions.get("amount")), to_int(potions["price"].get("c"))] if potions is Dictionary and potions.get("price") is Dictionary else [null]
+	if null in potion_values:
+		return false
+	config.graveyard_potions = potion_values[0]
+	config.graveyard_potions_price = potion_values[1]
+	var powerups: Variant = globals.get("SOUL_MIXER_POWERUPS_LEVELS")
+	if not powerups is Array or powerups.is_empty():
+		return false
+	for powerup: Variant in powerups:
+		var values := [to_int(powerup.get("cash_cost")), to_int(powerup.get("order_increment"))] if powerup is Dictionary else [null]
+		if null in values:
+			return false
+		config.soul_mixer_powerups.append(values)
+	var min_level: Variant = to_int(globals.get("SOUL_MIXER_MIN_LEVEL"))
+	var rewards: Variant = globals.get("COLLECTION_REWARDS")
+	if min_level == null or not rewards is Array:
+		return false
+	config.soul_mixer_min_level = min_level
+	for reward: Variant in rewards:
+		if to_int(reward) == null:
+			return false
+		config.collection_rewards.append(to_int(reward))
+	return config.collection_rewards.size() > Collections.count()
 
 
 static func _parse_level(entry: Variant) -> LevelDef:

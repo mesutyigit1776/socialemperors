@@ -19,15 +19,23 @@ signal work_time_chosen(work_time: int)
 signal train_requested
 ## The player wants to pay cash so that all units in training are ready at once.
 signal speed_up_requested
+## The player wants to take the last unit out of the training queue and get its cost back.
+signal unqueue_requested
 ## The player wants to take Village.units_in(selected)[index] out of the selected building.
 signal unit_out_requested(index: int)
 ## The player wants to take a unit with this item id out of the unit warehouse.
 signal warehouse_unit_out_requested(unit_id: int)
 ## The player wants to buy one more place in the unit warehouse.
 signal warehouse_slot_requested
+## The player chose an action of the action panel; id is the id that show_actions() gave.
+signal action_requested(id: String)
+## The player wants to see the collections, or the items in the item store.
+signal collections_requested
+signal stored_items_requested
 
 const PANEL_WIDTH := 340
-const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash"}
+const ACTIONS_MAX_HEIGHT := 220  ## More actions than fit scroll.
+const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash", "p": "potions"}
 const PLACEMENT_MESSAGES := {
 	Village.Placement.OUTSIDE_MAP: "The item does not fit on the map.",
 	Village.Placement.NOT_OWNED_LAND: "You can build only on your own land.",
@@ -66,10 +74,15 @@ var _training := VBoxContainer.new()
 var _training_text := Label.new()
 var _train_button := Button.new()
 var _speed_up_button := Button.new()
+var _unqueue_button := Button.new()
 var _warehouse := VBoxContainer.new()
 var _warehouse_text := Label.new()
 var _warehouse_units := HFlowContainer.new()
 var _warehouse_slot_button := Button.new()
+var _actions := VBoxContainer.new()
+var _actions_text := Label.new()
+var _action_buttons := VBoxContainer.new()
+var _shown_actions := []  # The actions of the buttons, so that a refresh with the same actions keeps them.
 
 
 func _init() -> void:
@@ -85,6 +98,14 @@ func _init() -> void:
 	column.add_child(_resources)
 	column.add_child(title)
 	column.add_child(_category)
+	var lists := HBoxContainer.new()
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested]]:
+		var button := Button.new()
+		button.text = pair[0]
+		var requested: Signal = pair[1]
+		button.pressed.connect(func() -> void: requested.emit())
+		lists.add_child(button)
+	column.add_child(lists)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420)
 	scroll.add_child(_menu)
@@ -130,6 +151,8 @@ func _init() -> void:
 	_training.add_child(_train_button)
 	_speed_up_button.pressed.connect(func() -> void: speed_up_requested.emit())
 	_training.add_child(_speed_up_button)
+	_unqueue_button.pressed.connect(func() -> void: unqueue_requested.emit())
+	_training.add_child(_unqueue_button)
 	_training.visible = false
 	column.add_child(_training)
 	_warehouse_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -138,6 +161,16 @@ func _init() -> void:
 		_warehouse.add_child(control)
 	_warehouse.visible = false
 	column.add_child(_warehouse)
+	_actions_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var action_scroll := ScrollContainer.new()
+	action_scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	action_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_action_buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_scroll.add_child(_action_buttons)
+	_actions.add_child(_actions_text)
+	_actions.add_child(action_scroll)
+	_actions.visible = false
+	column.add_child(_actions)
 	add_child(_sell_dialog)
 	add_child(panel)
 	_category.item_selected.connect(_show_category)
@@ -224,7 +257,7 @@ func show_production(item: GameConfig.ItemDef, seconds_left: float, product: Str
 	elif seconds_left < 0:
 		_production_text.text = "Choose a work time:"
 	elif seconds_left > 0:
-		_production_text.text = "%s in %s" % [product, _duration(seconds_left)]
+		_production_text.text = "%s in %s" % [product, duration(seconds_left)]
 	else:
 		_production_text.text = "Ready: %s" % product
 	if wood_cost > 0 and seconds_left >= 0:
@@ -275,12 +308,48 @@ func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, sec
 	for code: String in costs:
 		prices.append("%d %s" % [costs[code], RESOURCE_NAMES.get(code, code)])
 	_train_button.text = "Train %s (%s)" % [unit.name, ", ".join(prices)]
-	_training_text.text = "No units in training." if queued == 0 else "%d in training, next in %s" % [queued, _duration(seconds_left)]
+	_training_text.text = "No units in training." if queued == 0 else "%d in training, next in %s" % [queued, duration(seconds_left)]
 	_speed_up_button.visible = speed_up_cost > 0
 	_speed_up_button.text = "Finish all for %d cash" % speed_up_cost
+	_unqueue_button.visible = queued > 0
+	_unqueue_button.text = "Cancel the last %s" % unit.name
 
 
-static func _duration(seconds: float) -> String:
+## Shows a text and a button for each action, for example of a special
+## building. actions is a list of [id, label, enabled]; a button press emits
+## action_requested(id). An empty text and list hides the panel.
+func show_actions(text: String, actions: Array) -> void:
+	_actions.visible = not text.is_empty() or not actions.is_empty()
+	_actions_text.text = text
+	_actions_text.visible = not text.is_empty()
+	if actions == _shown_actions:
+		return
+	_shown_actions = actions.duplicate(true)
+	for child in _action_buttons.get_children():
+		child.queue_free()
+	for action: Array in actions:
+		var button := Button.new()
+		button.text = action[1]
+		button.disabled = not action[2]
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var id: String = action[0]
+		button.pressed.connect(func() -> void: action_requested.emit(id))
+		_action_buttons.add_child(button)
+	_fit_actions()
+
+
+## Sizes the scroll area of the actions to the buttons, which can wrap their
+## text. The height is known when the containers have placed the buttons.
+func _fit_actions() -> void:
+	var scroll: ScrollContainer = _action_buttons.get_parent()
+	scroll.custom_minimum_size.y = ACTIONS_MAX_HEIGHT
+	await get_tree().process_frame
+	await get_tree().process_frame
+	scroll.custom_minimum_size.y = minf(_action_buttons.get_combined_minimum_size().y, ACTIONS_MAX_HEIGHT)
+
+
+static func duration(seconds: float) -> String:
 	var total := ceili(seconds)
 	if total >= 3600:
 		return "%dh %02dm" % [total / 3600, total % 3600 / 60]
