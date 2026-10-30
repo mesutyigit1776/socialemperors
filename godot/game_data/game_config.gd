@@ -34,8 +34,14 @@ class ItemDef:
 	var trains: int  ## The unit that the building trains, or 0.
 	var units_limit: int  ## Maximum number of this unit on a map, or 0 for no limit.
 	var training_time: int  ## Seconds to train this unit.
-	var velocity: int  ## Walking speed of a unit.
+	var velocity: int  ## Walking speed of a unit, in pixels per frame.
 	var attack_range: int  ## Tiles; 1 for units that fight next to the enemy.
+	var life: int
+	var attack: int  ## Damage of one attack, or healing for healers.
+	var defense: int
+	var attack_interval: int  ## Frames between two attacks, at 30 frames per second.
+	var flying: bool  ## Flying units walk over buildings.
+	var elevation: int  ## 0 for flat items, for example roads, on which units can stand.
 	var breeding_order: int  ## Power of a unit in the Soul Mixer, or 0 when the unit cannot go into it.
 	var sm_training_time: int  ## Seconds that the Soul Mixer needs to make this unit.
 	var potion: int  ## Potions that bring this unit back from the graveyard.
@@ -212,7 +218,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "life", "attack", "defense", "attack_interval", "flying", "elevation", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -249,6 +255,12 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.training_time = numbers["training_time"]
 	item.velocity = numbers["velocity"]
 	item.attack_range = numbers["attack_range"]
+	item.life = numbers["life"]
+	item.attack = numbers["attack"]
+	item.defense = numbers["defense"]
+	item.attack_interval = numbers["attack_interval"]
+	item.flying = numbers["flying"] == 1
+	item.elevation = numbers["elevation"]
 	item.breeding_order = numbers["breeding_order"]
 	item.sm_training_time = numbers["sm_training_time"]
 	item.potion = numbers["potion"]

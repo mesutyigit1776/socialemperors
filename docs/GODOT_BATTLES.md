@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: plan, not started. Branch `godot-port`.
+Status: stage 1 done. Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -44,11 +44,13 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 
 - The 36 quest maps are village saves in `villages/quests/`. The port reads 34 of them. Two (`100000053`, `100000054`) have no level, so the loader refuses them; a quest map needs a looser check.
 - Unit graphics have 25 frames: 5 animations of 5 directions. The port uses the first two (idle, walking). The others are probably attack and death; stage 2 confirms this.
+- The client starts a shot at 0.75 of the height of the graphic of the shooter and aims at the same height of the target. Stage 1 uses the anchor points of the items, so its shots fly a little shorter or longer. Stage 2 adds the heights from the graphics.
 - Projectiles and effects are in 231 files in `assets/fx/`. The importer does not read them yet.
 - The quest goals and scripted events are in the client quest classes, not in the data.
 
 ## Design
 
+- The port is a one-to-one port: battles, unit control and the game modes work as in the original game.
 - A new folder `godot/battle/` keeps the battle separate from the village save model.
 - `BattleSim` is the model: it has no nodes and runs one frame at a time, so the checks can run it headless with a fixed random seed. It contains the fighters (units and attacking buildings), the projectiles, the AI and the damage rules.
 - `BattleView` draws a `BattleSim` on the existing map view: animations, projectiles, health bars.
@@ -66,7 +68,32 @@ Each stage is a milestone with headless checks and, where it changes the save, a
 4. **Quest scripts.** Port the client quest classes for the 36 quests whose maps the server has.
 5. **Spells.** The spell book: mana, buying and using spells (`buy_magic`, `use_magic`), shields.
 6. **Special abilities.** First the units that a player can own (store, nests, Soul Mixer, riders, collections), then the bosses of the quests.
-7. **Other modes.** PvP attacks on other saves of the local server, neighbour visits, and events such as the heavy siege. Survival and tournament last, if at all.
+7. **Single-player modes.** Events such as the heavy siege on the own village, then survival and tournament, as far as they work without other players.
+8. **Multiplayer, last or never.** PvP attacks and neighbour visits need other players' saves and a server. The port has no server, so this stage waits for a decision of the owner.
+
+### Stage 1 result
+
+`godot/battle/` has the rules of the client without graphics. `checks/battle_check.gd` checks them with fixed random seeds.
+
+| File | Contents |
+|---|---|
+| `battle_sim.gd` | `BattleSim`: the items of the map, the frame loop, targets, damage, death, walking, the client's tile array and blocked tiles. Signals for hits, heals, shots and deaths. |
+| `battle_fighter.gd` | `BattleFighter`: the state of one item (life, target, walk, animation). |
+| `battle_ai.gd` | `BattleAI`: the conditions and states of a unit, as in the client. |
+| `battle_projectile.gd` | `BattleProjectile`: the two kinds of shots of the client and which shooter uses which. |
+| `battle_ability.gd`, `abilities/` | `BattleAbility`: the interface for special abilities. The healer is the first ability. |
+| `village/pathfinder.gd` | `find_route()`: the A* search of the client (costs 10 and 14), which battles use. |
+
+The rules come from the client:
+
+- A unit checks its attack every 5 frames and attacks when the frame plus its random delay (0 to 4) is also a multiple of its attack interval. A building attacks when the frame is a multiple of its interval.
+- The unit AI runs every 61 frames. Aggressive units take the enemy with the best score within 10 tiles: units first, then the town hall, then buildings that produce, then buildings that attack. Other buildings are not targets. An attacked item calls the units of its side on the 4 rings of tiles around it.
+- A unit walks its velocity in pixels per frame on the longer axis and stops for 1 frame at each tile. It attacks from the free tile at its range nearest to it. A ranged unit shoots while it walks; a melee unit attacks when it stands.
+- A tower keeps its target only within half its range. Arrows, rocks, axes and cannonballs move a fixed number of pixels per frame; other shots fly 1000 pixels per second, in an arc over 300 pixels or more. A shot hurts when it lands near the target.
+- Siege units do half the damage to units and take 1.25 times the damage from units. Element units do 1.35 times the damage to the element that they beat.
+- A dead unit stays on its tile for 4 seconds. A destroyed enemy building leaves the map.
+
+Not in stage 1: special attacks (except the healer), spells, units in buildings, doors in walls, buildings under construction, and what a death gives or costs in each game mode. A unit whose path becomes blocked while it walks stops, as in the client; no check covers this case.
 
 ## How to check the result
 
@@ -74,8 +101,8 @@ Each stage is a milestone with headless checks and, where it changes the save, a
 - Server replays of `end_quest` and the other commands, as for the village.
 - The same quest in the original client (Ruffle) and in the port. The results cannot be equal, because both use random numbers, but the course of the battle must be similar: the same targets, about the same duration and losses.
 
-## Decisions for the owner
+## Decisions of the owner
 
-1. Order: campaign quests first (recommended, all data is local), or PvP first.
-2. Unit control during battles: as in the client (recommended), or simpler at first.
-3. Survival and tournament: port them, or leave them out.
+1. Campaign quests come before PvP. The port has no server, and no multiplayer is planned for now.
+2. The player controls the units during battles as in the original game.
+3. Survival and tournament are ported where they work without other players.

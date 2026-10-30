@@ -2,7 +2,7 @@
 
 A new client for Social Empires, written in GDScript for Godot 4.7. It does not contain Social Point files. You import the graphics and the game configuration from your own copy of the socialemperors server.
 
-Status: the twelfth milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
+Status: the thirteenth milestone. The port shows one village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
 
 You can buy buildings and decorations from the store (the village, defense, army, decoration, wonder and "New" categories) and place them on your own land. The store shows the items for the race of the map, as the original client does: it hides items until their store level, and it does not offer the items for "gold members", because the server starts the client without gold membership.
 
@@ -30,7 +30,9 @@ A new building that needs workers gets only the player's own villager. The serve
 
 The save changes are the same as from the server commands, with three differences. All follow what the client shows. When the first unit goes into an empty building (in the Nursery, the second), the port starts the production time then, as the client does on screen; the server does not change the time. When a unit comes out of a training queue, the port moves the start time of the queue to the next unit; the server keeps it, so after a reload all units of a queue come out at once. When you finish a training queue with cash, the port charges the price that the client shows and takes, which counts all units of the queue; the server charges only for the next unit.
 
-Not done yet: battles, quests and neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
+Battles have started. The port has the battle rules of the original client, without graphics yet: units look for enemies, walk around buildings and attack, towers shoot, healers heal, and the damage, the timing and the walking speed are the same as in the client. `docs/GODOT_BATTLES.md` has the plan for the next stages: the battle view and unit control, the campaign quests, spells, special abilities and the single-player modes.
+
+Not done yet: battles that you can see and play, quests and neighbours, and the functions of the other special buildings, for example the spell book, the Time Machine, the weather machine and the Bahamut temple. You can buy these buildings, and the save is correct, but the port does not use them yet. Help from neighbours, for example potions from friends and their help in the nests, is not done. The server has no command to buy more graveyard places, so the port does not offer it.
 
 ## Import the game files
 
@@ -65,7 +67,13 @@ The port writes each change to the village file that it opened. To play a server
 godot --headless --path godot --script res://checks/village_check.gd -- --data <data folder>
 ```
 
-The exit code is the number of failed checks. Run it after you change the village rules or the save code.
+`checks/battle_check.gd` checks the battle rules with fixed random seeds. It needs the same data folder for the stats of the units and buildings.
+
+```bash
+godot --headless --path godot --script res://checks/battle_check.gd -- --data <data folder>
+```
+
+The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, and the battle check after you change the battle rules or the path search.
 
 ## Layout
 
@@ -73,6 +81,7 @@ The exit code is the number of failed checks. Run it after you change the villag
 |---|---|
 | `importer/` | Import tool. `swf_bounds.py` reads symbol bounds from SWF files, so the images keep the position of the original graphics. |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
-| `village/` | Village save model and placement rules, map coordinates, map view, camera and screen interface |
+| `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
+| `battle/` | Battle rules without graphics: the battle, its items, the unit AI, shots and special abilities |
 | `sprites/` | Loads the imported item graphics |
-| `checks/` | Headless checks of the village rules and the save format |
+| `checks/` | Headless checks of the village rules, the save format and the battle rules |
