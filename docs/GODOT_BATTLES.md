@@ -177,7 +177,7 @@ The spells (4c) follow their classes in the client. The player casts on a tile, 
 | Fire Havoc | 30 fireballs, one every 3 frames, of 150, 200 or 250 damage. Every third ball falls on an enemy unit within 2 tiles of the middle of the area, the others on random tiles. The client drops half tiles, so the area of the balls lies 3 tiles left and up of the marked square. |
 | Ultimate Hail | A stone on each tile of a square one tile wider than the marked one, within 100 frames: 800, 1000 or 1500 damage to enemy buildings for each of their tiles, a tenth of it and a stun to enemy units. Town halls, treasures and activators take nothing. |
 | Deadly Frostbite | Ice on each tile of the same square within 60 frames: freezes enemy units for 15, 20 or 30 seconds, without damage. Bosses do not freeze. |
-| Sacred Rain | Heals nobody, see below. |
+| Sacred Rain | Rain on each tile of the same square within 30 frames heals the unit of the player on it by 100 life, and at levels 2 and 3 by 20 life each second for 5 or 10 seconds. In the client it heals nobody; the port corrects this, see below. |
 | Golem's Wrath, Yeti's Trail | A golem or a yeti with 4000, 5000 or 7000 life on the free tile nearest to the tile, within 4 rings. |
 | Summon Dragon | One of 5 Bahamut dragons, the same way. It leaves after 30 or 60 seconds at levels 1 and 2, and stays at level 3. |
 | Hell Abyss | Swallows the enemy units and buildings within 3, 4 or 5 tiles of the middle of the square, except bosses, town halls, treasures, activators and units with 500 life or more. |
@@ -188,10 +188,10 @@ The spells (4c) follow their classes in the client. The player casts on a tile, 
 | Black Hole | Like Hell Abyss, at once and then every second for 15, 20 or 30 seconds. |
 | Instant Limit | Not in the port, see decision 7. |
 
-Errors of the client that the port keeps, each with a switch in the code:
+Errors of the client, each with a switch in the code:
 
-- **Sacred Rain** heals nobody. Its rain acts only on enemy items, but its healing acts only on units of the player. `SacredRainSpell.FIX_CLIENT_ERROR` turns on the healing of the player's units: 100 life, and 20 life each second for 5 or 10 seconds at levels 2 and 3.
-- **Ether Shield** covers 7 tiles at level 1, 9 at level 2 and none at level 3, protects all sides, and a second cast before the end of the first leaves the first shield for the rest of the battle. `EtherShieldSpell.FIX_CLIENT_ERRORS` protects the marked square, only for the player, and ends each shield after its time.
+- **Sacred Rain** heals nobody in the client. Its rain acts only on enemy items, but its healing acts only on units of the player. The owner chose to correct this: the port heals the player's units. `SacredRainSpell.FIX_CLIENT_ERROR` set to false gives the behaviour of the client.
+- **Ether Shield** (kept as in the client) covers 7 tiles at level 1, 9 at level 2 and none at level 3, protects all sides, and a second cast before the end of the first leaves the first shield for the rest of the battle. `EtherShieldSpell.FIX_CLIENT_ERRORS` protects the marked square, only for the player, and ends each shield after its time.
 
 Not ported: when a freeze ends, the client lets the frozen unit hit a unit of the player on the same tile for 10 points.
 
@@ -211,3 +211,4 @@ Not ported: when a freeze ends, the client lets the frozen unit hit a unit of th
 6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. `EtherShieldSpell.FIX_CLIENT_ERRORS` turns on a correction.
 7. Instant Limit is locked with the "not in the port" sign until units have their limit bars (stages 5 and 6).
 8. The player can cast spells in the own village, as in the client.
+9. Sacred Rain heals the units of the player. In the client it heals nobody.

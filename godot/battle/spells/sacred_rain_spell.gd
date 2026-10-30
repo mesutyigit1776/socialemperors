@@ -1,14 +1,14 @@
 class_name SacredRainSpell
 extends BattleSpell
 ## Sacred Rain: rain falls on each tile of the area, each after a random delay
-## of up to 30 frames. It should heal the unit of the player on its tile by 100
+## of up to 30 frames. It heals the unit of the player on its tile by 100
 ## life, and at levels 2 and 3 by 20 more life each second for 5 or 10 seconds.
 ##
 ## In the client the rain heals nobody: its particles act only on enemy items,
-## and the healing acts only on units of the player. The port does the same.
-## Set FIX_CLIENT_ERROR to true to heal the units of the player.
+## and the healing acts only on units of the player. The owner chose to correct
+## this. Set FIX_CLIENT_ERROR to false for the behaviour of the client.
 
-const FIX_CLIENT_ERROR := false
+const FIX_CLIENT_ERROR := true
 const HEAL := 100
 const HEAL_PER_SECOND := 20
 const HEAL_SECONDS: Array[int] = [0, 5, 10]
