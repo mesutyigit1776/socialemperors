@@ -28,6 +28,10 @@ const ROUND_TABLE := 389
 const TROLL_ALLIES_BUILDING := 361
 ## The Great Church has no place for the player's own villager.
 const GREAT_CHURCH := 470
+## The client gives the spell book to human players at this level, and then
+## also a free Wizardry Academy, from which the player opens the spell window.
+const SPELL_BOOK_LEVEL := 15
+const WIZARDRY := 416
 
 ## For check_limits(): the location is not known yet.
 const ANY_TILE := Vector2i(-1, -1)
@@ -68,6 +72,8 @@ var race: String  ## "h" (human) or "t" (troll).
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _config: GameConfig
+# Set when the player reaches SPELL_BOOK_LEVEL in the village; Village.add_free_buildings() then gives the Wizardry Academy.
+var _wizardry_due := false
 var _occupied := PackedByteArray()  # Number of items that cover each tile, row by row.
 func get_level() -> int:
 	return int(_map["level"])
@@ -413,7 +419,9 @@ func save_to_file(save_path: String) -> Error:
 ## sends "rt_level_up" for each level, and the server gives the reward of that
 ## level and, from a configured level, mana. The client does not check the level
 ## when it loads a save, so a save can keep more experience than its level needs.
-func _add_xp(amount: int) -> void:
+## The client gives the Wizardry Academy only at a level that the player
+## reaches in the own village: in_village is false for the experience of a quest.
+func _add_xp(amount: int, in_village: bool = true) -> void:
 	_map["xp"] = get_xp() + amount
 	while get_next_level_xp() >= 0 and get_xp() >= get_next_level_xp():
 		var new_level := get_level() + 1
@@ -422,6 +430,8 @@ func _add_xp(amount: int) -> void:
 		if new_level >= _config.start_level_mana_reward:
 			_add_resource("m", _config.mana_reward_per_level)
 		_map["level"] = new_level
+		if new_level == SPELL_BOOK_LEVEL and in_village:
+			_wizardry_due = true
 
 
 func _add_resource(code: String, amount: int) -> void:

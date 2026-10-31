@@ -136,6 +136,8 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 	var name := _config.get_item(building.item_id).name
 	var actions := []
 	match building.item_id:
+		Village.WIZARDRY:
+			return ["%s: learn spells and see their levels." % name, [["spells", "Open the spell book", true]]]
 		Village.DRAGON_NEST, Village.MONSTERS_NEST:
 			if not _village.is_nest_active(building):
 				var costs: Dictionary = _config.dragon_nest_costs if building.item_id == Village.DRAGON_NEST else _config.monster_nest_costs

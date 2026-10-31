@@ -24,8 +24,6 @@ signal changed  ## The mana, the spells or the casts of the village changed.
 const MARKER_FRAME := 4
 const MARKER_OFFSET := Vector2(0, 27)
 const MARKER_AREA := 5.0
-## The client shows the book to human players from level 15, and always to trolls.
-const MIN_LEVEL := 15
 const HUMAN_RACE := "h"
 
 ## Called with (spell, tile, level) when the player casts a spell.
@@ -60,14 +58,14 @@ func _init(ui: UiLibrary, cast_ui: UiLibrary, config: GameConfig, village: Villa
 	_hud = SpellBookHud.new(ui, config, village)
 	_hud.spell_chosen.connect(_on_spell_chosen)
 	_hud.cancel_requested.connect(_stop_aiming)
-	_hud.shop_requested.connect(_open_shop)
+	_hud.shop_requested.connect(open_shop)
 	_hud.mana_requested.connect(_open_mana_window)
 	_hud.visible = is_shown(village)
 
 
-## The client shows the book from MIN_LEVEL for human players.
+## The client shows the book to human players from Village.SPELL_BOOK_LEVEL, and always to trolls.
 static func is_shown(village: Village) -> bool:
-	return village.race != HUMAN_RACE or village.get_level() >= MIN_LEVEL
+	return village.race != HUMAN_RACE or village.get_level() >= Village.SPELL_BOOK_LEVEL
 
 
 func _enter_tree() -> void:
@@ -166,7 +164,8 @@ func _mouse_tile() -> Vector2i:
 	return IsoGrid.map_to_tile(get_local_mouse_position())
 
 
-func _open_shop() -> void:
+## Opens the spell window, as the book and the Wizardry Academy do.
+func open_shop() -> void:
 	_stop_aiming()
 	if _shop != null:
 		return

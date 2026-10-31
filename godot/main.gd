@@ -425,6 +425,9 @@ func _update_store() -> void:
 		if not free.is_empty():
 			_save()
 			_hud.show_message("You got a free %s." % " and a free ".join(free.map(func(placed: Village.PlacedItem) -> String: return _config.get_item(placed.item_id).name)))
+		# An import before this window has only the message above.
+		if _ui != null and _ui.has_symbol("PopUpAlertaMC") and free.any(func(placed: Village.PlacedItem) -> bool: return placed.item_id == Village.WIZARDRY):
+			_windows.add_child(PictureAlertWindow.new(_ui, _config, _config.text("AVISO_GRIMORIO_TITULO"), _config.text("AVISO_GRIMORIO_DESCRIPCION"), "alert_magic.jpg"))
 		var categories := []
 		for category_id in Store.CATEGORIES:
 			var offered: Array[GameConfig.ItemDef] = []
@@ -470,6 +473,12 @@ func _show_panel(panel: SpecialActions.View) -> void:
 
 
 func _on_action_requested(id: String) -> void:
+	if id == "spells":
+		if _spell_book != null:
+			_spell_book.open_shop()
+		else:
+			_hud.show_message("The spell window needs the windows of the client. Import the game files again; see godot/README.md.")
+		return
 	var outcome := _specials.run(id, _selected, _now())
 	if outcome.place != null:
 		_select(null)

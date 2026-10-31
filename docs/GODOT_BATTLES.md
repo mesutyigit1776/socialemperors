@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 3 done; stage 4 in progress (4a to 4d done). Branch `godot-port`.
+Status: stages 1 to 4 done. Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -147,7 +147,7 @@ Also in this stage: the client puts the registration point of a building graphic
 
 ### Stage 4 progress
 
-Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a to 4d are done.
+Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. All five steps are done.
 
 | File | Contents |
 |---|---|
@@ -217,7 +217,12 @@ Not exact yet:
 - The banner of a cast and the book are placed for a stage of 760 x 600 pixels: the book at the bottom left, the banner over the bottom centre.
 - The client turns the shapes of some parts of its windows with a skew; the port turns and scales them, but does not skew them.
 - In the village a cast shows its graphic on the tile and costs its mana, but changes no units. The client also brings summoned units at home, which it does not save.
-- The client gives a Wizardry building when a human player reaches level 15. The port does not.
+
+Step 4e added the gift of the client at level 15 and checked the whole stage by a played quest:
+
+- At level 15 the client gives a free Wizardry Academy on the free 3 x 3 place nearest to tile (59, 59), with "buy" without cost, which gives the experience of the building. It shows the alert of the spell book with its picture. The building opens the spell window. The client gives it only for a level that the player reaches in the own village, also to troll players, and also when the village has one already. A level from the experience of a quest gives nothing, because the client adds that experience during the quest, outside its normal mode. `Village.add_free_buildings()` places it.
+- The panel of the port, which is not art of the client, moved to the top right, so that it does not cover the spell book.
+- A scripted quest on troll island 1 with a level 50 player and 24 units: the script opened the book with a click, cast 10 spells with the mouse (Age of Colossus, 2x Speed, Sacred Rain and Golem's Wrath on the army; Hell Abyss, Fire Havoc, Black Hole, Poisonous Flood, Deadly Frostbite and Ultimate Hail on the enemies), sent the army at the last enemies, and clicked the treasure. The quest ended with a win after 26 seconds: 2247 gold, 22 experience, 1 unit dead and back. The 10 casts cost 89 mana, 200 to 111, and each counted once. The golem was not in the result. The save after the quest had the mana, the casts, the gold, the experience and the rank of the island.
 
 ## How to check the result
 

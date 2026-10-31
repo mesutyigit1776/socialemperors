@@ -29,6 +29,7 @@ const MILL := 300  # 2x2
 const TOWN_HALL := 26  # 4x4
 const TOWER := 29
 const SUMMONED_GOLEM := 630
+const WIZARDRY := 416  # 3x3
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 const TILE := Vector2i(50, 50)  # The tile on which the checks cast.
@@ -59,7 +60,7 @@ func _init() -> void:
 	_graphics = graphics
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats, _check_descriptions]:
+	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_wizardry_gift, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats, _check_descriptions]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -115,6 +116,21 @@ func _check_spells_in_port() -> bool:
 ## 3 n frames, at least 1. The balls fall on the area 3 tiles further left and
 ## up than the marked square, or on enemy units within 2 tiles of its middle.
 ## The effects of a battle frame show after the step of that frame.
+## The client gives a Wizardry Academy at level 15, with the spell book, but
+## only for a level that the player reaches in the own village.
+func _check_wizardry_gift() -> bool:
+	var village := _village(14, 0, 0, 0, {}, -5)
+	var mill := _config.get_item(MILL)
+	_check(village.buy(mill, _free_place(village, mill), 1800000000) == Village.Placement.OK and village.get_level() == 15, "the experience of a mill brings the player to level 15")
+	var gifts := village.add_free_buildings(1800000000).filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == WIZARDRY)
+	_check(gifts.size() == 1 and village.check_location(_config.get_item(WIZARDRY), gifts[0].tile, gifts[0]) == Village.Placement.OK, "at level 15 the player gets a Wizardry Academy on free own land")
+	_check(village.add_free_buildings(1800000000).filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == WIZARDRY).is_empty(), "the player gets the Wizardry Academy once")
+	village = _village(14, 0, 0, 0, {}, -5)
+	village.end_quest({"quest_id": _config.quest_order[0], "difficulty": 1, "win": 0, "resources": {"g": 0, "x": 10}, "units": []})
+	_check(village.get_level() == 15 and village.add_free_buildings(1800000000).all(func(placed: Village.PlacedItem) -> bool: return placed.item_id != WIZARDRY), "level 15 from a quest gives no Wizardry Academy")
+	return true
+
+
 func _check_fire_havoc() -> bool:
 	var sim := _sim(31)
 	var tiles := {}
@@ -366,10 +382,13 @@ func _run(sim: BattleSim, frames: int) -> void:
 		sim.step()
 
 
-## The starting village with this level, gold, cash, mana and spells.
-func _village(level: int, gold: int, cash: int, mana: int, spells: Dictionary = {}) -> Village:
+## The starting village with this level, gold, cash, mana and spells. A
+## negative xp_to_next gives the experience that lies that much below the next level.
+func _village(level: int, gold: int, cash: int, mana: int, spells: Dictionary = {}, xp_to_next: int = 0) -> Village:
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_data.path_join("villages/initial.json")))
 	document["maps"][0]["level"] = level
+	if xp_to_next < 0:
+		document["maps"][0]["xp"] = _config.levels[level].exp_required + xp_to_next
 	document["maps"][0]["coins"] = gold
 	document["playerInfo"]["cash"] = cash
 	document["privateState"]["mana"] = mana
@@ -380,6 +399,15 @@ func _village(level: int, gold: int, cash: int, mana: int, spells: Dictionary = 
 	file.store_string(JSON.stringify(document))
 	file.close()
 	return Village.load_from_file(path, _config)
+
+
+## The first free place for item in the village.
+func _free_place(village: Village, item: GameConfig.ItemDef) -> Vector2i:
+	for y in IsoGrid.MAP_TILES:
+		for x in IsoGrid.MAP_TILES:
+			if village.check_location(item, Vector2i(x, y)) == Village.Placement.OK:
+				return Vector2i(x, y)
+	return Village.ANY_TILE
 
 
 ## The spells in the save as the port writes it. JSON gives the numbers as

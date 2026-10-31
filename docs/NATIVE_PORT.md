@@ -148,7 +148,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 
 **2. Spells and the first comparison**
 
-1. Spells: mana, buying and using spells, shields (battle stage 4).
+1. Spells: mana, buying and using spells, shields (battle stage 4). Done.
 2. An import that continues after a stop. The full import of all graphics takes several hours.
 3. The first comparison with the original game: the same quest in Ruffle and in the port, for targets, duration and losses. This also shows if Ruffle can run the game far enough to be the reference. Until now, the port is checked only against the rules in the client code, so this comparison comes before the quests of step 3.
 

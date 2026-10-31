@@ -41,6 +41,7 @@ SYMBOLS = [
 	"GuiMC/barraAttackArriba",
 	"GuiMC/bgBar/btnExit",
 	"PopupAlertMC",
+	"PopUpAlertaMC",
 	"PortraitAssaultMC",
 	# The spell book, its window, the window that sells mana, and the marker of the area of a spell.
 	"PopupMagicMC",
@@ -55,7 +56,8 @@ SYMBOLS = [
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
 # show a book and a wizard; the pictures of the spells come with spell_images.
-IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png"]
+# The alert with a picture tells the player about the spell book.
+IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]

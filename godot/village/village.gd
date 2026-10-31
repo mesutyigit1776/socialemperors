@@ -70,6 +70,7 @@ const SOUL_MIX_PROMOTION_UNITS: Array[int] = [2048, 2037, 777, 758]
 ## The client gives a free dragon nest, and a free Soul Mixer from
 ## GameConfig.soul_mixer_min_level, at the free place nearest to these tiles.
 const FREE_BUILDING_TILES := {DRAGON_NEST: Vector2i(30, 59), SOUL_MIXER: Vector2i(59, 59)}
+const WIZARDRY_TILE := Vector2i(59, 59)
 
 # The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
 # {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
@@ -202,7 +203,9 @@ func place_stored(item: GameConfig.ItemDef, tile: Vector2i, now: int, frame: int
 ## Places a free dragon nest, and from GameConfig.soul_mixer_min_level a free
 ## Soul Mixer, when the map and the item store have none, as the client does
 ## when it loads the map and at a new level. It sends "buy" without cost, which
-## gives the experience of the item. Returns the new buildings.
+## gives the experience of the item. Also places the Wizardry Academy when the
+## player reached SPELL_BOOK_LEVEL in the village since the last call; the
+## client gives it then even when the map has one. Returns the new buildings.
 func add_free_buildings(now: int) -> Array[PlacedItem]:
 	var added: Array[PlacedItem] = []
 	for id: int in FREE_BUILDING_TILES:
@@ -216,6 +219,14 @@ func add_free_buildings(now: int) -> Array[PlacedItem]:
 			continue
 		_add_xp(item.xp)
 		added.append(_add_entry(item, tile, 0, now, _new_item_attributes(item)))
+	# After the other buildings, whose experience can bring the level.
+	if _wizardry_due:
+		_wizardry_due = false
+		var wizardry := _config.get_item(WIZARDRY)
+		var place := _free_place_near(wizardry, WIZARDRY_TILE)
+		if place != ANY_TILE:
+			_add_xp(wizardry.xp)
+			added.append(_add_entry(wizardry, place, 0, now, _new_item_attributes(wizardry)))
 	return added
 
 
@@ -657,7 +668,8 @@ func end_quest(result: Dictionary) -> void:
 		_document["privateState"]["questsRank"][quest_id] = maxi(difficulty, rank)
 	player["honor_points"] = int(player.get("honor_points", 0)) + honour
 	_add_resource("g", int(result["resources"]["g"]))
-	_add_xp(int(result["resources"]["x"]))
+	# The client adds this experience during the quest, outside its normal mode.
+	_add_xp(int(result["resources"]["x"]), false)
 	for entry: Array in result["units"]:
 		var lost := int(entry[2]) - int(entry[3])
 		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):

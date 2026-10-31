@@ -35,6 +35,7 @@ signal stored_items_requested
 signal quests_requested
 
 const PANEL_WIDTH := 340
+const PANEL_MARGIN := 10.0
 const ACTIONS_MAX_HEIGHT := 220  ## More actions than fit scroll.
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash", "p": "potions"}
 const PLACEMENT_MESSAGES := {
@@ -88,7 +89,12 @@ var _shown_actions := []  # The actions of the buttons, so that a refresh with t
 
 func _init() -> void:
 	var panel := PanelContainer.new()
-	panel.position = Vector2(10, 10)
+	# At the top right, because the spell book of the client is at the bottom left.
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	panel.offset_left = -PANEL_MARGIN
+	panel.offset_right = -PANEL_MARGIN
+	panel.offset_top = PANEL_MARGIN
 	var column := VBoxContainer.new()
 	column.custom_minimum_size.x = PANEL_WIDTH
 	panel.add_child(column)
