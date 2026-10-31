@@ -13,7 +13,7 @@ const MAX_DELAY := 100
 
 func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	for point in _square_from_corner(tile, area(level)):
-		_particle(sim, sim.rng.randf() * MAX_DELAY, _attack_frame, func() -> void:
+		_particle(sim, point, sim.rng.randf() * MAX_DELAY, _attack_frame, func() -> void:
 			var enemy := _item_of(sim, point, BattleFighter.Team.ENEMY)
 			if enemy == null:
 				return
@@ -21,4 +21,8 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 				sim.stun(enemy)
 				sim.receive_attack(enemy, int(DAMAGE[level - 1] * UNIT_SHARE), null)
 			elif not enemy.def.subcat_functional in [SUBCAT_TOWN_HALL, SUBCAT_ACTIVATOR, SUBCAT_TREASURE]:
-				sim.receive_attack(enemy, DAMAGE[level - 1], null))
+				sim.receive_attack(enemy, DAMAGE[level - 1], null), {"depth": "mixed"})
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	return _area_texts(config, "SPELL_STONERAIN_DESCRIPCION", DAMAGE)

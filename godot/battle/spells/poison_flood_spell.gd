@@ -11,8 +11,16 @@ const DELAY := 10
 
 func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	var side := area(level)
-	_particle(sim, DELAY, _attack_frame, func() -> void:
+	_particle(sim, tile, DELAY, _attack_frame, func() -> void:
 		var found := sim.items_near(tile, side, side * side, BattleFighter.Team.ENEMY, true, func(item: BattleFighter) -> bool:
 			return item.is_unit() and not item.dead and item.def.subcat_functional != BattleSim.SUBCAT_BOSS)
 		for i in range(found.size() - 1, -1, -1):
-			sim.poison(found[i], DAMAGE[level - 1], TICKS[level - 1], INFECTS[level - 1], null))
+			sim.poison(found[i], DAMAGE[level - 1], TICKS[level - 1], INFECTS[level - 1], null), {"scale": 3.0, "frames": -1, "depth": "above"})
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	# The texts give the damage of all ticks, and from level 2 the units that it passes to.
+	var texts: Array[String] = [_fill(config, "SPELL_POISON_DESCRIPCION_1", [area(1), area(1), DAMAGE[0] * TICKS[0]])]
+	for level in range(2, GameConfig.SPELL_LEVELS + 1):
+		texts.append(_fill(config, "SPELL_POISON_DESCRIPCION_2", [area(level), area(level), DAMAGE[level - 1] * TICKS[level - 1], INFECTS[level - 1]]))
+	return texts

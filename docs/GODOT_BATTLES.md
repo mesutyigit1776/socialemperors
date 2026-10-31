@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 3 done; stage 4 in progress (4a to 4c done). Branch `godot-port`.
+Status: stages 1 to 3 done; stage 4 in progress (4a to 4d done). Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -147,7 +147,7 @@ Also in this stage: the client puts the registration point of a building graphic
 
 ### Stage 4 progress
 
-Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a to 4c are done.
+Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. 4a to 4d are done.
 
 | File | Contents |
 |---|---|
@@ -194,6 +194,30 @@ Errors of the client, each with a switch in the code:
 - **Ether Shield** (kept as in the client) covers 7 tiles at level 1, 9 at level 2 and none at level 3, protects all sides, and a second cast before the end of the first leaves the first shield for the rest of the battle. `EtherShieldSpell.FIX_CLIENT_ERRORS` protects the marked square, only for the player, and ends each shield after its time.
 
 Not ported: when a freeze ends, the client lets the frozen unit hit a unit of the player on the same tile for 10 points.
+
+The screens of the spells (4d) use the art of the client:
+
+| File | Contents |
+|---|---|
+| `spell_book/spell_book.gd` | `SpellBook`: the book, the windows, aiming with the marker of the area and casting, in quests and in the village. |
+| `spell_book/spell_book_hud.gd` | The book at the bottom left (PopupMagic): the spells of the player, three at a time, and the mana. |
+| `spell_book/spell_shop_window.gd` | The spell window (PopupWizardry): the spells by level, their prices, texts, stars and casts to the next level. |
+| `spell_book/buy_mana_window.gd`, `cast_banner.gd`, `spell_particle.gd` | The mana window, the banner with the name of a cast spell, and a particle of a spell on the map. |
+| `battle/battle_view.gd` | The particles of the spells, the colours of frozen and poisoned units, the size of enlarged units, the jump of stunned units, the shrinking of swallowed items and the glow of the items that a spell marks. |
+| `ui/ui_button.gd`, `ui/ui_clip.gd`, `ui/ui_library.gd`, `importer/ui_import.py` | Named buttons of the windows, frame labels, turned parts and fading parts. |
+
+The rules of the screens come from the client:
+
+- Human players have the spell book from level 15; trolls always have it. The book lists the spells that the player has, by id.
+- A spell without enough mana opens the mana window. While the player aims, the marker of the area is centred half a tile below the tile under the mouse, and the items of the side of the spell on the square from that tile to the left and up glow.
+- The graphics of most spells stop at their last frame; Ether Shield and Black Hole repeat their last part, and Sacred Rain repeats all. A particle fades in 1 second, most 1 second after it acts.
+
+Not exact yet:
+
+- The banner of a cast and the book are placed for a stage of 760 x 600 pixels: the book at the bottom left, the banner over the bottom centre.
+- The client turns the shapes of some parts of its windows with a skew; the port turns and scales them, but does not skew them.
+- In the village a cast shows its graphic on the tile and costs its mana, but changes no units. The client also brings summoned units at home, which it does not save.
+- The client gives a Wizardry building when a human player reaches level 15. The port does not.
 
 ## How to check the result
 

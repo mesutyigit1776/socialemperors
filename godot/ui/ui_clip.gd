@@ -2,8 +2,9 @@ class_name UiClip
 extends Control
 ## A sprite of a client window (see UiLibrary): the image of its frame without
 ## its named parts, and the parts as children, in the depth order of the
-## client: a UiClip for a sprite and a Label for a text field. The node sits on
-## the registration point of the sprite, as in Flash.
+## client: a UiClip for a sprite, a UiButton for a button and a Label for a
+## text field. The node sits on the registration point of the sprite, as in
+## Flash. Parts can be scaled, mirrored and turned; the port does not skew them.
 ##
 ## A part keeps its text, visibility and frame when the clip shows another
 ## frame that has a part with the same name. Masks of the client are hidden.
@@ -53,11 +54,18 @@ func show_frame(new_frame: int) -> void:
 			add_child(node)
 		move_child(node, get_child_count() - 1)
 		var m: Array = part["matrix"]
-		node.scale = Vector2(m[0], m[3])
+		# The matrix of Flash is [a, b, c, d, x, y]: a turn, then a scale.
+		var x_scale := Vector2(m[0], m[1]).length()
+		node.rotation = atan2(m[1], m[0])
+		node.scale = Vector2(x_scale, (m[0] * m[3] - m[1] * m[2]) / x_scale if x_scale != 0 else m[3])
 		# A text field keeps the offset of its rectangle, see _make_part().
-		node.position = Vector2(m[4], m[5]) + node.get_meta("offset", Vector2.ZERO) * node.scale
+		node.position = Vector2(m[4], m[5]) + (node.get_meta("offset", Vector2.ZERO) * node.scale).rotated(node.rotation)
+		# A part that the clip fades gets its full alpha back in the frames without a fade.
 		if part.has("alpha"):
 			node.modulate.a = part["alpha"]
+			node.set_meta("faded", true)
+		elif node.has_meta("faded"):
+			node.modulate.a = 1.0
 		if part.get("mask", false):
 			node.visible = false
 	for key: String in _parts.keys():
@@ -78,6 +86,17 @@ func part(path: String) -> Control:
 
 func clip(path: String) -> UiClip:
 	return part(path) as UiClip
+
+
+func button(path: String) -> UiButton:
+	return part(path) as UiButton
+
+
+## Shows the frame with this label, as gotoAndStop(label) in Flash.
+func show_label(label: String) -> void:
+	var labelled := library.clip_label(sprite_id, label)
+	if labelled >= 0:
+		show_frame(labelled)
 
 
 func set_text(path: String, text: String) -> void:
@@ -111,9 +130,9 @@ func bounds() -> Rect2:
 	for node: Control in _parts.values():
 		if not node.visible:
 			continue
-		var rect := (node as UiClip).bounds() if node is UiClip else Rect2(Vector2.ZERO, node.size)
+		var rect: Rect2 = node.bounds() if node is UiClip or node is UiButton else Rect2(Vector2.ZERO, node.size)
 		if rect.size != Vector2.ZERO:
-			rect = Transform2D(0.0, node.scale, 0.0, node.position) * rect
+			rect = Transform2D(node.rotation, node.scale, 0.0, node.position) * rect
 			result = rect if result.size == Vector2.ZERO else result.merge(rect)
 	return result
 
@@ -131,6 +150,8 @@ func _gui_input(event: InputEvent) -> void:
 func _make_part(part: Dictionary) -> Control:
 	if part.has("clip"):
 		return UiClip.new(library, int(part["clip"]))
+	if part.has("button"):
+		return UiButton.new(library, int(part["button"]))
 	var settings: Dictionary = part["text"]
 	var label := Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE

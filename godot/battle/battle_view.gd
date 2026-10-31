@@ -13,6 +13,12 @@ extends Node2D
 ## trail effect in each frame; where it lands, its blast effect plays. A timed
 ## shot flies straight, or in an arc: first up to above the middle of its way,
 ## then down, in 1.6 times the time.
+##
+## Spells show their particles (see show_spell()), and the states of the units:
+## a frozen or poisoned unit has the colour that the client adds to it, an
+## enlarged unit grows to twice its size in half a second, a stunned unit jumps
+## and falls, and a swallowed item shrinks. While the player aims a spell, the
+## items that it would mark glow, see show_marked().
 
 const HEALTH_BAR_SIZE := Vector2(48, 6)
 const HEALTH_BAR_GAP := 5.0  ## Pixels between the top of the graphic and the bar.
@@ -30,6 +36,14 @@ const TRAIL_SHADE := Vector2(0.7, 0.85)
 ## A shot in an arc does not turn when its way is shorter than this in x.
 const ARC_MIN_TURN_WIDTH := 50.0
 const ARC_RISE := 1.0 / 20  ## The arc rises by this part of the width of the way.
+## The colours that the client adds to frozen and poisoned units, and the glow of marked items.
+const FROZEN_COLOR := Color8(0, 0, 128)
+const POISONED_COLOR := Color8(204, 51, 255)
+const MARKED_COLOR := Color8(110, 110, 60)
+const ENLARGED_SIZE := 2.0
+const RESIZE_SECONDS := 0.5
+const STUN_JUMP := 100.0  ## Pixels.
+const STUN_SECONDS := 0.5  ## Up, then down.
 const BOX_COLOR := Color(1, 1, 1, 0.1)
 const BOX_BORDER_COLOR := Color(1, 1, 1)
 
@@ -50,6 +64,12 @@ var _rng := RandomNumberGenerator.new()  # For the looks of the effects, not for
 var _selected: Array[BattleFighter] = []
 var _hovered: BattleFighter
 var _box := Rect2()  # The selection box on the map, or an empty rectangle.
+var _below_layer := Node2D.new()  # Spell particles under the items.
+var _above_layer := Node2D.new()  # Spell particles over the items.
+var _sizes := {}  # BattleFighter (unit) -> its size now, 1 or more.
+var _stuns := {}  # BattleFighter (unit) -> seconds since its stun.
+var _marked: Array[BattleFighter] = []
+var _tints := {}  # Colour -> ShaderMaterial that adds the colour.
 
 
 ## A shot on the screen.
@@ -72,11 +92,13 @@ class _Overlay:
 
 func _ready() -> void:
 	add_child(_land_layer)
+	add_child(_below_layer)
 	add_child(_marks)
 	_item_layer.y_sort_enabled = true  # Items further down the screen are in front.
 	add_child(_item_layer)
 	add_child(_trail_layer)
 	add_child(_shot_layer)
+	add_child(_above_layer)
 	add_child(_overlay)
 	_marks.paint = _draw_marks
 	_overlay.paint = _draw_overlay
@@ -94,6 +116,25 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 	sim.removed.connect(_on_removed)
 	sim.shot_fired.connect(_on_shot_fired)
 	sim.shot_landed.connect(_on_shot_landed)
+	sim.state_changed.connect(_on_state_changed)
+
+
+## Shows the particles of spell, see BattleSpell.particle_shown.
+func show_spell(spell: BattleSpell) -> void:
+	spell.particle_shown.connect(_add_particle)
+
+
+## The layer under the items, for example for the marker of the area of a spell.
+func under_items() -> Node2D:
+	return _below_layer
+
+
+## The items that glow while the player aims a spell.
+func show_marked(marked: Array[BattleFighter]) -> void:
+	var changed := _marked + marked
+	_marked = marked
+	for fighter in changed:
+		_update_tint(fighter)
 
 
 ## Marks a building that the player can collect, as the village marks a
@@ -136,10 +177,11 @@ func units_in_box(box: Rect2) -> Array[BattleFighter]:
 	return result
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	for fighter: BattleFighter in _nodes:
 		if fighter.is_unit():
 			_show_unit(fighter)
+			_show_size(fighter, delta)
 	for shot: BattleProjectile in _shots:
 		_show_shot(shot, _shots[shot])
 	_marks.queue_redraw()
@@ -181,11 +223,78 @@ func _show_unit(fighter: BattleFighter) -> void:
 	node.show_action(action, _directions[fighter])
 
 
+## The size of a unit follows its state; a stunned unit jumps and falls.
+func _show_size(fighter: BattleFighter, delta: float) -> void:
+	var node: UnitSprite = _nodes[fighter]
+	var target := 0.0 if fighter.swallowed else (ENLARGED_SIZE if fighter.enlarged else 1.0)
+	var size: float = move_toward(_sizes.get(fighter, 1.0), target, delta / RESIZE_SECONDS * maxf(ENLARGED_SIZE - 1, 1))
+	_sizes[fighter] = size
+	node.scale = Vector2(signf(node.scale.x) * size, size)
+	if _stuns.has(fighter):
+		var time: float = _stuns[fighter] + delta
+		_stuns[fighter] = time
+		var rise := time / STUN_SECONDS
+		node.position.y -= STUN_JUMP * (1 - pow(1 - rise, 3) if rise < 1 else maxf(1 - (rise - 1) * (rise - 1), 0) if rise < 2 else 0.0)
+		if rise >= 2:
+			_stuns.erase(fighter)
+
+
+func _on_state_changed(fighter: BattleFighter) -> void:
+	if fighter.stunned and not _stuns.has(fighter):
+		_stuns[fighter] = 0.0
+	if not fighter.is_unit() and fighter.swallowed and _nodes.has(fighter):
+		create_tween().tween_property(_nodes[fighter], "scale", Vector2.ZERO, RESIZE_SECONDS)
+	_update_tint(fighter)
+
+
+func _update_tint(fighter: BattleFighter) -> void:
+	if not _nodes.has(fighter):
+		return
+	var colour := Color.BLACK
+	if fighter.frozen:
+		colour = FROZEN_COLOR
+	elif fighter.poisoned:
+		colour = POISONED_COLOR
+	if fighter in _marked:
+		colour = Color(minf(colour.r + MARKED_COLOR.r, 1), minf(colour.g + MARKED_COLOR.g, 1), minf(colour.b + MARKED_COLOR.b, 1))
+	_nodes[fighter].material = null if colour == Color.BLACK else _tint(colour)
+
+
+## A material that adds colour to the graphic, as the colour filters of the client do.
+func _tint(colour: Color) -> ShaderMaterial:
+	if not _tints.has(colour):
+		var shader := Shader.new()
+		shader.code = "shader_type canvas_item;\nuniform vec4 added : source_color;\nvoid fragment() {\n\tvec4 c = texture(TEXTURE, UV) * COLOR;\n\tCOLOR = vec4(min(c.rgb + added.rgb * c.a, vec3(1.0)), c.a);\n}\n"
+		var material := ShaderMaterial.new()
+		material.shader = shader
+		material.set_shader_parameter("added", colour)
+		_tints[colour] = material
+	return _tints[colour]
+
+
+func _add_particle(graphic: String, tile: Vector2i, look: Dictionary) -> void:
+	var sprite := _effects.get_sprite(graphic)
+	if sprite == null:
+		return
+	var particle := SpellParticle.new(sprite, look)
+	particle.position = IsoGrid.tile_to_map(tile)
+	match look.get("depth"):
+		"mixed":
+			_item_layer.add_child(particle)
+		"above":
+			_above_layer.add_child(particle)
+		_:
+			_below_layer.add_child(particle)
+
+
 func _on_removed(fighter: BattleFighter) -> void:
 	if _nodes.has(fighter):
 		_nodes[fighter].queue_free()
 		_nodes.erase(fighter)
 	_directions.erase(fighter)
+	_sizes.erase(fighter)
+	_stuns.erase(fighter)
+	_marked.erase(fighter)
 	_selected.erase(fighter)
 	if _hovered == fighter:
 		_hovered = null

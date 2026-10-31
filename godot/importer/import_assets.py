@@ -8,10 +8,11 @@ socialemperors server folder that the user supplies and writes:
   <out>/sprites/<img_name>/<n>.png   frame n of the item graphic (1-based)
   <out>/sprites/<img_name>/meta.json registration offset and frame count
   <out>/sprites/<img_name>/clips/<id>/<n>.png  frame n of an animation of a unit
-  <out>/fx/<name>/...                shots and effects of battles, in the same form as the units
+  <out>/fx/<name>/...                shots, effects and spells of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
   <out>/quests/<id>.save.json        maps of the quest islands
-  <out>/spells.json                  frame labels of the spell graphics: img_name -> {label: frame}
+  <out>/spells.json                  how the spell graphics play: img_name -> {"labels": {label: frame},
+                                     "loop_from": frame where the graphic goes on after its last frame, or null}
   <out>/ui/...                       windows of the client, see ui_import.py
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
@@ -179,6 +180,16 @@ def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated):
 		json.dump(meta, f, indent='\t')
 
 
+def _loop_frame(swf, labels):
+	"""The frame (1-based) from which a spell graphic plays again after its last
+	frame, or None when it stops there. The frame scripts of the graphics,
+	compiled code that the importer does not read, either stop the graphic, or
+	go to the label "bucle1" (loop), or there are none and the graphic loops."""
+	if b"gotoAndPlay" in swf.data and "bucle1" in labels:
+		return labels["bucle1"]
+	return None if b"stop" in swf.data else 1
+
+
 def main():
 	repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -218,9 +229,12 @@ def main():
 	for spell in config.get("magics", []):
 		swf_path = os.path.join(sprite_dir, f"{spell['img_name']}.swf")
 		try:
-			spell_labels[spell["img_name"]] = SwfFile(swf_path).symbol_frame_labels(spell["img_name"])
+			swf = SwfFile(swf_path)
+			labels = swf.symbol_frame_labels(spell["img_name"])
 		except (SwfError, OSError) as e:
 			print(f"not imported: labels of {spell['img_name']}: {e}", file=sys.stderr)
+			continue
+		spell_labels[spell["img_name"]] = {"labels": labels, "loop_from": _loop_frame(swf, labels)}
 	with open(os.path.join(out_dir, "spells.json"), 'w', encoding='utf-8') as f:
 		json.dump(spell_labels, f, indent='\t')
 	items = needed_items(config, villages, shop, args.all)
@@ -230,6 +244,8 @@ def main():
 	# (name shown in the progress, SWF file, symbol, output folder, animated)
 	jobs = [(img_name, os.path.join(sprite_dir, f"{img_name}.swf"), img_name, os.path.join(out_dir, "sprites", img_name), items[img_name]["type"] == "u") for img_name in sorted(items)]
 	jobs += [(f"fx/{name}", os.path.join(source, "assets", "fx", f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in fx_names]
+	# The graphics of the spells, which the battles show like the effects.
+	jobs += [(f"fx/{name}", os.path.join(sprite_dir, f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in sorted(spell_labels)]
 
 	def import_one(job):
 		_, swf_path, symbol, folder, animated = job
@@ -249,8 +265,9 @@ def main():
 			print(f"[{count}/{len(jobs)}] {job[0]}", flush=True)
 
 	unit_thumbs = [f"{img_name}.jpg" for img_name, item in items.items() if item["type"] == "u"]
+	spell_images = [image for name in spell_labels for image in (f"{name}.jpg", f"prev_{name}.jpg")]
 	try:
-		print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs)} sprites", flush=True)
+		print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs, spell_images)} sprites", flush=True)
 	except (SwfError, RuntimeError, OSError) as e:
 		failed.append(("windows of the client", str(e)))
 

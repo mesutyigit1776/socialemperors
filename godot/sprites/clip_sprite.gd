@@ -22,6 +22,8 @@ func _init(sprite: SpriteLibrary.ItemSprite) -> void:
 	centered = false
 	offset = sprite.origin
 	_clip_node.centered = false
+	# A tint of the graphic, see BattleView, also covers its clip.
+	_clip_node.use_parent_material = true
 	add_child(_clip_node)
 
 

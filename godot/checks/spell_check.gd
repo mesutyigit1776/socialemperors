@@ -35,7 +35,7 @@ const TILE := Vector2i(50, 50)  # The tile on which the checks cast.
 
 var _data: String
 var _config: GameConfig
-var _labels: Dictionary
+var _graphics: Dictionary
 var _failures := 0
 
 
@@ -52,14 +52,14 @@ func _init() -> void:
 		push_error("Cannot read the imported data in '%s'." % _data)
 		quit(1)
 		return
-	var labels: Variant = BattleSpell.read_labels(_data.path_join("spells.json"))
-	if labels == null:
+	var graphics: Variant = BattleSpell.read_graphics(_data.path_join("spells.json"))
+	if graphics == null:
 		quit(1)
 		return
-	_labels = labels
+	_graphics = graphics
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats]:
+	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats, _check_descriptions]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -336,9 +336,17 @@ func _check_double_stats() -> bool:
 	return true
 
 
+## The spell window shows the texts of the client with the numbers of the spells.
+func _check_descriptions() -> bool:
+	_check(BattleSpell.describe(_config.get_spell(FIRE_HAVOC), _config) == ["Area: 5x5 / Damage: 150+30", "Area: 7x7 / Damage: 200+80", "Area: 9x9 / Damage: 250+150"], "Fire Havoc has the texts of the client")
+	_check(BattleSpell.describe(_config.get_spell(ETHER_SHIELD), _config)[2] == "Area: 9x9 / Lasts: 40s / DMG reduction: 60%", "Ether Shield names its marked area")
+	_check(BattleSpell.describe(_config.get_spell(INSTANT_LIMIT), _config)[0] == "Area: 5x5", "Instant Limit has its text, also without a port")
+	return true
+
+
 func _spell(spell_id: int) -> BattleSpell:
 	var spell := _config.get_spell(spell_id)
-	return BattleSpell.create(spell, _config, _labels.get(spell.img_name, {}))
+	return BattleSpell.create(spell, _config, _graphics.get(spell.img_name, {}))
 
 
 func _sim(seed: int) -> BattleSim:

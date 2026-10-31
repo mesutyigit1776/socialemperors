@@ -21,10 +21,18 @@ var _shield_id := 0
 
 func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	var factor := DAMAGE_FACTOR[level - 1]
+	var look := {"scale": area(level) / 3.0, "alpha": 0.3, "frames": SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, "depth": "mixed"}
 	if FIX_CLIENT_ERRORS:
 		var shield_id := sim.add_shield(tile, area(level), factor, BattleFighter.Team.PLAYER)
-		_particle(sim, 0, SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, sim.remove_shield.bind(shield_id))
+		_particle(sim, tile, 0, SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, sim.remove_shield.bind(shield_id), look)
 		return
 	var next_area: int = def.areas[level] if level < def.areas.size() else 0
 	_shield_id = sim.add_shield(tile, next_area, factor)
-	_particle(sim, 0, SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, func() -> void: sim.remove_shield(_shield_id))
+	_particle(sim, tile, 0, SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, func() -> void: sim.remove_shield(_shield_id), look)
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	var texts: Array[String] = []
+	for level in range(1, GameConfig.SPELL_LEVELS + 1):
+		texts.append(_fill(config, "SPELL_FORCESHIELD_DESCRIPCION", [area(level), area(level), SECONDS[level - 1], roundi((1 - DAMAGE_FACTOR[level - 1]) * 100)]))
+	return texts

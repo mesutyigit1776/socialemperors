@@ -27,12 +27,20 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	for ball in BALLS:
 		var points := enemy_points if ball % 3 == 0 and not enemy_points.is_empty() else area_points
 		var point: Vector2i = points[roundi(sim.rng.randf() * (points.size() - 1))]
-		_particle(sim, BALL_DELAY * ball, _attack_frame, func() -> void:
+		_particle(sim, point, BALL_DELAY * ball, _attack_frame, func() -> void:
 			var enemy := _item_of(sim, point, BattleFighter.Team.ENEMY)
 			if enemy != null:
-				sim.receive_attack(enemy, DAMAGE[level - 1], null))
+				sim.receive_attack(enemy, DAMAGE[level - 1], null), {"scale": 2.0, "depth": "above"})
 
 
 ## The units that the client looks for by default: alive, with an attack, not villagers.
 static func _is_fighting_unit(item: BattleFighter) -> bool:
 	return item.is_unit() and not item.dead and item.attack > 0 and item.def.subcat_functional != SUBCAT_PEASANT
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	# The client adds a second number: a tenth of the damage times 2, 4 or 6.
+	var texts: Array[String] = []
+	for level in range(1, GameConfig.SPELL_LEVELS + 1):
+		texts.append(_fill(config, "SPELL_FIREBALL_DESCRIPCION", [area(level), area(level), DAMAGE[level - 1], DAMAGE[level - 1] / 10 * 2 * level]))
+	return texts

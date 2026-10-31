@@ -15,7 +15,13 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	var pull := func() -> void:
 		for item in sim.items_near(middle, ceili(side / 2.0), side * side, BattleFighter.Team.ENEMY, true, HellAbyssSpell._can_fall):
 			sim.swallow(item)
-	_particle(sim, DELAY, START_FRAME, func() -> void:
+	# The hole fades 1.5 seconds after its last pull.
+	var look := {"scale": side / 4.0, "alpha": 0.85, "frames": START_FRAME + SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND + 45}
+	_particle(sim, tile, DELAY, START_FRAME, func() -> void:
 		pull.call()
 		for second in range(1, SECONDS[level - 1] + 1):
-			sim.after(second * BattleSim.FRAMES_PER_SECOND, pull))
+			sim.after(second * BattleSim.FRAMES_PER_SECOND, pull), look)
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	return _area_texts(config, "SPELL_BLACK_HOLE_DESCRIPTION", SECONDS)

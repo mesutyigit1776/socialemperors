@@ -15,6 +15,7 @@ TEXT_TAGS = {11, 33}                  # DefineText, DefineText2
 EDIT_TEXT_TAG = 37
 FONT_TAGS = {48, 75}                  # DefineFont2, DefineFont3
 SPRITE_TAG = 39
+BUTTON2_TAG = 34                       # DefineButton2
 PLACE_TAGS = {26, 70}                 # PlaceObject2, PlaceObject3
 SYMBOL_CLASS_TAG = 76
 SHOW_FRAME_TAG = 1
@@ -103,6 +104,17 @@ def _read_color_transform_alpha(data, pos):
 	if has_add:
 		bits.read(n * 4)
 	return alpha, bits.byte_pos()
+
+
+def _skip_filters(data, pos):
+	"Returns the position after a FILTERLIST with filters of a fixed size."
+	sizes = {0: 23, 1: 9, 2: 15, 3: 27}  # drop shadow, blur, glow, bevel
+	p = pos + 1
+	for _ in range(data[pos]):
+		if data[p] not in sizes:
+			raise SwfError(f"filter {data[p]} of a button is not supported")
+		p += 1 + sizes[data[p]]
+	return p
 
 
 def _first_glow(data, pos):
@@ -196,6 +208,7 @@ class SwfFile:
 		self.symbols = {}     # class name -> character id
 		self.edit_texts = {}  # character id -> position of its DefineEditText tag
 		self.fonts = {}       # font id -> font name
+		self.buttons = {}     # button id -> (start, end) of its DefineButton2 tag
 		self._read_definitions(pos, len(body))
 		self._sprite_bounds = {}
 		self._sprite_first_frame_bounds = {}
@@ -220,6 +233,8 @@ class SwfFile:
 			elif code == SPRITE_TAG:
 				char_id = struct.unpack_from('<H', data, start)[0]
 				self.sprites[char_id] = (start + 4, start + length)
+			elif code == BUTTON2_TAG:
+				self.buttons[struct.unpack_from('<H', data, start)[0]] = (start, start + length)
 			elif code == SYMBOL_CLASS_TAG:
 				count = struct.unpack_from('<H', data, start)[0]
 				p = start + 2
@@ -327,26 +342,31 @@ class SwfFile:
 			frames.append(rect)
 		return frames
 
-	def _frame_places(self, pos, end, details=None):
+	def _frame_places(self, pos, end, details=None, frame_alphas=None):
 		"""Returns for each frame of a sprite {depth: (character id, matrix, instance name or None)} of the placed characters.
 
 		details, a dict, receives for each depth of the last frame the other
 		settings of the placement: "alpha" (0 to 1), "clip_depth" (a mask covers
 		the depths up to it) and "glow" ([color "#rrggbbaa", blur, strength] of
-		the first glow filter)."""
+		the first glow filter). frame_alphas, a list, receives for each frame
+		{depth: alpha} of the placements with an alpha."""
 		data = self.data
 		depth_char = {}
 		depth_matrix = {}
 		depth_name = {}
+		depth_alpha = {}
 		frames = []
 		for code, start, length in _tags(data, pos, end):
 			if code == SHOW_FRAME_TAG:
 				frames.append({depth: (char_id, depth_matrix[depth], depth_name.get(depth)) for depth, char_id in depth_char.items()})
+				if frame_alphas is not None:
+					frame_alphas.append({depth: alpha for depth, alpha in depth_alpha.items() if depth in depth_char})
 				continue
 			if code == REMOVE_OBJECT2_TAG:
 				depth = struct.unpack_from('<H', data, start)[0]
 				depth_char.pop(depth, None)
 				depth_name.pop(depth, None)
+				depth_alpha.pop(depth, None)
 				continue
 			if code not in PLACE_TAGS:
 				continue
@@ -368,11 +388,15 @@ class SwfFile:
 				p += 2
 				depth_matrix[depth] = (1.0, 0.0, 0.0, 1.0, 0, 0)
 				depth_name.pop(depth, None)
+				if not flags & 0x01:  # a new character, not a move
+					depth_alpha.pop(depth, None)
 			if flags & 0x04:
 				depth_matrix[depth], p = _read_matrix(data, p)
 			alpha = None
 			if flags & 0x08:
 				alpha, p = _read_color_transform_alpha(data, p)
+				if alpha is not None:
+					depth_alpha[depth] = alpha
 			if flags & 0x10:
 				p += 2  # ratio
 			if flags & 0x20:
@@ -425,9 +449,13 @@ class SwfFile:
 
 	def symbol_frame_labels(self, class_name):
 		"Returns the frame labels of the symbol: label -> frame number (1-based)."
+		return self.sprite_frame_labels(self._symbol_sprite(class_name))
+
+	def sprite_frame_labels(self, sprite_id):
+		"Returns the frame labels of a sprite: label -> frame number (1-based)."
 		labels = {}
 		frame = 1
-		for code, start, _ in _tags(self.data, *self.sprites[self._symbol_sprite(class_name)]):
+		for code, start, _ in _tags(self.data, *self.sprites[sprite_id]):
 			if code == FRAME_LABEL_TAG:
 				labels[self.data[start:self.data.index(b'\0', start)].decode('utf-8')] = frame
 			elif code == SHOW_FRAME_TAG:
@@ -489,6 +517,28 @@ class SwfFile:
 			else:
 				result.append(None)
 		return result
+
+	def button_offset(self, button_id):
+		"""Returns the top-left corner in pixels of the up state of a button, relative to its
+		registration point: the place of the image that JPEXS exports for the state."""
+		data = self.data
+		start, end = self.buttons[button_id]
+		p = start + 5  # button id, flags, offset of the actions
+		rect = None
+		while p < end and data[p] != 0:
+			flags = data[p]
+			char_id = struct.unpack_from('<H', data, p + 1)[0]
+			matrix, p = _read_matrix(data, p + 5)
+			p = _skip_color_transform(data, p)
+			if flags & 0x10:
+				p = _skip_filters(data, p)
+			if flags & 0x20:
+				p += 1  # blend mode
+			if flags & 0x01:  # up state
+				rect = _union(rect, _transform_or_none(self.character_bounds(char_id), matrix))
+		if rect is None:
+			raise SwfError(f"button {button_id} has no up state")
+		return rect[0] / 20, rect[1] / 20
 
 	def sprite_offset(self, char_id):
 		"Returns the top-left corner of a sprite's bounds in pixels, relative to its registration point."

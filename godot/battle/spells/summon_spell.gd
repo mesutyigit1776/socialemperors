@@ -16,7 +16,8 @@ func _init(unit_id: int) -> void:
 
 
 func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
-	_particle(sim, 0, _attack_frame, func() -> void: summon_near(sim, tile, _config.get_item(_unit_id), LIFE[level - 1]))
+	# The client does not fade the graphic: it stops at its last frame.
+	_particle(sim, tile, 0, _attack_frame, func() -> void: summon_near(sim, tile, _config.get_item(_unit_id), LIFE[level - 1]), {"frames": -1})
 
 
 ## The summoned unit, or null when no tile near tile is free.
@@ -25,3 +26,10 @@ static func summon_near(sim: BattleSim, tile: Vector2i, unit: GameConfig.ItemDef
 	if free == null:
 		return null
 	return sim.summon(unit, free, BattleFighter.Team.PLAYER, life)
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	var texts: Array[String] = []
+	for life in LIFE:
+		texts.append(_fill(config, "SPELL_SUMMON_DESCRIPCION", [life]))
+	return texts

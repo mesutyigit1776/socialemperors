@@ -11,8 +11,10 @@ extends Node2D
 ##   --quest <id>          open the start window of the quest island, as a click
 ##                         in the island window does; used for checks
 
-## The windows of the quests are over the village bar and the battle bar.
+## The windows of the quests are over the village bar and the battle bar. The
+## spell book and its windows of the village are over the map, under them.
 const WINDOW_LAYER := 10
+const SPELL_LAYER := 5
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -31,8 +33,12 @@ var _panel := SpecialActions.View.NONE  # What the action panel of the HUD shows
 var _placing_stored := false  # The item that the player places comes from the item store.
 var _data_dir: String
 var _camera: MapCamera
-var _ui: UiLibrary  # The windows of the client; loaded when the player opens the quests.
-var _effects: SpriteLibrary  # The shots and effects of battles; loaded with the first quest.
+var _ui: UiLibrary  # The windows of the client; loaded with the village, or when the player opens the quests.
+var _cast_ui: UiLibrary  # The banner of a cast spell.
+var _spell_graphics: Dictionary  # How the spell graphics play, see BattleSpell.read_graphics().
+var _effects: SpriteLibrary  # The shots, effects and spells of battles.
+var _spell_layer := CanvasLayer.new()
+var _spell_book: SpellBook
 var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
 var _quest_screen: QuestScreen
 
@@ -90,6 +96,9 @@ func _ready() -> void:
 		add_child(_hud)
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
+		_spell_layer.layer = SPELL_LAYER
+		add_child(_spell_layer)
+		_add_spell_book()
 		# The client spawns the wild animals when it loads the map.
 		if not _village.spawn_animals(_now(), _rng).is_empty():
 			_view.sync_items()
@@ -122,6 +131,28 @@ func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 	add_child(camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
 	add_child(BattleScreen.new(battle, view))
+
+
+## The spell book of the village, when the import has the windows of the
+## client. At home a cast shows the graphic of the spell on the tile and costs
+## its mana; the spells do not change the units of the village, and summoned
+## units do not come. After the nodes that take clicks on the map, so that it
+## gets the mouse first while the player aims.
+func _add_spell_book() -> void:
+	if not FileAccess.file_exists(_data_dir.path_join("ui/cast/layout.json")) or not _load_quest_graphics():
+		return
+	_spell_book = SpellBook.new(_ui, _cast_ui, _config, _village, _spell_layer)
+	_spell_book.cast_on = func(spell: GameConfig.SpellDef, tile: Vector2i, _level: int) -> void:
+		var sprite := _effects.get_sprite(spell.img_name)
+		if sprite == null:
+			return
+		var graphic: Dictionary = _spell_graphics.get(spell.img_name, {})
+		var stay := int(graphic.get("labels", {}).get("attack", BattleSpell.DEFAULT_ATTACK_FRAME)) + BattleSpell.DEFAULT_STAY_FRAMES
+		var particle := SpellParticle.new(sprite, {"frames": stay, "loop_from": graphic.get("loop_from")})
+		particle.position = IsoGrid.tile_to_map(tile)
+		_view.add_child(particle)
+	_spell_book.changed.connect(_save)
+	add_child(_spell_book)
 
 
 ## The client opens the island window from the ship; a village without
@@ -168,7 +199,8 @@ func _start_quest(quest_id: String) -> void:
 		return
 	var army := _village.quest_army()
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng)
-	_quest_screen = QuestScreen.new(quest, _village, _ui, _config, _sprites, _effects)
+	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
 		_village.start_quest(quest_id, _now())
 		_save())
@@ -194,21 +226,27 @@ func _on_quest_closed(result: Dictionary) -> void:
 
 
 func _show_village(shown: bool) -> void:
-	for node: Node in [_view, _orders, _hud, _camera]:
+	for node: Node in [_view, _orders, _hud, _camera] + ([_spell_book] if _spell_book != null else []):
 		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 	_view.visible = shown
 	_hud.visible = shown
+	_spell_layer.visible = shown
 	_camera.enabled = shown
 
 
-## Loads the windows of the client and the graphics of the shots when the
-## player first needs them. Returns false when the import does not have them.
+## Loads the windows of the client, the graphics of the shots and spells, and
+## how the spell graphics play, when the player first needs them. Returns false
+## when the import does not have them.
 func _load_quest_graphics() -> bool:
 	if _ui == null:
 		_ui = UiLibrary.load_from(_data_dir)
-	if _ui == null:
-		_hud.show_message("The quests need the windows of the client. Import the game files again; see godot/README.md.")
+	if _cast_ui == null and _ui != null:
+		_cast_ui = UiLibrary.load_from(_data_dir, "ui/cast")
+	var graphics: Variant = BattleSpell.read_graphics(_data_dir.path_join("spells.json")) if _spell_graphics.is_empty() else _spell_graphics
+	if _ui == null or _cast_ui == null or graphics == null:
+		_hud.show_message("The quests and the spells need the windows of the client. Import the game files again; see godot/README.md.")
 		return false
+	_spell_graphics = graphics
 	if _effects == null:
 		_effects = SpriteLibrary.new(_data_dir, "fx")
 	return true
@@ -623,6 +661,9 @@ func _save() -> bool:
 		_hud.show_message(text)
 		push_error(text)
 		return false
+	# A change of the level or of the mana changes the spell book.
+	if _spell_book != null:
+		_spell_book.refresh()
 	return true
 
 

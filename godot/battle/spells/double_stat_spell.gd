@@ -31,7 +31,7 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 	var found := sim.items_near(middle, ceili(side / 2.0), MAX_ITEMS, BattleFighter.Team.PLAYER, true, func(item: BattleFighter) -> bool:
 		return not item.dead and (_stat == Stat.RANGE or item.is_unit()))
 	found.reverse()
-	_particle(sim, DELAY, _attack_frame, func() -> void:
+	_particle(sim, tile, DELAY, _attack_frame, func() -> void:
 		var items: Array[BattleFighter] = []
 		for item in found:
 			if not item.is_unit():
@@ -46,7 +46,7 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 		sim.after(SECONDS[level - 1] * BattleSim.FRAMES_PER_SECOND, func() -> void:
 			for item in items:
 				_reset(sim, item)
-			_changed.erase(items)))
+			_changed.erase(items)), {"scale": side / 3.0})
 
 
 func _double(sim: BattleSim, unit: BattleFighter) -> void:
@@ -61,3 +61,7 @@ func _reset(sim: BattleSim, unit: BattleFighter) -> void:
 		sim.set_speed(unit, unit.def.velocity)
 	else:
 		sim.set_attack_range(unit, unit.def.attack_range)
+
+
+func descriptions(config: GameConfig) -> Array[String]:
+	return _area_texts(config, "SPELL_SPEED_INCREASE_DESCRIPTION" if _stat == Stat.SPEED else "SPELL_RANGE_INCREASE_DESCRIPTION", SECONDS)

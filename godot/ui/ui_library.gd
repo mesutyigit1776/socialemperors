@@ -2,25 +2,27 @@ class_name UiLibrary
 extends RefCounted
 ## The windows of the client that importer/ui_import.py wrote to <data>/ui:
 ## the image of each frame of their sprites without the named parts, the
-## named parts, the fonts of the text fields and the pictures of the windows.
-## UiClip shows a window.
+## named parts, the images of the named buttons, the fonts of the text fields
+## and the pictures of the windows. UiClip shows a window.
 
 var _dir: String
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
-var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "frames": [[part, ...], ...]}
+var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "frames": [[part, ...], ...], "labels": {label: frame}}
+var _buttons: Dictionary = {}  # Button id (int) -> top-left of its images (Vector2).
 var _textures: Dictionary = {}  # Path -> Texture2D, or null for a missing file.
 var _fonts: Dictionary = {}  # Font id -> Font.
 
 
-## Returns null and reports an error when <data_dir>/ui/layout.json is missing or not valid.
-static func load_from(data_dir: String) -> UiLibrary:
-	var path := data_dir.path_join("ui/layout.json")
+## Returns null and reports an error when <data_dir>/<folder>/layout.json is
+## missing or not valid. The folder "ui/cast" has the banner of a cast spell.
+static func load_from(data_dir: String, folder := "ui") -> UiLibrary:
+	var path := data_dir.path_join(folder).path_join("layout.json")
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not (data is Dictionary and data.get("symbols") is Dictionary and data.get("clips") is Dictionary):
 		push_error("Cannot read the windows of the client from '%s'. Import the game files again." % path)
 		return null
 	var library := UiLibrary.new()
-	library._dir = data_dir.path_join("ui")
+	library._dir = data_dir.path_join(folder)
 	for name: String in data["symbols"]:
 		library._symbols[name] = int(data["symbols"][name])
 	for key: String in data["clips"]:
@@ -32,7 +34,15 @@ static func load_from(data_dir: String) -> UiLibrary:
 		library._clips[key.to_int()] = {
 			"origin": Vector2(origin[0], origin[1]) if origin is Array and origin.size() == 2 else null,
 			"frames": clip["frames"],
+			"labels": clip.get("labels", {}) if clip.get("labels", {}) is Dictionary else {},
 		}
+	var buttons: Variant = data.get("buttons", {})
+	for key: String in buttons if buttons is Dictionary else {}:
+		var origin: Variant = buttons[key].get("origin") if buttons[key] is Dictionary else null
+		if not (key.is_valid_int() and origin is Array and origin.size() == 2):
+			push_error("'%s' has an incorrect button %s." % [path, key])
+			return null
+		library._buttons[key.to_int()] = Vector2(origin[0], origin[1])
 	for name: String in library._symbols:
 		if not library._clips.has(library._symbols[name]):
 			push_error("'%s' has no sprite for the window %s." % [path, name])
@@ -67,6 +77,21 @@ func clip_frames(sprite_id: int) -> Array:
 ## registration point, or null when the sprite has nothing besides its parts.
 func clip_origin(sprite_id: int) -> Variant:
 	return _clips[sprite_id]["origin"]
+
+
+## The frame (from 0) of the sprite with this label, or -1.
+func clip_label(sprite_id: int, label: String) -> int:
+	return int(_clips[sprite_id]["labels"].get(label, -1))
+
+
+## The image of a button in state "up", "over" or "down", or null.
+func button_image(button_id: int, state: String) -> Texture2D:
+	return _texture(_dir.path_join("buttons/%d/%s.png" % [button_id, state]))
+
+
+## The top-left corner of the images of a button, relative to its registration point.
+func button_origin(button_id: int) -> Vector2:
+	return _buttons.get(button_id, Vector2.ZERO)
 
 
 ## The image of frame (from 0) of the sprite without its parts, or null.
