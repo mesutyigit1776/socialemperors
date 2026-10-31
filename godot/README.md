@@ -53,6 +53,7 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 - By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages, the player saves in `saves/` and the quest maps in `villages/quests/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
 - The tool also imports the graphics of the shots and effects of battles from `assets/fx/` and of the spells from `assets/buildingsprites/magic_*.swf`, copies the quest maps, and exports the windows of the quests and the spells from the client file `assets/flash/SocialEmpires1.4.07sec_fixed.swf`, with their fonts and pictures, the banner of a cast from `magic_cast_marquee.swf`, and the alert of the spell book with its picture. An import before the alert shows the gift of level 15 only as a message. `spells.json` tells at which frame each spell acts. A data folder from an import before the spells has no spell book; the Quests button then asks you to import again.
 - `--jobs <n>` sets how many JPEXS processes run at the same time (default 4).
+- The import of all graphics takes several hours. You can stop it with Ctrl+C, or it can stop for another reason, and continue it later: run the same command with the same `--out` folder. The tool skips each graphic and the windows that an earlier run finished, and imports the others. It imports a graphic again when its SWF file or the code of the tool changed, so after an update of the port the same command brings the data folder up to date. To start from the beginning, delete the data folder.
 
 ## Run
 
@@ -62,7 +63,7 @@ Open the `godot` folder in Godot 4.7, or run:
 godot --path godot -- --data <data folder>
 ```
 
-Import the files again after an update of the port when it reports that a file in the data folder is missing. The port reads the data folder from `--data`, then from the `SE_DATA_DIR` environment variable, then from `user://imported`. Use `--village <file>` to open a different save, and `--screenshot <file.png>` to save an image and quit.
+Import the files again after an update of the port when it reports that a file in the data folder is missing; with the same `--out` folder, the tool skips the graphics that are still up to date. The port reads the data folder from `--data`, then from the `SE_DATA_DIR` environment variable, then from `user://imported`. Use `--village <file>` to open a different save, and `--screenshot <file.png>` to save an image and quit.
 
 The port writes each change to the village file that it opened. To play a server save, give its path, for example `--village saves/<USERID>.save.json`. Do not run the server with the same save at the same time.
 

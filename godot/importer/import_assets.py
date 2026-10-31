@@ -16,11 +16,19 @@ socialemperors server folder that the user supplies and writes:
   <out>/ui/...                       windows of the client, see ui_import.py
 
 It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
+
+The import continues after a stop: run it again with the same --out folder.
+A graphic is done when its meta.json is written; meta.json also records the
+code of the importer and the SWF file that made it. The next run skips each
+graphic whose record still matches, and imports the others again. The windows
+of the client have such a record in ui/import.json.
 """
 
 import argparse
+import ast
 import concurrent.futures
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -29,8 +37,9 @@ import tempfile
 
 from jpexs import copy_frames, exported_frames, run_jpexs
 from swf_bounds import SwfError, SwfFile
-from ui_import import import_ui
+from ui_import import CAST_SWF, CLIENT_SWF, import_ui
 
+SKIPPED = "done before"
 TERRAIN_ITEM_IDS = range(1000, 1010)  # 1000 + map skin; see the land graphic in the client
 NEUTRAL_RESOURCE_SUBCATS = {"125", "126", "127", "128"}  # trees, stone, gold and their regrowth
 WILD_ANIMAL_SUBCATS = {"74", "75", "88", "90"}  # cow, sheep, horse and boar; see Village.WILD_ANIMALS
@@ -39,6 +48,8 @@ MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
 # The units of the dragon and monster nests, the riders of the Rider Academy and
 # the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
 SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
+# The code that decides the content of the output. A graphic from other code is imported again.
+IMPORTER_FILES = ("import_assets.py", "jpexs.py", "swf_bounds.py", "ui_import.py")
 
 
 def load_game_config(source):
@@ -152,9 +163,51 @@ def import_clips(jpexs, swf, swf_path, symbol, sprite_dir):
 	return clips, entries
 
 
-def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated):
+def importer_version():
+	"""A hash of the code of the importer. It leaves out the comments and the
+	docstrings, so that a change of them alone does not start the import of
+	all graphics again. Another version of Python can give another hash."""
+	digest = hashlib.sha256()
+	for name in IMPORTER_FILES:
+		with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name), encoding='utf-8') as f:
+			tree = ast.parse(f.read())
+		for node in ast.walk(tree):
+			body = getattr(node, "body", None)
+			if isinstance(body, list) and body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+				node.body = body[1:] or [ast.Pass()]
+		digest.update(ast.dump(tree).encode())
+	return digest.hexdigest()[:16]
+
+
+def file_stamp(path):
+	"The size and the change time of a source file; a changed file is imported again."
+	info = os.stat(path)
+	return [info.st_size, int(info.st_mtime)]
+
+
+def is_done(record_path, key, record):
+	"True when the JSON file at record_path has record under key, from an earlier run."
+	try:
+		with open(record_path, encoding='utf-8') as f:
+			return json.load(f).get(key) == record
+	except (OSError, ValueError, AttributeError):
+		return False
+
+
+def write_json_last(path, data):
+	"""Writes the JSON file that marks a part of the import as done. It is
+	written last and replaced in one step, so that a stop never leaves a part
+	marked done that is not."""
+	with open(path + ".tmp", 'w', encoding='utf-8') as f:
+		json.dump(data, f, indent='\t')
+	os.replace(path + ".tmp", path)
+
+
+def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated, record):
 	"""Exports the frames of a symbol to sprite_dir. animated: the frames contain
-	clips that play, as in units and in the graphics of shots."""
+	clips that play, as in units and in the graphics of shots. record: the
+	importer and the source of the graphic; meta.json keeps it under "import"
+	for the next run."""
 	swf = SwfFile(swf_path)
 	offset_x, offset_y, _, _ = swf.symbol_offset(symbol)
 	frame_rects = swf.symbol_frame_rects(symbol)
@@ -176,8 +229,8 @@ def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated):
 	}
 	if animated:
 		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, symbol, sprite_dir)
-	with open(os.path.join(sprite_dir, "meta.json"), 'w', encoding='utf-8') as f:
-		json.dump(meta, f, indent='\t')
+	meta["import"] = record
+	write_json_last(os.path.join(sprite_dir, "meta.json"), meta)
 
 
 def _loop_frame(swf, labels):
@@ -247,33 +300,60 @@ def main():
 	# The graphics of the spells, which the battles show like the effects.
 	jobs += [(f"fx/{name}", os.path.join(sprite_dir, f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in sorted(spell_labels)]
 
+	version = importer_version()
+
 	def import_one(job):
+		"Returns None when the graphic is imported, SKIPPED when an earlier run did it, else the error."
 		_, swf_path, symbol, folder, animated = job
 		if not os.path.exists(swf_path):
 			return "no SWF file"
+		record = {"importer": version, "source": file_stamp(swf_path), "animated": animated}
+		if is_done(os.path.join(folder, "meta.json"), "import", record):
+			return SKIPPED
+		# Frames of a stopped or older import must not stay next to the new ones.
+		shutil.rmtree(folder, ignore_errors=True)
 		try:
-			import_sprite(args.jpexs, swf_path, symbol, folder, animated)
+			import_sprite(args.jpexs, swf_path, symbol, folder, animated, record)
 		except (SwfError, RuntimeError) as e:
 			return str(e)
 		return None
 
 	failed = []
-	with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+	skipped = 0
+	pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs))
+	try:
 		for count, (job, error) in enumerate(zip(jobs, pool.map(import_one, jobs)), start=1):
+			if error is SKIPPED:
+				skipped += 1
+				print(f"[{count}/{len(jobs)}] {job[0]} (done before)", flush=True)
+				continue
 			if error is not None:
 				failed.append((job[0], error))
 			print(f"[{count}/{len(jobs)}] {job[0]}", flush=True)
+	except KeyboardInterrupt:
+		# The JPEXS processes get the interrupt too. Without this, the pool would run all jobs that wait.
+		pool.shutdown(wait=True, cancel_futures=True)
+		print("stopped: run the import again with the same --out folder to continue", file=sys.stderr)
+		sys.exit(130)
+	pool.shutdown()
 
-	unit_thumbs = [f"{img_name}.jpg" for img_name, item in items.items() if item["type"] == "u"]
+	unit_thumbs = sorted(f"{img_name}.jpg" for img_name, item in items.items() if item["type"] == "u")
 	spell_images = [image for name in spell_labels for image in (f"{name}.jpg", f"prev_{name}.jpg")]
-	try:
-		print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs, spell_images)} sprites", flush=True)
-	except (SwfError, RuntimeError, OSError) as e:
-		failed.append(("windows of the client", str(e)))
+	ui_record_path = os.path.join(out_dir, "ui", "import.json")
+	ui_record = {"importer": version, "sources": [file_stamp(os.path.join(source, path)) for path in (CLIENT_SWF, CAST_SWF)], "pictures": unit_thumbs + spell_images}
+	if is_done(ui_record_path, "windows", ui_record):
+		print("windows: done before", flush=True)
+	else:
+		shutil.rmtree(os.path.join(out_dir, "ui"), ignore_errors=True)
+		try:
+			print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs, spell_images)} sprites", flush=True)
+			write_json_last(ui_record_path, {"windows": ui_record})
+		except (SwfError, RuntimeError, OSError) as e:
+			failed.append(("windows of the client", str(e)))
 
 	for name, reason in failed:
 		print(f"not imported: {name}: {reason}", file=sys.stderr)
-	print(f"done: {len(jobs) - len(failed)} graphics in {out_dir}")
+	print(f"done: {len(jobs) - len(failed)} graphics in {out_dir}, {skipped} of them from an earlier run")
 
 
 if __name__ == "__main__":
