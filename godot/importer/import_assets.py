@@ -5,9 +5,9 @@ socialemperors server folder that the user supplies and writes:
 
   <out>/config.json                  game configuration, as the server sends it
   <out>/shop.json                    item groups of the "New" store rotation and the shop settings of the server
-  <out>/sprites/<img_name>/<n>.png   frame n of the item graphic (1-based)
-  <out>/sprites/<img_name>/meta.json registration offset and frame count
-  <out>/sprites/<img_name>/clips/<id>/<n>.png  frame n of an animation of a unit
+  <out>/sprites/<img_name>/<n>.webp  sprite sheet n (from 0) with the frames of the item graphic
+  <out>/sprites/<img_name>/meta.json registration offset, frames and their places on the sheets
+  <out>/sprites/<img_name>/clips/<id>/<n>.webp  sprite sheet n of an animation of a unit
   <out>/fx/<name>/...                shots, effects and spells of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
   <out>/quests/<id>.save.json        maps of the quest islands
@@ -35,7 +35,8 @@ import shutil
 import sys
 import tempfile
 
-from jpexs import copy_frames, exported_frames, run_jpexs
+from jpexs import exported_frames, run_jpexs
+from sheets import pack_frames
 from swf_bounds import SwfError, SwfFile
 from ui_import import CAST_SWF, CLIENT_SWF, import_ui
 
@@ -49,7 +50,7 @@ MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
 # the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
 SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
 # The code that decides the content of the output. A graphic from other code is imported again.
-IMPORTER_FILES = ("import_assets.py", "jpexs.py", "swf_bounds.py", "ui_import.py")
+IMPORTER_FILES = ("import_assets.py", "jpexs.py", "sheets.py", "swf_bounds.py", "ui_import.py")
 
 
 def load_game_config(source):
@@ -155,9 +156,9 @@ def import_clips(jpexs, swf, swf_path, symbol, sprite_dir):
 			for clip_id in clip_ids:
 				name = f"DefineSprite_{clip_id}"
 				frames = exported_frames(work_dir, lambda d: d == name or d.startswith(name + "_"), f"sprite {clip_id} of {swf_path}")
-				copy_frames(frames, os.path.join(sprite_dir, "clips", str(clip_id)))
+				images = pack_frames(frames, os.path.join(sprite_dir, "clips", str(clip_id)))
 				offset_x, offset_y = swf.sprite_offset(clip_id)
-				clips[str(clip_id)] = {"origin_x": offset_x, "origin_y": offset_y, "frames": len(frames)}
+				clips[str(clip_id)] = {"origin_x": offset_x, "origin_y": offset_y, "frames": len(frames), "images": images}
 	# The matrix places the clip in the graphic: [a, b, c, d] and the translation in pixels.
 	entries = [None if clip is None else [clip[0], *clip[1][:4], clip[1][4] / 20, clip[1][5] / 20] for clip in frame_clips]
 	return clips, entries
@@ -214,9 +215,9 @@ def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated, record):
 	with tempfile.TemporaryDirectory() as work_dir:
 		run_jpexs(jpexs, swf_path, ["-selectclass", symbol], work_dir)
 		frames = exported_frames(work_dir, lambda d: d.endswith(f"_{symbol}"), f"symbol '{symbol}' from {swf_path}")
-		copy_frames(frames, sprite_dir)
-	if len(frame_rects) != len(frames):
-		raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_rects)}")
+		if len(frame_rects) != len(frames):
+			raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_rects)}")
+		images = pack_frames(frames, sprite_dir)
 	meta = {
 		"origin_x": offset_x,   # top-left of every PNG relative to the symbol registration point
 		"origin_y": offset_y,
@@ -226,6 +227,7 @@ def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated, record):
 		"frame_sizes": [rect[2:] for rect in frame_rects],
 		"frame_origins": [rect[:2] for rect in frame_rects],
 		"shot_points": swf.symbol_shot_points(symbol),   # [x, y] where the shots of the frame start, or null
+		"images": images,   # the place of each frame on the sprite sheets, see sheets.py
 	}
 	if animated:
 		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, symbol, sprite_dir)

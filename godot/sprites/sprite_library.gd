@@ -2,6 +2,36 @@ class_name SpriteLibrary
 extends RefCounted
 ## Graphics that the importer writes: the items in <data>/sprites/<img_name>/,
 ## the shots and effects of battles in <data>/fx/<name>/.
+##
+## The frames are on sprite sheets, see importer/sheets.py. Each frame is an
+## AtlasTexture with the size of the full frame, so that the empty space that
+## the importer cropped stays around the pixels.
+
+## Entry of a frame: [sheet, x, y, width, height, left, top, frame width, frame height].
+const IMAGE_ENTRY_SIZE := 9
+
+
+## The sprite sheets <n>.webp in one folder. A sheet loads when a frame on it is first shown.
+class Sheets:
+	var _dir: String
+	var _textures: Dictionary = {}  # Sheet number -> ImageTexture, or null when it cannot load.
+
+	func _init(dir: String) -> void:
+		_dir = dir
+
+	## The frame of an image entry, or null when its sheet cannot load.
+	func frame(entry: Array) -> Texture2D:
+		var number := int(entry[0])
+		if not _textures.has(number):
+			var image := Image.load_from_file(_dir.path_join("%d.webp" % number))
+			_textures[number] = ImageTexture.create_from_image(image) if image != null else null
+		if _textures[number] == null:
+			return null
+		var atlas := AtlasTexture.new()
+		atlas.atlas = _textures[number]
+		atlas.region = Rect2(entry[1], entry[2], entry[3], entry[4])
+		atlas.margin = Rect2(entry[5], entry[6], entry[7] - entry[3], entry[8] - entry[4])
+		return atlas
 
 
 class ItemSprite:
@@ -45,25 +75,24 @@ class ItemSprite:
 ## Its frames load when they are first shown.
 class Clip:
 	var origin: Vector2  ## Top-left of each frame image relative to the clip registration point.
-	var _dir: String
-	var _count: int
+	var _sheets: Sheets
+	var _images: Array  # Image entries, one for each frame.
 	var _frames: Array[Texture2D] = []
 
-	func _init(dir: String, count: int, clip_origin: Vector2) -> void:
-		_dir = dir
-		_count = count
+	func _init(dir: String, images: Array, clip_origin: Vector2) -> void:
+		_sheets = Sheets.new(dir)
+		_images = images
 		origin = clip_origin
 
 	func frame_count() -> int:
-		return _count
+		return _images.size()
 
 	## frame is 0-based. A frame that cannot load is empty.
 	func get_frame(frame: int) -> Texture2D:
 		if _frames.is_empty():
-			for i in _count:
-				var image := Image.load_from_file(_dir.path_join("%d.png" % (i + 1)))
-				_frames.append(ImageTexture.create_from_image(image) if image != null else null)
-		return _frames[clampi(frame, 0, _count - 1)]
+			for entry: Array in _images:
+				_frames.append(_sheets.frame(entry))
+		return _frames[clampi(frame, 0, _images.size() - 1)]
 
 
 ## A clip in a frame of a unit graphic, and where the frame places it.
@@ -97,16 +126,20 @@ func _load(img_name: String) -> ItemSprite:
 	if not (meta is Dictionary and meta.get("frame_sizes") is Array and not meta["frame_sizes"].is_empty()):
 		push_warning("Graphic '%s' is not imported." % img_name)
 		return null
+	if not _are_images(meta.get("images"), meta["frame_sizes"].size()):
+		push_warning("Graphic '%s' is from an import before the sprite sheets. Import the files again." % img_name)
+		return null
 	var sprite := ItemSprite.new()
 	sprite.origin = Vector2(float(meta.get("origin_x", 0)), float(meta.get("origin_y", 0)))
+	var sheets := Sheets.new(dir)
 	for i in meta["frame_sizes"].size():
 		var size: Variant = meta["frame_sizes"][i]
-		var image := Image.load_from_file(dir.path_join("%d.png" % (i + 1)))
-		if not (size is Array and size.size() == 2) or image == null:
+		var texture := sheets.frame(meta["images"][i])
+		if not (size is Array and size.size() == 2) or texture == null:
 			push_warning("Graphic '%s' has no correct frame %d." % [img_name, i + 1])
 			return null
 		sprite.frame_sizes.append(Vector2(float(size[0]), float(size[1])))
-		sprite.frames.append(ImageTexture.create_from_image(image))
+		sprite.frames.append(texture)
 	if meta.has("frame_clips"):
 		sprite.frame_clips = _load_clips(img_name, dir, meta)
 	_load_shot_data(img_name, sprite, meta)
@@ -157,15 +190,21 @@ func _load_clips(img_name: String, dir: String, meta: Dictionary) -> Array:
 			result.append(null)
 			continue
 		var info: Variant = clip_meta.get(str(int(entry[0]))) if entry is Array and entry.size() == 7 else null
-		if not (info is Dictionary and info.get("frames") is float and info["frames"] > 0):
+		if not (info is Dictionary and info.get("frames") is float and info["frames"] > 0 and _are_images(info.get("images"), int(info["frames"]))):
 			push_warning("Graphic '%s' has no correct clips." % img_name)
 			return []
 		var id := str(int(entry[0]))
 		if not clips.has(id):
-			clips[id] = Clip.new(dir.path_join("clips").path_join(id), int(info["frames"]), Vector2(float(info.get("origin_x", 0)), float(info.get("origin_y", 0))))
+			clips[id] = Clip.new(dir.path_join("clips").path_join(id), info["images"], Vector2(float(info.get("origin_x", 0)), float(info.get("origin_y", 0))))
 		var frame_clip := FrameClip.new()
 		frame_clip.clip = clips[id]
 		# Flash matrix [a, b, c, d, tx, ty]: x' = a x + c y + tx, y' = b x + d y + ty.
 		frame_clip.transform = Transform2D(Vector2(entry[1], entry[2]), Vector2(entry[3], entry[4]), Vector2(entry[5], entry[6]))
 		result.append(frame_clip)
 	return result
+
+
+## True when images has count image entries of IMAGE_ENTRY_SIZE numbers.
+static func _are_images(images: Variant, count: int) -> bool:
+	return images is Array and images.size() == count and images.all(func(entry: Variant) -> bool:
+		return entry is Array and entry.size() == IMAGE_ENTRY_SIZE and entry.all(func(value: Variant) -> bool: return value is float or value is int))

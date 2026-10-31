@@ -42,7 +42,7 @@ Not done yet: the quests of the other islands, neighbours, and the functions of 
 
 ## Import the game files
 
-You need Python 3 with the server requirements (`pip install -r requirements.txt` in the server folder), Java, and the JPEXS decompiler (`ffdec-cli.jar`, https://github.com/jindrapetrik/jpexs-decompiler).
+You need Python 3 with the server requirements (`pip install -r requirements.txt` in the server folder) and Pillow (`pip install pillow`), Java, and the JPEXS decompiler (`ffdec-cli.jar`, https://github.com/jindrapetrik/jpexs-decompiler).
 
 ```bash
 python godot/importer/import_assets.py --source <socialemperors folder> --out <data folder> --jpexs <path to ffdec-cli.jar>
@@ -53,6 +53,7 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 - By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages, the player saves in `saves/` and the quest maps in `villages/quests/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
 - The tool also imports the graphics of the shots and effects of battles from `assets/fx/` and of the spells from `assets/buildingsprites/magic_*.swf`, copies the quest maps, and exports the windows of the quests and the spells from the client file `assets/flash/SocialEmpires1.4.07sec_fixed.swf`, with their fonts and pictures, the banner of a cast from `magic_cast_marquee.swf`, and the alert of the spell book with its picture. An import before the alert shows the gift of level 15 only as a message. `spells.json` tells at which frame each spell acts. A data folder from an import before the spells has no spell book; the Quests button then asks you to import again.
 - `--jobs <n>` sets how many JPEXS processes run at the same time (default 4).
+- The tool keeps the frames of each graphic on sprite sheets: lossless WebP pictures with the frames side by side, without the empty space around them. The pixels are the same as the frames that JPEXS draws. A data folder from an import before the sprite sheets has PNG files; the port then reports that the graphics are from an older import. Import the files again.
 - The import of all graphics takes several hours. You can stop it with Ctrl+C, or it can stop for another reason, and continue it later: run the same command with the same `--out` folder. The tool skips each graphic and the windows that an earlier run finished, and imports the others. It imports a graphic again when its SWF file or the code of the tool changed, so after an update of the port the same command brings the data folder up to date. To start from the beginning, delete the data folder.
 
 ## Run
@@ -99,7 +100,7 @@ The exit code is the number of failed checks. Run the village check after you ch
 
 | Path | Contents |
 |---|---|
-| `importer/` | Import tool. `swf_bounds.py` reads symbol bounds, text fields and placements from SWF files, so the images keep the position of the original graphics. `ui_import.py` exports the windows of the client. |
+| `importer/` | Import tool. `swf_bounds.py` reads symbol bounds, text fields and placements from SWF files, so the images keep the position of the original graphics. `ui_import.py` exports the windows of the client. `sheets.py` packs the frames into sprite sheets. |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
 | `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities, and the spells in `battle/spells/`), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
