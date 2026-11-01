@@ -83,6 +83,43 @@ impl FlashArt {
         }
     }
 
+    /// The bounds of each frame of a sprite in pixels, as Flash reports them,
+    /// relative to the registration point. An empty Rect2 for a frame that draws nothing.
+    #[func]
+    fn frame_rects(&self, id: i64) -> Array<Rect2> {
+        self.shared
+            .art
+            .frame_rects(id as u16)
+            .iter()
+            .map(|r| r.map_or(Rect2::default(), |r| Rect2::new(Vector2::new(r.left(), r.top()) / 20.0, Vector2::new(r.width(), r.height()) / 20.0)))
+            .collect()
+    }
+
+    /// For each frame of a sprite, the point in pixels where its shots start (Vector2), or null.
+    #[func]
+    fn shot_points(&self, id: i64) -> VarArray {
+        self.shared.art.shot_points(id as u16).iter().map(|p| p.map_or(Variant::nil(), |p| (Vector2::new(p.x, p.y) / 20.0).to_variant())).collect()
+    }
+
+    /// For each frame of a sprite, its clip, or null: a nested sprite with
+    /// more frames that the frame shows alone. A clip is [sprite id, Transform2D in pixels].
+    #[func]
+    fn frame_clips(&self, id: i64) -> VarArray {
+        self.shared
+            .art
+            .frame_clips(id as u16)
+            .iter()
+            .map(|c| match c {
+                Some(c) => {
+                    let m = c.matrix;
+                    let transform = Transform2D::from_cols(Vector2::new(m.sx, m.ky), Vector2::new(m.kx, m.sy), Vector2::new(m.tx, m.ty) / 20.0);
+                    varray![c.id as i64, transform].to_variant()
+                }
+                None => Variant::nil(),
+            })
+            .collect()
+    }
+
     /// Draws frame (from 0) of a character on an image of its canvas, or
     /// returns the image that the threads drew ahead. Null when it draws nothing.
     #[func]

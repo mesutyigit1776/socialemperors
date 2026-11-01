@@ -6,6 +6,7 @@ mod art;
 mod bitmap;
 mod color;
 mod filters;
+mod layout;
 mod render;
 mod shape;
 
@@ -13,4 +14,5 @@ mod shape;
 mod godot_api;
 
 pub use art::Art;
+pub use layout::FrameClip;
 pub use render::Canvas;

@@ -58,6 +58,7 @@ func play(frame: int, loop: bool) -> void:
 	_clip_node.offset = _clip.origin
 	_clip_frame = 0
 	_time = 0.0
+	_clip.draw_ahead()
 	_clip_node.texture = _clip.get_frame(0)
 
 

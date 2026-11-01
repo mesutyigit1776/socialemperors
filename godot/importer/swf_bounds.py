@@ -451,6 +451,9 @@ class SwfFile:
 		"Returns the frame labels of the symbol: label -> frame number (1-based)."
 		return self.sprite_frame_labels(self._symbol_sprite(class_name))
 
+	def sprite_frame_count(self, sprite_id):
+		return len(self._frame_places(*self.sprites[sprite_id]))
+
 	def sprite_frame_labels(self, sprite_id):
 		"Returns the frame labels of a sprite: label -> frame number (1-based)."
 		labels = {}

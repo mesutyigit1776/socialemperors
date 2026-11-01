@@ -5,9 +5,8 @@ socialemperors server folder that the user supplies and writes:
 
   <out>/config.json                  game configuration, as the server sends it
   <out>/shop.json                    item groups of the "New" store rotation and the shop settings of the server
-  <out>/sprites/<img_name>/<n>.webp  sprite sheet n (from 0) with the frames of the item graphic
-  <out>/sprites/<img_name>/meta.json registration offset, frames and their places on the sheets
-  <out>/sprites/<img_name>/clips/<id>/<n>.webp  sprite sheet n of an animation of a unit
+  <out>/sprites/<img_name>/graphic.swf  copy of the SWF file of the item graphic; the port draws its frames
+  <out>/sprites/<img_name>/meta.json  record of the import, see below
   <out>/fx/<name>/...                shots, effects and spells of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
   <out>/quests/<id>.save.json        maps of the quest islands
@@ -15,7 +14,7 @@ socialemperors server folder that the user supplies and writes:
                                      "loop_from": frame where the graphic goes on after its last frame, or null}
   <out>/ui/...                       windows of the client, see ui_import.py
 
-It needs Java and the JPEXS decompiler (ffdec-cli.jar) to render SWF frames.
+It needs Java and the JPEXS decompiler (ffdec-cli.jar) for the windows of the client.
 
 The import continues after a stop: run it again with the same --out folder.
 A graphic is done when its meta.json is written; meta.json also records the
@@ -35,8 +34,6 @@ import shutil
 import sys
 import tempfile
 
-from jpexs import exported_frames, run_jpexs
-from sheets import pack_frames
 from swf_bounds import SwfError, SwfFile
 from ui_import import CAST_SWF, CLIENT_SWF, import_ui
 
@@ -50,7 +47,9 @@ MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
 # the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
 SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
 # The code that decides the content of the output. A graphic from other code is imported again.
-IMPORTER_FILES = ("import_assets.py", "jpexs.py", "sheets.py", "swf_bounds.py", "ui_import.py")
+IMPORTER_FILES = ("import_assets.py", "jpexs.py", "swf_bounds.py", "ui_import.py")
+# The copy of the SWF file in the folder of a graphic, from which the port draws it.
+GRAPHIC_FILE = "graphic.swf"
 
 
 def load_game_config(source):
@@ -145,25 +144,6 @@ def needed_items(config, villages, shop, export_all):
 	return result
 
 
-def import_clips(jpexs, swf, swf_path, symbol, sprite_dir):
-	"""Exports the clips of a graphic. Returns the meta entries "clips" and "frame_clips"."""
-	frame_clips = swf.symbol_frame_clips(symbol)
-	clip_ids = sorted({clip[0] for clip in frame_clips if clip is not None})
-	clips = {}
-	if clip_ids:
-		with tempfile.TemporaryDirectory() as work_dir:
-			run_jpexs(jpexs, swf_path, ["-selectid", ",".join(map(str, clip_ids))], work_dir)
-			for clip_id in clip_ids:
-				name = f"DefineSprite_{clip_id}"
-				frames = exported_frames(work_dir, lambda d: d == name or d.startswith(name + "_"), f"sprite {clip_id} of {swf_path}")
-				images = pack_frames(frames, os.path.join(sprite_dir, "clips", str(clip_id)))
-				offset_x, offset_y = swf.sprite_offset(clip_id)
-				clips[str(clip_id)] = {"origin_x": offset_x, "origin_y": offset_y, "frames": len(frames), "images": images}
-	# The matrix places the clip in the graphic: [a, b, c, d] and the translation in pixels.
-	entries = [None if clip is None else [clip[0], *clip[1][:4], clip[1][4] / 20, clip[1][5] / 20] for clip in frame_clips]
-	return clips, entries
-
-
 def importer_version():
 	"""A hash of the code of the importer. It leaves out the comments and the
 	docstrings, so that a change of them alone does not start the import of
@@ -204,35 +184,19 @@ def write_json_last(path, data):
 	os.replace(path + ".tmp", path)
 
 
-def import_sprite(jpexs, swf_path, symbol, sprite_dir, animated, record):
-	"""Exports the frames of a symbol to sprite_dir. animated: the frames contain
-	clips that play, as in units and in the graphics of shots. record: the
-	importer and the source of the graphic; meta.json keeps it under "import"
-	for the next run."""
+def import_sprite(swf_path, symbol, sprite_dir, animated, record):
+	"""Copies the SWF file of a symbol to sprite_dir/graphic.swf. The port
+	draws the frames from it and reads their bounds, shot points and clips.
+	animated: the frames contain clips that play, as in units and in the
+	graphics of shots; the client shows nested sprites of buildings on their
+	first frame. record: the importer and the source of the graphic;
+	meta.json keeps it under "import" for the next run."""
 	swf = SwfFile(swf_path)
-	offset_x, offset_y, _, _ = swf.symbol_offset(symbol)
-	frame_rects = swf.symbol_frame_rects(symbol)
-	with tempfile.TemporaryDirectory() as work_dir:
-		run_jpexs(jpexs, swf_path, ["-selectclass", symbol], work_dir)
-		frames = exported_frames(work_dir, lambda d: d.endswith(f"_{symbol}"), f"symbol '{symbol}' from {swf_path}")
-		if len(frame_rects) != len(frames):
-			raise RuntimeError(f"{swf_path}: JPEXS exported {len(frames)} frames, the SWF has {len(frame_rects)}")
-		images = pack_frames(frames, sprite_dir)
-	meta = {
-		"origin_x": offset_x,   # top-left of every PNG relative to the symbol registration point
-		"origin_y": offset_y,
-		# The bounds of each frame as Flash measures them: [width, height], and
-		# [x, y] of the top-left relative to the registration point. The client
-		# places graphics and aims shots by them.
-		"frame_sizes": [rect[2:] for rect in frame_rects],
-		"frame_origins": [rect[:2] for rect in frame_rects],
-		"shot_points": swf.symbol_shot_points(symbol),   # [x, y] where the shots of the frame start, or null
-		"images": images,   # the place of each frame on the sprite sheets, see sheets.py
-	}
-	if animated:
-		meta["clips"], meta["frame_clips"] = import_clips(jpexs, swf, swf_path, symbol, sprite_dir)
-	meta["import"] = record
-	write_json_last(os.path.join(sprite_dir, "meta.json"), meta)
+	if symbol not in swf.symbols or swf.symbols[symbol] not in swf.sprites:
+		raise SwfError(f"symbol '{symbol}' is not an exported sprite")
+	os.makedirs(sprite_dir, exist_ok=True)
+	shutil.copyfile(swf_path, os.path.join(sprite_dir, GRAPHIC_FILE))
+	write_json_last(os.path.join(sprite_dir, "meta.json"), {"animated": animated, "import": record})
 
 
 def _loop_frame(swf, labels):
@@ -253,7 +217,7 @@ def main():
 	parser.add_argument("--jpexs", required=True, help="path to ffdec-cli.jar or the ffdec start script")
 	parser.add_argument("--village", action="append", default=[], help="village save to import (repeatable); default villages/initial.json")
 	parser.add_argument("--all", action="store_true", help="export the graphics of every item, not only the land, the store buildings and the items in the villages")
-	parser.add_argument("--jobs", type=int, default=4, help="number of JPEXS processes that run at the same time (default 4)")
+	parser.add_argument("--jobs", type=int, default=4, help="number of graphics that are imported at the same time (default 4)")
 	args = parser.parse_args()
 
 	source = os.path.abspath(args.source)
@@ -315,7 +279,7 @@ def main():
 		# Frames of a stopped or older import must not stay next to the new ones.
 		shutil.rmtree(folder, ignore_errors=True)
 		try:
-			import_sprite(args.jpexs, swf_path, symbol, folder, animated, record)
+			import_sprite(swf_path, symbol, folder, animated, record)
 		except (SwfError, RuntimeError) as e:
 			return str(e)
 		return None

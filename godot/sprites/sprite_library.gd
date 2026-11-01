@@ -1,47 +1,65 @@
 class_name SpriteLibrary
 extends RefCounted
 ## Graphics that the importer writes: the items in <data>/sprites/<img_name>/,
-## the shots and effects of battles in <data>/fx/<name>/.
+## the shots and effects of battles in <data>/fx/<name>/. Each folder has a
+## copy of the SWF file of the graphic and meta.json, see importer/import_assets.py.
 ##
-## The frames are on sprite sheets, see importer/sheets.py. Each frame is an
-## AtlasTexture with the size of the full frame, so that the empty space that
-## the importer cropped stays around the pixels.
+## The port draws the frames from the SWF file while it runs, with the
+## extension FlashArt (flash_art/). A frame is drawn when it is first shown
+## and then kept.
 
-## Entry of a frame: [sheet, x, y, width, height, left, top, frame width, frame height].
-const IMAGE_ENTRY_SIZE := 9
+## The copy of the SWF file in the folder of a graphic.
+const GRAPHIC_FILE := "graphic.swf"
 
 
-## The sprite sheets <n>.webp in one folder. A sheet loads when a frame on it is first shown.
-class Sheets:
-	var _dir: String
-	var _textures: Dictionary = {}  # Sheet number -> ImageTexture, or null when it cannot load.
+## The frames of one character of a SWF file, drawn when they are first asked for.
+class Frames:
+	var _art: FlashArt
+	var _id: int
+	var _textures: Array[Texture2D] = []
+	var _drawn: Array[bool] = []
+	var _ahead := false
+	var origin: Vector2  ## Top-left of each frame image relative to the registration point.
 
-	func _init(dir: String) -> void:
-		_dir = dir
+	func _init(art: FlashArt, id: int, count: int) -> void:
+		_art = art
+		_id = id
+		_textures.resize(count)
+		_drawn.resize(count)
+		origin = art.canvas(id).position
 
-	## The frame of an image entry, or null when its sheet cannot load.
-	func frame(entry: Array) -> Texture2D:
-		var number := int(entry[0])
-		if not _textures.has(number):
-			var image := Image.load_from_file(_dir.path_join("%d.webp" % number))
-			_textures[number] = ImageTexture.create_from_image(image) if image != null else null
-		if _textures[number] == null:
-			return null
-		var atlas := AtlasTexture.new()
-		atlas.atlas = _textures[number]
-		atlas.region = Rect2(entry[1], entry[2], entry[3], entry[4])
-		atlas.margin = Rect2(entry[5], entry[6], entry[7] - entry[3], entry[8] - entry[4])
-		return atlas
+	func count() -> int:
+		return _textures.size()
+
+	## frame is 0-based. Null when the frame draws nothing.
+	func get_frame(frame: int) -> Texture2D:
+		frame = clampi(frame, 0, _textures.size() - 1)
+		if not _drawn[frame]:
+			_drawn[frame] = true
+			var image := _art.render(_id, frame)
+			_textures[frame] = ImageTexture.create_from_image(image) if image != null else null
+		return _textures[frame]
+
+	## Starts to draw all frames on other threads, for an animation that starts to play.
+	func draw_ahead() -> void:
+		if _ahead:
+			return
+		_ahead = true
+		var frames := PackedInt32Array()
+		for frame in _textures.size():
+			if not _drawn[frame]:
+				frames.append(frame)
+		_art.draw_ahead(_id, frames)
 
 
 class ItemSprite:
-	var frames: Array[Texture2D] = []
+	var frames: Frames
 	var frame_sizes: Array[Vector2] = []  ## Size of each frame as Flash measures it.
 	## Top-left of the bounds of each frame relative to the registration point,
-	## as Flash measures them. Empty in data of an older import.
+	## as Flash measures them.
 	var frame_origins: Array[Vector2] = []
 	## For each frame, the point where the shots of the item start, relative to
-	## the registration point, or null. Empty in data of an older import.
+	## the registration point, or null.
 	var shot_points: Array = []
 	var origin: Vector2  ## Top-left of each frame image relative to the symbol registration point.
 	## For each frame of a unit graphic, the FrameClip that it plays, or null.
@@ -51,9 +69,12 @@ class ItemSprite:
 	func get_frame_clip(frame: int) -> FrameClip:
 		return frame_clips[frame] if frame >= 0 and frame < frame_clips.size() else null
 
+	func frame_count() -> int:
+		return frame_sizes.size()
+
 	## frame is 0-based. A frame that the graphic does not have shows the last frame.
 	func get_frame(frame: int) -> Texture2D:
-		return frames[_index(frame)]
+		return frames.get_frame(_index(frame))
 
 	func get_frame_size(frame: int) -> Vector2:
 		return frame_sizes[_index(frame)]
@@ -68,31 +89,28 @@ class ItemSprite:
 		return shot_points[_index(frame)]
 
 	func _index(frame: int) -> int:
-		return clampi(frame, 0, frames.size() - 1)
+		return clampi(frame, 0, frame_sizes.size() - 1)
 
 
 ## A nested animation of a unit graphic, for example the walk in one direction.
-## Its frames load when they are first shown.
 class Clip:
 	var origin: Vector2  ## Top-left of each frame image relative to the clip registration point.
-	var _sheets: Sheets
-	var _images: Array  # Image entries, one for each frame.
-	var _frames: Array[Texture2D] = []
+	var _frames: Frames
 
-	func _init(dir: String, images: Array, clip_origin: Vector2) -> void:
-		_sheets = Sheets.new(dir)
-		_images = images
-		origin = clip_origin
+	func _init(frames: Frames) -> void:
+		_frames = frames
+		origin = frames.origin
 
 	func frame_count() -> int:
-		return _images.size()
+		return _frames.count()
 
-	## frame is 0-based. A frame that cannot load is empty.
+	## frame is 0-based.
 	func get_frame(frame: int) -> Texture2D:
-		if _frames.is_empty():
-			for entry: Array in _images:
-				_frames.append(_sheets.frame(entry))
-		return _frames[clampi(frame, 0, _images.size() - 1)]
+		return _frames.get_frame(frame)
+
+	## Starts to draw the frames on other threads, so that the clip plays without waits.
+	func draw_ahead() -> void:
+		_frames.draw_ahead()
 
 
 ## A clip in a frame of a unit graphic, and where the frame places it.
@@ -119,92 +137,33 @@ func get_sprite(img_name: String) -> ItemSprite:
 
 func _load(img_name: String) -> ItemSprite:
 	var dir := _sprites_dir.path_join(img_name)
-	if not FileAccess.file_exists(dir.path_join("meta.json")):
-		push_warning("Graphic '%s' is not imported." % img_name)
+	var meta: Variant = JSON.parse_string(FileAccess.get_file_as_string(dir.path_join("meta.json"))) if FileAccess.file_exists(dir.path_join("meta.json")) else null
+	if not (meta is Dictionary and meta.get("animated") is bool):
+		push_warning("Graphic '%s' is not imported, or is from an older import. Import the files again." % img_name)
 		return null
-	var meta: Variant = JSON.parse_string(FileAccess.get_file_as_string(dir.path_join("meta.json")))
-	if not (meta is Dictionary and meta.get("frame_sizes") is Array and not meta["frame_sizes"].is_empty()):
-		push_warning("Graphic '%s' is not imported." % img_name)
-		return null
-	if not _are_images(meta.get("images"), meta["frame_sizes"].size()):
-		push_warning("Graphic '%s' is from an import before the sprite sheets. Import the files again." % img_name)
+	var art := FlashArt.open(dir.path_join(GRAPHIC_FILE))
+	var id := art.symbol(img_name) if art != null else -1
+	if id < 0 or art.frame_count(id) == 0:
+		push_warning("Graphic '%s' has no symbol in its SWF file. Import the files again." % img_name)
 		return null
 	var sprite := ItemSprite.new()
-	sprite.origin = Vector2(float(meta.get("origin_x", 0)), float(meta.get("origin_y", 0)))
-	var sheets := Sheets.new(dir)
-	for i in meta["frame_sizes"].size():
-		var size: Variant = meta["frame_sizes"][i]
-		var texture := sheets.frame(meta["images"][i])
-		if not (size is Array and size.size() == 2) or texture == null:
-			push_warning("Graphic '%s' has no correct frame %d." % [img_name, i + 1])
-			return null
-		sprite.frame_sizes.append(Vector2(float(size[0]), float(size[1])))
-		sprite.frames.append(texture)
-	if meta.has("frame_clips"):
-		sprite.frame_clips = _load_clips(img_name, dir, meta)
-	_load_shot_data(img_name, sprite, meta)
+	sprite.frames = Frames.new(art, id, art.frame_count(id))
+	sprite.origin = sprite.frames.origin
+	for rect: Rect2 in art.frame_rects(id):
+		sprite.frame_sizes.append(rect.size)
+		sprite.frame_origins.append(rect.position)
+	sprite.shot_points = art.shot_points(id)
+	if meta["animated"]:
+		var clips := {}
+		for entry: Variant in art.frame_clips(id):
+			if entry == null:
+				sprite.frame_clips.append(null)
+				continue
+			var clip_id: int = entry[0]
+			if not clips.has(clip_id):
+				clips[clip_id] = Clip.new(Frames.new(art, clip_id, art.frame_count(clip_id)))
+			var frame_clip := FrameClip.new()
+			frame_clip.clip = clips[clip_id]
+			frame_clip.transform = entry[1]
+			sprite.frame_clips.append(frame_clip)
 	return sprite
-
-
-## Reads frame_origins and shot_points. Keeps both empty when the meta data
-## does not have them, as from an older import, or is not correct.
-func _load_shot_data(img_name: String, sprite: ItemSprite, meta: Dictionary) -> void:
-	var origins: Variant = meta.get("frame_origins")
-	var points: Variant = meta.get("shot_points")
-	if origins == null and points == null:
-		return
-	var count := sprite.frames.size()
-	if not (origins is Array and points is Array and origins.size() == count and points.size() == count):
-		push_warning("Graphic '%s' has no correct shot data." % img_name)
-		return
-	var frame_origins: Array[Vector2] = []
-	var shot_points := []
-	for i in count:
-		var corner: Variant = origins[i]
-		var point: Variant = points[i]
-		if not (_is_point(corner) and (point == null or _is_point(point))):
-			push_warning("Graphic '%s' has no correct shot data." % img_name)
-			return
-		frame_origins.append(Vector2(corner[0], corner[1]))
-		shot_points.append(null if point == null else Vector2(point[0], point[1]))
-	sprite.frame_origins = frame_origins
-	sprite.shot_points = shot_points
-
-
-static func _is_point(value: Variant) -> bool:
-	return value is Array and value.size() == 2 and (value[0] is float or value[0] is int) and (value[1] is float or value[1] is int)
-
-
-## Returns the FrameClip or null for each frame. Returns no clips when the meta
-## data is not correct, so that the unit shows its still frames.
-func _load_clips(img_name: String, dir: String, meta: Dictionary) -> Array:
-	var entries: Variant = meta["frame_clips"]
-	var clip_meta: Variant = meta.get("clips")
-	if not (entries is Array and entries.size() == meta["frame_sizes"].size() and clip_meta is Dictionary):
-		push_warning("Graphic '%s' has no correct clips." % img_name)
-		return []
-	var clips := {}
-	var result := []
-	for entry: Variant in entries:
-		if entry == null:
-			result.append(null)
-			continue
-		var info: Variant = clip_meta.get(str(int(entry[0]))) if entry is Array and entry.size() == 7 else null
-		if not (info is Dictionary and info.get("frames") is float and info["frames"] > 0 and _are_images(info.get("images"), int(info["frames"]))):
-			push_warning("Graphic '%s' has no correct clips." % img_name)
-			return []
-		var id := str(int(entry[0]))
-		if not clips.has(id):
-			clips[id] = Clip.new(dir.path_join("clips").path_join(id), info["images"], Vector2(float(info.get("origin_x", 0)), float(info.get("origin_y", 0))))
-		var frame_clip := FrameClip.new()
-		frame_clip.clip = clips[id]
-		# Flash matrix [a, b, c, d, tx, ty]: x' = a x + c y + tx, y' = b x + d y + ty.
-		frame_clip.transform = Transform2D(Vector2(entry[1], entry[2]), Vector2(entry[3], entry[4]), Vector2(entry[5], entry[6]))
-		result.append(frame_clip)
-	return result
-
-
-## True when images has count image entries of IMAGE_ENTRY_SIZE numbers.
-static func _are_images(images: Variant, count: int) -> bool:
-	return images is Array and images.size() == count and images.all(func(entry: Variant) -> bool:
-		return entry is Array and entry.size() == IMAGE_ENTRY_SIZE and entry.all(func(value: Variant) -> bool: return value is float or value is int))

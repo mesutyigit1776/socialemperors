@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 
 
 func _next_frame() -> void:
-	if _frame + 1 < _sprite.frames.size():
+	if _frame + 1 < _sprite.frame_count():
 		_frame += 1
 	elif _loop_from != null:
 		_frame = int(_loop_from) - 1

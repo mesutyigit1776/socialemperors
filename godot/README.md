@@ -42,7 +42,7 @@ Not done yet: the quests of the other islands, neighbours, and the functions of 
 
 ## Import the game files
 
-You need Python 3 with the server requirements (`pip install -r requirements.txt` in the server folder) and Pillow (`pip install pillow`), Java, and the JPEXS decompiler (`ffdec-cli.jar`, https://github.com/jindrapetrik/jpexs-decompiler).
+You need Python 3 with the server requirements (`pip install -r requirements.txt` in the server folder), Java, and the JPEXS decompiler (`ffdec-cli.jar`, https://github.com/jindrapetrik/jpexs-decompiler). JPEXS exports only the windows of the client.
 
 ```bash
 python godot/importer/import_assets.py --source <socialemperors folder> --out <data folder> --jpexs <path to ffdec-cli.jar>
@@ -52,13 +52,27 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 - `--village <file>` selects a village save to import, for example `saves/<USERID>.save.json`. The default is `villages/initial.json`. You can give the option more than one time.
 - By default the tool imports the land, the store buildings, all items of the store rotation, the units and rewards that the special buildings and the collections give, and the items of the villages: the imported villages, the player saves in `saves/` and the quest maps in `villages/quests/` of the server folder. This includes the units in buildings, in the unit warehouse, in training queues, in the item store and in the graveyards. `--all` imports the graphics of all items. This takes a long time.
 - The tool also imports the graphics of the shots and effects of battles from `assets/fx/` and of the spells from `assets/buildingsprites/magic_*.swf`, copies the quest maps, and exports the windows of the quests and the spells from the client file `assets/flash/SocialEmpires1.4.07sec_fixed.swf`, with their fonts and pictures, the banner of a cast from `magic_cast_marquee.swf`, and the alert of the spell book with its picture. An import before the alert shows the gift of level 15 only as a message. `spells.json` tells at which frame each spell acts. A data folder from an import before the spells has no spell book; the Quests button then asks you to import again.
-- `--jobs <n>` sets how many JPEXS processes run at the same time (default 4).
-- The tool keeps the frames of each graphic on sprite sheets: lossless WebP pictures with the frames side by side, without the empty space around them. The pixels are the same as the frames that JPEXS draws. A data folder from an import before the sprite sheets has PNG files; the port then reports that the graphics are from an older import. Import the files again.
-- The import of all graphics takes several hours. You can stop it with Ctrl+C, or it can stop for another reason, and continue it later: run the same command with the same `--out` folder. The tool skips each graphic and the windows that an earlier run finished, and imports the others. It imports a graphic again when its SWF file or the code of the tool changed, so after an update of the port the same command brings the data folder up to date. To start from the beginning, delete the data folder.
+- `--jobs <n>` sets how many graphics the tool imports at the same time (default 4).
+- The tool does not draw the graphics. It copies the SWF file of each graphic to the data folder (`graphic.swf`), and the port draws the frames from it while it runs, see "Graphics" below. The import takes less than a minute; the data folder of the default import is about 830 MB. A data folder from an older import has PNG or WebP frames; the port then reports that the graphics are from an older import. Import the files again.
+- The import can stop and continue. You can stop it with Ctrl+C, or it can stop for another reason, and continue it later: run the same command with the same `--out` folder. The tool skips each graphic and the windows that an earlier run finished, and imports the others. It imports a graphic again when its SWF file or the code of the tool changed, so after an update of the port the same command brings the data folder up to date. To start from the beginning, delete the data folder.
+
+## Graphics
+
+The port draws the art of the SWF files itself while it runs, with the extension `flash_art` (Rust, in `flash_art/`). It reads the shapes, the bitmaps, the nested sprites, the masks, the morph shapes, the color transforms, the filters (blur, glow, drop shadow, bevel, gradient glow, color matrix) and the blend modes of Flash. A frame is drawn the first time that the game shows it and is then kept. When a unit starts an animation, other threads draw its frames ahead. The extension also reads the data of the frames that the game rules use: their bounds, the points where shots start, and the clips that units play.
+
+Build the extension before you open the port. It needs Rust (https://rustup.rs):
+
+```bash
+cargo build --release --manifest-path godot/flash_art/Cargo.toml
+```
+
+`flash_art.gdextension` loads the library from `flash_art/target/release/`. The examples of the crate help to compare the frames with other programs: `render` writes the frames of a symbol to PNG files, `dump` prints the display list of a frame, and `layout` prints the data of the frames as JSON.
+
+The frames are drawn at the size of Flash, as the frames of JPEXS were, with the same canvas. Compared with the JPEXS frames of the earlier import, most pixels are the same. These differences remain: a bitmap that is not scaled or turned is on whole pixels, so it is sharper than in JPEXS; the edges of turned bitmaps and the softness of glows differ a little; and blend modes such as overlay and multiply mix only with the graphic itself, not with the map behind it, as before.
 
 ## Run
 
-Open the `godot` folder in Godot 4.7, or run:
+Build the extension (see "Graphics"), then open the `godot` folder in Godot 4.7, or run:
 
 ```bash
 godot --path godot -- --data <data folder>
@@ -100,11 +114,12 @@ The exit code is the number of failed checks. Run the village check after you ch
 
 | Path | Contents |
 |---|---|
-| `importer/` | Import tool. `swf_bounds.py` reads symbol bounds, text fields and placements from SWF files, so the images keep the position of the original graphics. `ui_import.py` exports the windows of the client. `sheets.py` packs the frames into sprite sheets. |
+| `importer/` | Import tool. `ui_import.py` exports the windows of the client; `swf_bounds.py` reads their bounds, text fields and placements, and the frame labels of the spells. |
+| `flash_art/` | Rust extension that draws the frames of the SWF files and reads the data of their frames, see "Graphics" |
 | `game_data/` | Game configuration (item and level definitions), and the construction limits and the collections that the client contains as fixed values |
 | `village/` | Village save model and placement rules, map coordinates, path search, map view, camera and screen interface |
 | `battle/` | Battles: the rules (the battle, its items, the unit AI, formations, shots, special abilities, and the spells in `battle/spells/`), `battle_view.gd`, which draws a battle, and `battle_screen.gd`, which runs it and turns the mouse into orders |
-| `sprites/` | Loads the imported graphics of the items and of the shots and effects. `clip_sprite.gd` plays the animation of a frame; `unit_sprite.gd` chooses the frame of a unit from its action and direction. |
+| `sprites/` | Loads the imported graphics of the items and of the shots and effects through `flash_art`. `clip_sprite.gd` plays the animation of a frame; `unit_sprite.gd` chooses the frame of a unit from its action and direction. |
 | `quest/` | Campaign quests: the islands, the island list rules, the quest battle with its goals and result, and the windows of the quests |
 | `spell_book/` | The spell book, the spell window, the mana window, aiming and casting, and the graphics of the spells on the map |
 | `ui/` | Shows the windows of the client that the importer exported (`ui_import.py`): their images, buttons, stars and text fields |

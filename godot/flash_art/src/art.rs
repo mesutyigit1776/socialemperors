@@ -19,7 +19,8 @@ pub enum Character {
     Sprite(Sprite),
     Bitmap(BitmapData),
     /// Text and the other characters that the art of the game does not draw.
-    Other,
+    /// Texts have bounds, which count in the bounds of their sprites.
+    Other { bounds: Option<Rect> },
 }
 
 pub struct Sprite {
@@ -45,6 +46,8 @@ pub struct Placed {
     /// sprite plays its frames from there.
     pub start: usize,
     pub visible: bool,
+    /// The instance name, by which the client finds a part.
+    pub name: Option<String>,
 }
 
 pub struct Art {
@@ -87,9 +90,9 @@ impl Art {
             Tag::DefineBitsJpeg2 { id, jpeg_data } => (*id, Character::Bitmap(BitmapData::jpeg(jpeg_data, None, None))),
             Tag::DefineBitsJpeg3(b) => (b.id, Character::Bitmap(BitmapData::jpeg(b.data, None, Some(b.alpha_data)))),
             Tag::DefineBitsLossless(b) => (b.id, Character::Bitmap(BitmapData::lossless(b))),
-            Tag::DefineText(t) => (t.id, Character::Other),
-            Tag::DefineEditText(t) => (t.id(), Character::Other),
-            Tag::DefineButton2(b) => (b.id, Character::Other),
+            Tag::DefineText(t) => (t.id, Character::Other { bounds: Some(rect(&t.bounds)) }),
+            Tag::DefineEditText(t) => (t.id(), Character::Other { bounds: Some(rect(t.bounds())) }),
+            Tag::DefineButton2(b) => (b.id, Character::Other { bounds: None }),
             Tag::SymbolClass(links) => {
                 for link in links {
                     self.symbols.insert(link.class_name.to_string_lossy(swf::UTF_8), link.id);
@@ -145,7 +148,7 @@ impl Art {
         // Stops the recursion in a file in which a sprite contains itself.
         self.bounds.lock().unwrap().insert((id, with_filters), None);
         let result = match self.characters.get(&id) {
-            Some(Character::Shape { bounds, .. }) => Some(*bounds),
+            Some(Character::Shape { bounds, .. } | Character::Other { bounds: Some(bounds) }) => Some(*bounds),
             Some(Character::Morph(m)) => union(Some(rect(&m.start.shape_bounds)), Some(rect(&m.end.shape_bounds))),
             Some(Character::Sprite(s)) => {
                 let mut result = None;
@@ -187,6 +190,7 @@ fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
                             placed.id = id;
                             placed.start = start;
                         }
+                        placed.name = None;
                         placed
                     }
                     swf::PlaceObjectAction::Modify => match list.get_mut(&p.depth) {
@@ -211,6 +215,9 @@ fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
                 }
                 if let Some(blend) = p.blend_mode {
                     placed.blend = blend;
+                }
+                if let Some(name) = p.name {
+                    placed.name = Some(name.to_string_lossy(swf::UTF_8));
                 }
                 if let Some(visible) = p.is_visible {
                     placed.visible = visible;
@@ -239,6 +246,7 @@ impl Placed {
             blend: swf::BlendMode::Normal,
             start,
             visible: true,
+            name: None,
         }
     }
 }

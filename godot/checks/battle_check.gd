@@ -368,7 +368,6 @@ func _check_shot_points() -> bool:
 func _made_up_sprite(size: Vector2, top_left: Vector2, shot_point: Variant) -> SpriteLibrary.ItemSprite:
 	var sprite := SpriteLibrary.ItemSprite.new()
 	for i in 35:
-		sprite.frames.append(null)
 		sprite.frame_sizes.append(size)
 		sprite.frame_origins.append(top_left)
 		sprite.shot_points.append(shot_point)
