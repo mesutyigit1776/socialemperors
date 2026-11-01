@@ -1,0 +1,23 @@
+[package]
+name = "flash_art"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["godot"]
+godot = ["dep:godot"]
+
+[dependencies]
+swf = { version = "0.3.0", default-features = false, features = ["flate2"] }
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd", "png-format"] }
+flate2 = "1.1"
+jpeg-decoder = { version = "0.3.2", default-features = false }
+png = "0.18"
+godot = { version = "0.5.5", features = ["api-4-7"], optional = true }
+
+[profile.release]
+debug = false
