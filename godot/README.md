@@ -58,7 +58,7 @@ python godot/importer/import_assets.py --source <socialemperors folder> --out <d
 
 ## Graphics
 
-The port draws the art of the SWF files itself while it runs, with the extension `flash_art` (Rust, in `flash_art/`). It reads the shapes, the bitmaps, the nested sprites, the masks, the morph shapes, the color transforms, the filters (blur, glow, drop shadow, bevel, gradient glow, color matrix) and the blend modes of Flash. A frame is drawn the first time that the game shows it and is then kept. When a unit starts an animation, other threads draw its frames ahead. The extension also reads the data of the frames that the game rules use: their bounds, the points where shots start, and the clips that units play.
+The port draws the art of the SWF files itself while it runs, with the extension `flash_art` (Rust, in `flash_art/`). It reads the shapes, the bitmaps, the nested sprites, the masks, the morph shapes, the color transforms, the filters (blur, glow, drop shadow, bevel, gradient glow, color matrix) and the blend modes of Flash. A frame is drawn the first time that the game shows it and is then kept. The image of a frame covers only the part of the canvas that the frame draws on, so that the large units with big canvases need less memory. When a unit starts an animation, other threads draw its frames ahead. As in Flash, each nested animation plays on from the frame in which it was placed, also inside a sprite of one frame. The extension also reads the data of the frames that the game rules use: their bounds, the points where shots start, and the clips that units play.
 
 Build the extension before you open the port. It needs Rust (https://rustup.rs):
 

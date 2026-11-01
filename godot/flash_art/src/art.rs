@@ -141,6 +141,24 @@ impl Art {
         self.measure(id, true)
     }
 
+    /// The visual bounds of one frame of a sprite, or of another character.
+    pub fn frame_visual_bounds(&self, id: CharacterId, frame: usize) -> Option<Rect> {
+        match self.characters.get(&id) {
+            Some(Character::Sprite(s)) => s.frames[frame % s.frames.len()].iter().fold(None, |r, placed| union(r, self.placed_bounds(placed, true))),
+            _ => self.visual_bounds(id),
+        }
+    }
+
+    /// The bounds of a placed character over all its frames, in the coordinates of its sprite.
+    fn placed_bounds(&self, placed: &Placed, with_filters: bool) -> Option<Rect> {
+        let bounds = self.measure(placed.id, with_filters).and_then(|r| r.transform(placed.matrix))?;
+        if !with_filters {
+            return Some(bounds);
+        }
+        let (x, y) = placed.filters.iter().filter(|f| filters::is_active(f)).map(|f| filters::margin(f, 1.0)).fold((0.0, 0.0), |a, m| (a.0 + m.0, a.1 + m.1));
+        Rect::from_ltrb(bounds.left() - x * 20.0, bounds.top() - y * 20.0, bounds.right() + x * 20.0, bounds.bottom() + y * 20.0)
+    }
+
     fn measure(&self, id: CharacterId, with_filters: bool) -> Option<Rect> {
         if let Some(found) = self.bounds.lock().unwrap().get(&(id, with_filters)) {
             return *found;
@@ -150,20 +168,7 @@ impl Art {
         let result = match self.characters.get(&id) {
             Some(Character::Shape { bounds, .. } | Character::Other { bounds: Some(bounds) }) => Some(*bounds),
             Some(Character::Morph(m)) => union(Some(rect(&m.start.shape_bounds)), Some(rect(&m.end.shape_bounds))),
-            Some(Character::Sprite(s)) => {
-                let mut result = None;
-                for frame in &s.frames {
-                    for placed in frame {
-                        let mut placed_bounds = self.measure(placed.id, with_filters).and_then(|r| r.transform(placed.matrix));
-                        if with_filters {
-                            let (x, y) = placed.filters.iter().filter(|f| filters::is_active(f)).map(|f| filters::margin(f, 1.0)).fold((0.0, 0.0), |a, m| (a.0 + m.0, a.1 + m.1));
-                            placed_bounds = placed_bounds.and_then(|r| Rect::from_ltrb(r.left() - x * 20.0, r.top() - y * 20.0, r.right() + x * 20.0, r.bottom() + y * 20.0));
-                        }
-                        result = union(result, placed_bounds);
-                    }
-                }
-                result
-            }
+            Some(Character::Sprite(s)) => s.frames.iter().flatten().fold(None, |r, placed| union(r, self.placed_bounds(placed, with_filters))),
             _ => None,
         };
         self.bounds.lock().unwrap().insert((id, with_filters), result);
@@ -276,9 +281,8 @@ impl Art {
         match self.characters.get(&id) {
             Some(Character::Sprite(s)) => {
                 println!("{pad}sprite {id} frame {}/{}", frame + 1, s.frames.len());
-                for p in &s.frames[frame.min(s.frames.len() - 1)] {
-                    let count = self.frame_count(p.id);
-                    let child = if count > 1 { frame.saturating_sub(p.start) % count } else { 0 };
+                for p in &s.frames[frame % s.frames.len()] {
+                    let child = if p.start == 0 { frame } else { (frame % s.frames.len()).saturating_sub(p.start) };
                     let m = p.matrix;
                     println!("{pad} depth {} clip {} m [{:.3} {:.3} {:.3} {:.3} {} {}] cx {:?} blend {:?} filters {:?} start {}", p.depth, p.clip_depth, m.sx, m.ky, m.kx, m.sy, m.tx, m.ty, if p.color.is_identity() { None } else { Some(p.color) }, p.blend, p.filters.iter().filter(|f| crate::filters::is_active(f)).collect::<Vec<_>>(), p.start);
                     self.dump(p.id, child, indent + 2);

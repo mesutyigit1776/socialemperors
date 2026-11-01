@@ -47,12 +47,29 @@ impl Art {
         })
     }
 
+    /// The part of the canvas that frame (from 0) of a character covers, in
+    /// whole pixels: (x, y, width, height). None when the frame draws nothing.
+    pub fn frame_area(&self, id: CharacterId, frame: usize, canvas: Canvas) -> Option<(u32, u32, u32, u32)> {
+        let b = self.frame_visual_bounds(id, frame)?;
+        let left = ((b.left() / TWIPS - canvas.x).floor().max(0.0) as u32).min(canvas.width);
+        let top = ((b.top() / TWIPS - canvas.y).floor().max(0.0) as u32).min(canvas.height);
+        let right = ((b.right() / TWIPS - canvas.x).ceil().max(0.0) as u32).min(canvas.width);
+        let bottom = ((b.bottom() / TWIPS - canvas.y).ceil().max(0.0) as u32).min(canvas.height);
+        (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
+    }
+
     /// Draws frame (from 0) of a character on a new image of the canvas, scaled.
     pub fn render(&self, id: CharacterId, frame: usize, canvas: Canvas, scale: f32) -> Option<Pixmap> {
-        let width = ((canvas.width as f32 * scale).ceil() as u32).max(1);
-        let height = ((canvas.height as f32 * scale).ceil() as u32).max(1);
+        self.render_area(id, frame, canvas, (0, 0, canvas.width, canvas.height), scale)
+    }
+
+    /// Draws frame (from 0) of a character on a new image of one area of the canvas, see frame_area().
+    pub fn render_area(&self, id: CharacterId, frame: usize, canvas: Canvas, area: (u32, u32, u32, u32), scale: f32) -> Option<Pixmap> {
+        let width = ((area.2 as f32 * scale).ceil() as u32).max(1);
+        let height = ((area.3 as f32 * scale).ceil() as u32).max(1);
         let mut pixmap = Pixmap::new(width, height)?;
-        let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -canvas.x * scale, -canvas.y * scale);
+        let (x, y) = (canvas.x + area.0 as f32, canvas.y + area.1 as f32);
+        let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -x * scale, -y * scale);
         Renderer { art: self, scale }.draw(&mut pixmap, id, frame, 0, transform, &ColorTransform::IDENTITY, None);
         Some(pixmap)
     }
@@ -65,8 +82,10 @@ struct Renderer<'a> {
 }
 
 impl Renderer<'_> {
-    /// transform: from twips of the character to pixels of the target.
-    fn draw(&self, target: &mut Pixmap, id: CharacterId, frame: usize, ratio: u16, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    /// age: the frames that the character played since it was placed; a
+    /// sprite shows frame age modulo its frame count. transform: from twips
+    /// of the character to pixels of the target.
+    fn draw(&self, target: &mut Pixmap, id: CharacterId, age: usize, ratio: u16, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
         match self.art.characters.get(&id) {
             Some(Character::Shape { layers, .. }) => self.draw_shape(target, layers, transform, color, mask),
             Some(Character::Morph(_)) => {
@@ -75,38 +94,39 @@ impl Renderer<'_> {
                 }
             }
             Some(Character::Sprite(sprite)) => {
-                let list = &sprite.frames[frame.min(sprite.frames.len() - 1)];
-                self.draw_list(target, list, frame, transform, color, mask);
+                let list = &sprite.frames[age % sprite.frames.len()];
+                self.draw_list(target, list, age, sprite.frames.len(), transform, color, mask);
             }
             _ => {}
         }
     }
 
     /// Draws a display list. A mask applies to the depths after it up to its clip depth.
-    fn draw_list(&self, target: &mut Pixmap, list: &[Placed], frame: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    fn draw_list(&self, target: &mut Pixmap, list: &[Placed], age: usize, count: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
         let mut i = 0;
         while i < list.len() {
             let placed = &list[i];
             if placed.clip_depth == 0 {
-                self.draw_placed(target, placed, frame, transform, color, mask);
+                self.draw_placed(target, placed, child_age(placed, age, count), transform, color, mask);
                 i += 1;
                 continue;
             }
             let end = i + 1 + list[i + 1..].iter().take_while(|p| p.depth <= placed.clip_depth).count();
-            if let Some(group_mask) = self.mask(target, placed, frame, transform, mask) {
-                self.draw_list(target, &list[i + 1..end], frame, transform, color, Some(&group_mask));
+            if let Some(group_mask) = self.mask(target, placed, child_age(placed, age, count), transform, mask) {
+                self.draw_list(target, &list[i + 1..end], age, count, transform, color, Some(&group_mask));
             }
             i = end;
         }
     }
 
-    fn draw_placed(&self, target: &mut Pixmap, placed: &Placed, parent_frame: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    /// age: the age of the placed character, see draw().
+    fn draw_placed(&self, target: &mut Pixmap, placed: &Placed, age: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
         if !placed.visible {
             return;
         }
         let transform = transform.pre_concat(placed.matrix);
         let color = color.then_child(&placed.color);
-        let frame = child_frame(self.art, placed, parent_frame);
+        let frame = age;
         let active: Vec<&swf::Filter> = placed.filters.iter().filter(|f| filters::is_active(f)).collect();
         if active.is_empty() && matches!(placed.blend, BlendMode::Normal) {
             self.draw(target, placed.id, frame, placed.ratio, transform, &color, mask);
@@ -145,9 +165,9 @@ impl Renderer<'_> {
     }
 
     /// The area that a mask covers on the target, within the outer mask.
-    fn mask(&self, target: &Pixmap, placed: &Placed, parent_frame: usize, transform: Transform, outer: Option<&Mask>) -> Option<Mask> {
+    fn mask(&self, target: &Pixmap, placed: &Placed, age: usize, transform: Transform, outer: Option<&Mask>) -> Option<Mask> {
         let mut pixmap = Pixmap::new(target.width(), target.height())?;
-        let frame = child_frame(self.art, placed, parent_frame);
+        let frame = age;
         self.draw(&mut pixmap, placed.id, frame, placed.ratio, transform.pre_concat(placed.matrix), &MASK_COLOR, None);
         let mut mask = Mask::from_pixmap(pixmap.as_ref(), MaskType::Alpha);
         if let Some(outer) = outer {
@@ -267,7 +287,7 @@ impl Renderer<'_> {
                 let on_target = transform.pre_concat(pattern);
                 let unit = |v: f32| (v.abs() - 1.0).abs() < 0.001;
                 if unit(on_target.sx) && unit(on_target.sy) && on_target.kx.abs() < 0.001 && on_target.ky.abs() < 0.001 {
-                    let snapped = Transform::from_row(on_target.sx.signum(), 0.0, 0.0, on_target.sy.signum(), on_target.tx.round(), on_target.ty.round());
+                    let snapped = Transform::from_row(on_target.sx.signum(), 0.0, 0.0, on_target.sy.signum(), (on_target.tx + 0.5).floor(), (on_target.ty + 0.5).floor());
                     if let Some(inverse) = transform.invert() {
                         pattern = inverse.pre_concat(snapped);
                         quality = FilterQuality::Nearest;
@@ -285,10 +305,13 @@ impl Renderer<'_> {
     }
 }
 
-/// The frame of a nested sprite: it plays from the frame in which it was placed.
-fn child_frame(art: &Art, placed: &Placed, parent_frame: usize) -> usize {
-    let count = art.frame_count(placed.id);
-    if count > 1 { parent_frame.saturating_sub(placed.start) % count } else { 0 }
+/// The age of a character on the display list of a sprite of this age and
+/// frame count. Every sprite of Flash plays on from the frame in which it was
+/// placed, also when its parent has only one frame. After the parent loops,
+/// the characters of its first frame stay and play on; the others came back
+/// on the list and count from their frame.
+fn child_age(placed: &Placed, age: usize, count: usize) -> usize {
+    if placed.start == 0 { age } else { (age % count).saturating_sub(placed.start) }
 }
 
 fn blend_mode(mode: BlendMode) -> tiny_skia::BlendMode {

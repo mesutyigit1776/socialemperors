@@ -25,7 +25,7 @@ type Key = (u16, usize);
 struct Ahead {
     queue: Vec<Key>,
     queued: HashSet<Key>,
-    ready: HashMap<Key, Vec<u8>>,
+    ready: HashMap<Key, (Vec<u8>, u32, u32)>,
     stopped: bool,
 }
 
@@ -120,18 +120,28 @@ impl FlashArt {
             .collect()
     }
 
-    /// Draws frame (from 0) of a character on an image of its canvas, or
-    /// returns the image that the threads drew ahead. Null when it draws nothing.
+    /// The part of the canvas that a frame covers, in pixels. Empty when the frame draws nothing.
+    #[func]
+    fn frame_area(&self, id: i64, frame: i64) -> Rect2i {
+        let art = &self.shared.art;
+        match art.canvas(id as u16).and_then(|c| art.frame_area(id as u16, frame.max(0) as usize, c)) {
+            Some((x, y, w, h)) => Rect2i::new(Vector2i::new(x as i32, y as i32), Vector2i::new(w as i32, h as i32)),
+            None => Rect2i::default(),
+        }
+    }
+
+    /// Draws frame (from 0) of a character on an image of the part of its
+    /// canvas that the frame covers (see frame_area), or returns the image
+    /// that the threads drew ahead. Null when the frame draws nothing.
     #[func]
     fn render(&self, id: i64, frame: i64) -> Option<Gd<Image>> {
         let key = (id as u16, frame.max(0) as usize);
         let ready = self.shared.ahead.lock().unwrap().ready.remove(&key);
-        let canvas = self.shared.art.canvas(key.0)?;
-        let pixels = match ready {
-            Some(pixels) => pixels,
+        let (pixels, width, height) = match ready {
+            Some(drawn) => drawn,
             None => draw(&self.shared.art, key)?,
         };
-        Image::create_from_data(canvas.width as i32, canvas.height as i32, false, Format::RGBA8, &PackedByteArray::from(pixels))
+        Image::create_from_data(width as i32, height as i32, false, Format::RGBA8, &PackedByteArray::from(pixels))
     }
 
     /// Starts to draw these frames of a character on other threads, so that
@@ -189,10 +199,12 @@ fn work(shared: Arc<Shared>) {
     }
 }
 
-/// The pixels of a frame, not premultiplied, as Godot images keep them.
-fn draw(art: &Art, (id, frame): Key) -> Option<Vec<u8>> {
+/// The pixels of the area of a frame, not premultiplied, as Godot images
+/// keep them, and the size of the area.
+fn draw(art: &Art, (id, frame): Key) -> Option<(Vec<u8>, u32, u32)> {
     let canvas = art.canvas(id)?;
-    let pixmap = art.render(id, frame, canvas, 1.0)?;
+    let area = art.frame_area(id, frame, canvas)?;
+    let pixmap = art.render_area(id, frame, canvas, area, 1.0)?;
     let mut pixels = pixmap.take();
     for p in pixels.chunks_exact_mut(4) {
         let a = p[3] as u32;
@@ -202,5 +214,5 @@ fn draw(art: &Art, (id, frame): Key) -> Option<Vec<u8>> {
             }
         }
     }
-    Some(pixels)
+    Some((pixels, area.2, area.3))
 }

@@ -20,13 +20,16 @@ class Frames:
 	var _drawn: Array[bool] = []
 	var _ahead := false
 	var origin: Vector2  ## Top-left of each frame image relative to the registration point.
+	var _size: Vector2  # The size of the canvas, which each frame image has.
 
 	func _init(art: FlashArt, id: int, count: int) -> void:
 		_art = art
 		_id = id
 		_textures.resize(count)
 		_drawn.resize(count)
-		origin = art.canvas(id).position
+		var canvas := art.canvas(id)
+		origin = canvas.position
+		_size = canvas.size
 
 	func count() -> int:
 		return _textures.size()
@@ -37,7 +40,15 @@ class Frames:
 		if not _drawn[frame]:
 			_drawn[frame] = true
 			var image := _art.render(_id, frame)
-			_textures[frame] = ImageTexture.create_from_image(image) if image != null else null
+			if image != null:
+				# The image covers only the part of the canvas that the frame
+				# draws on; the margin keeps the size of the canvas.
+				var area := _art.frame_area(_id, frame)
+				var atlas := AtlasTexture.new()
+				atlas.atlas = ImageTexture.create_from_image(image)
+				atlas.region = Rect2(Vector2.ZERO, area.size)
+				atlas.margin = Rect2(area.position, _size - Vector2(area.size))
+				_textures[frame] = atlas
 		return _textures[frame]
 
 	## Starts to draw all frames on other threads, for an animation that starts to play.
