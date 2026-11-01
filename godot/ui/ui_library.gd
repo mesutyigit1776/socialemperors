@@ -1,11 +1,19 @@
 class_name UiLibrary
 extends RefCounted
 ## The windows of the client that importer/ui_import.py wrote to <data>/ui:
-## the image of each frame of their sprites without the named parts, the
-## named parts, the images of the named buttons, the fonts of the text fields
-## and the pictures of the windows. UiClip shows a window.
+## their sprites without the named parts, the named parts, the named buttons,
+## the fonts of the text fields and the pictures of the windows. The port draws
+## the sprites, buttons and fonts from windows.swf with the extension FlashArt.
+## UiClip shows a window.
+
+## The copy of the SWF file with the windows, see importer/ui_import.py.
+const WINDOWS_FILE := "windows.swf"
+const BUTTON_STATES := {"up": 0, "over": 1, "down": 2}
 
 var _dir: String
+var _art: FlashArt
+var _frames: Dictionary = {}  # Sprite id -> SpriteLibrary.Frames.
+var _button_images: Dictionary = {}  # [button id, state] -> Texture2D, or null.
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
 var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "frames": [[part, ...], ...], "labels": {label: frame}}
 var _buttons: Dictionary = {}  # Button id (int) -> top-left of its images (Vector2).
@@ -36,13 +44,16 @@ static func load_from(data_dir: String, folder := "ui") -> UiLibrary:
 			"frames": clip["frames"],
 			"labels": clip.get("labels", {}) if clip.get("labels", {}) is Dictionary else {},
 		}
+	library._art = FlashArt.open(library._dir.path_join(WINDOWS_FILE)) if FileAccess.file_exists(library._dir.path_join(WINDOWS_FILE)) else null
+	if library._art == null:
+		push_error("'%s' is missing. Import the game files again." % library._dir.path_join(WINDOWS_FILE))
+		return null
 	var buttons: Variant = data.get("buttons", {})
 	for key: String in buttons if buttons is Dictionary else {}:
-		var origin: Variant = buttons[key].get("origin") if buttons[key] is Dictionary else null
-		if not (key.is_valid_int() and origin is Array and origin.size() == 2):
+		if not key.is_valid_int():
 			push_error("'%s' has an incorrect button %s." % [path, key])
 			return null
-		library._buttons[key.to_int()] = Vector2(origin[0], origin[1])
+		library._buttons[key.to_int()] = library._art.canvas(key.to_int()).position
 	for name: String in library._symbols:
 		if not library._clips.has(library._symbols[name]):
 			push_error("'%s' has no sprite for the window %s." % [path, name])
@@ -76,7 +87,7 @@ func clip_frames(sprite_id: int) -> Array:
 ## The top-left corner of the frame images of the sprite, relative to its
 ## registration point, or null when the sprite has nothing besides its parts.
 func clip_origin(sprite_id: int) -> Variant:
-	return _clips[sprite_id]["origin"]
+	return _clip_frames(sprite_id).origin if _clips[sprite_id]["origin"] != null else null
 
 
 ## The frame (from 0) of the sprite with this label, or -1.
@@ -86,7 +97,11 @@ func clip_label(sprite_id: int, label: String) -> int:
 
 ## The image of a button in state "up", "over" or "down", or null.
 func button_image(button_id: int, state: String) -> Texture2D:
-	return _texture(_dir.path_join("buttons/%d/%s.png" % [button_id, state]))
+	var key := [button_id, state]
+	if not _button_images.has(key):
+		var image := _art.render_button(button_id, BUTTON_STATES[state])
+		_button_images[key] = ImageTexture.create_from_image(image) if image != null else null
+	return _button_images[key]
 
 
 ## The top-left corner of the images of a button, relative to its registration point.
@@ -98,7 +113,7 @@ func button_origin(button_id: int) -> Vector2:
 func clip_image(sprite_id: int, frame: int) -> Texture2D:
 	if _clips[sprite_id]["origin"] == null:
 		return null
-	return _texture(_dir.path_join("clips/%d/%d.png" % [sprite_id, frame + 1]))
+	return _clip_frames(sprite_id).get_frame(frame)
 
 
 ## The font of a text field, or the default font when the import has no file for it.
@@ -106,10 +121,17 @@ func font(font_id: Variant) -> Font:
 	if font_id == null:
 		return ThemeDB.fallback_font
 	if not _fonts.has(font_id):
-		var path := _dir.path_join("fonts/%d.ttf" % int(font_id))
+		var data := _art.font_data(int(font_id))
 		var file := FontFile.new()
-		_fonts[font_id] = file if FileAccess.file_exists(path) and file.load_dynamic_font(path) == OK else ThemeDB.fallback_font
+		file.data = data
+		_fonts[font_id] = file if not data.is_empty() else ThemeDB.fallback_font
 	return _fonts[font_id]
+
+
+func _clip_frames(sprite_id: int) -> SpriteLibrary.Frames:
+	if not _frames.has(sprite_id):
+		_frames[sprite_id] = SpriteLibrary.Frames.new(_art, sprite_id, _art.frame_count(sprite_id))
+	return _frames[sprite_id]
 
 
 func _texture(path: String) -> Texture2D:

@@ -2,15 +2,17 @@
 
 A window of the client is a symbol of the client SWF file. Its parts with an
 instance name (buttons, stars, locks, text fields) change at run time, so the
-port must place them itself. For each sprite of a window this module writes:
+port must place them itself. This module writes:
 
-  <out>/ui/clips/<id>/<n>.png   frame n of the sprite without its named parts and text fields
-  <out>/ui/buttons/<id>/<state>.png  the states up, over and down of a named button
+  <out>/ui/windows.swf          a copy of the SWF file in which the sprites of the windows do not
+                                place their named parts and text fields; the port draws the
+                                frames of the sprites, the named buttons and the fonts from it
   <out>/ui/layout.json          {"symbols": {name: sprite id},
                                  "clips": {id: {"origin": [x, y] or null, "frames": [[part, ...] for each frame],
                                                 "labels": {label: frame (0-based)}}},
-                                 "buttons": {id: {"origin": [x, y]}}}
-  <out>/ui/fonts/<font id>.ttf  the fonts of the text fields
+                                 "buttons": {id: {}}}
+                                "origin" is the corner of the bounds of the sprite without its
+                                parts, or null when it draws nothing besides them.
   <out>/ui/images/<name>        pictures that the windows load from assets/images_new
   <out>/ui/thumbs/<img_name>.jpg  small pictures of the units, for the units lost in a quest
   <out>/ui/cast/...             the banner of a cast spell, from its own SWF file, in the same form
@@ -24,10 +26,7 @@ fields are parts too, so that the port draws their text with the font.
 import json
 import os
 import shutil
-import subprocess
-import tempfile
 
-from jpexs import copy_frames, exported_frames, run_jpexs
 from swf_bounds import SwfFile
 
 CLIENT_SWF = os.path.join("assets", "flash", "SocialEmpires1.4.07sec_fixed.swf")
@@ -61,16 +60,18 @@ IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
+# The copy of a SWF file with the windows, from which the port draws them.
+WINDOWS_FILE = "windows.swf"
 
 
-def import_ui(jpexs, source, out_dir, unit_thumbs, spell_images):
+def import_ui(source, out_dir, unit_thumbs, spell_images):
 	"""unit_thumbs: the file names "<img_name>.jpg" of the units whose
 	pictures the windows can show. spell_images: the pictures of the spells
 	("<img_name>.jpg" and "prev_<img_name>.jpg"). Returns the number of
 	imported sprites."""
 	ui_dir = os.path.join(out_dir, "ui")
-	count = _import_windows(jpexs, os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
-	count += _import_windows(jpexs, os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
+	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
+	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + spell_images:
 		shutil.copyfile(os.path.join(source, "assets", "images_new", image), os.path.join(ui_dir, "images", image))
@@ -82,8 +83,8 @@ def import_ui(jpexs, source, out_dir, unit_thumbs, spell_images):
 	return count
 
 
-def _import_windows(jpexs, swf_path, symbol_names, ui_dir):
-	"Writes the clips, buttons, fonts and layout.json of the symbols of one SWF file to ui_dir."
+def _import_windows(swf_path, symbol_names, ui_dir):
+	"Writes windows.swf and layout.json of the symbols of one SWF file to ui_dir."
 	swf = SwfFile(swf_path)
 	symbols = {name: _resolve(swf, name) for name in symbol_names}
 	clips = {}
@@ -91,27 +92,14 @@ def _import_windows(jpexs, swf_path, symbol_names, ui_dir):
 	buttons = {}
 	for sprite_id in symbols.values():
 		_collect(swf, sprite_id, clips, drops, buttons)
-
-	with tempfile.TemporaryDirectory() as work_dir:
-		base_path = os.path.join(work_dir, "bases.swf")
-		with open(base_path, 'wb') as f:
-			f.write(swf.without_placements(drops))
-		bases = SwfFile(base_path)
-		drawn = sorted(sprite_id for sprite_id in clips if bases.character_bounds(sprite_id) is not None)
-		run_jpexs(jpexs, base_path, ["-selectid", ",".join(map(str, drawn))], work_dir)
-		for sprite_id in drawn:
-			name = f"DefineSprite_{sprite_id}"
-			frames = exported_frames(work_dir, lambda d: d == name or d.startswith(name + "_"), f"sprite {sprite_id} of {swf_path}")
-			copy_frames(frames, os.path.join(ui_dir, "clips", str(sprite_id)))
-			clips[sprite_id]["origin"] = list(bases.sprite_offset(sprite_id))
-
-	if buttons:
-		_export_buttons(jpexs, swf_path, sorted(buttons), os.path.join(ui_dir, "buttons"))
-		for button_id in buttons:
-			buttons[button_id]["origin"] = list(swf.button_offset(button_id))
-
-	font_ids = sorted({part["text"]["font_id"] for clip in clips.values() for frame in clip["frames"] for part in frame if "text" in part and part["text"]["font_id"] is not None})
-	_export_fonts(jpexs, swf_path, font_ids, os.path.join(ui_dir, "fonts"))
+	os.makedirs(ui_dir, exist_ok=True)
+	windows_path = os.path.join(ui_dir, WINDOWS_FILE)
+	with open(windows_path, 'wb') as f:
+		f.write(swf.without_placements(drops))
+	bases = SwfFile(windows_path)
+	for sprite_id, clip in clips.items():
+		bounds = bases.character_bounds(sprite_id)
+		clip["origin"] = None if bounds is None else [bounds[0] / 20, bounds[1] / 20]
 	with open(os.path.join(ui_dir, "layout.json"), 'w', encoding='utf-8') as f:
 		json.dump({"symbols": symbols, "clips": {str(k): v for k, v in clips.items()}, "buttons": {str(k): v for k, v in buttons.items()}}, f, indent='\t')
 	return len(clips) + len(buttons)
@@ -162,7 +150,7 @@ def _collect(swf, sprite_id, clips, drops, buttons):
 				nested.append(char_id)
 			elif name is not None and char_id in swf.buttons:
 				part["button"] = char_id
-				buttons[char_id] = {"origin": None}
+				buttons[char_id] = {}
 			else:
 				continue
 			dropped.add(depth)
@@ -172,37 +160,3 @@ def _collect(swf, sprite_id, clips, drops, buttons):
 		drops[sprite_id] = dropped
 	for child_id in nested:
 		_collect(swf, child_id, clips, drops, buttons)
-
-
-def _export_buttons(jpexs, swf_path, button_ids, buttons_dir):
-	"JPEXS writes the states of a button to DefineButton2_<id>_.../<n>_<state>.png."
-	with tempfile.TemporaryDirectory() as work_dir:
-		command = ["java", "-jar", jpexs] if jpexs.endswith(".jar") else [jpexs]
-		command += ["-selectid", ",".join(map(str, button_ids)), "-format", "button:png", "-export", "button", work_dir, swf_path]
-		result = subprocess.run(command, capture_output=True, text=True)
-		if result.returncode != 0:
-			raise RuntimeError(f"JPEXS failed to export the buttons of {swf_path}: {result.stdout[-500:]}{result.stderr[-500:]}")
-		for button_id in button_ids:
-			folders = [name for name in os.listdir(work_dir) if name == f"DefineButton2_{button_id}" or name.startswith(f"DefineButton2_{button_id}_")]
-			if not folders:
-				raise RuntimeError(f"JPEXS did not export button {button_id} of {swf_path}")
-			target = os.path.join(buttons_dir, str(button_id))
-			os.makedirs(target, exist_ok=True)
-			for number, state in ((1, "up"), (2, "over"), (3, "down")):
-				shutil.copyfile(os.path.join(work_dir, folders[0], f"{number}_{state}.png"), os.path.join(target, f"{state}.png"))
-
-
-def _export_fonts(jpexs, swf_path, font_ids, fonts_dir):
-	if not font_ids:
-		return
-	os.makedirs(fonts_dir, exist_ok=True)
-	with tempfile.TemporaryDirectory() as work_dir:
-		command = ["java", "-jar", jpexs] if jpexs.endswith(".jar") else [jpexs]
-		command += ["-selectid", ",".join(map(str, font_ids)), "-format", "font:ttf", "-export", "font", work_dir, swf_path]
-		result = subprocess.run(command, capture_output=True, text=True)
-		if result.returncode != 0:
-			raise RuntimeError(f"JPEXS failed to export the fonts of {swf_path}: {result.stdout[-500:]}{result.stderr[-500:]}")
-		for file_name in os.listdir(work_dir):
-			font_id = file_name.split("_", 1)[0]
-			if file_name.endswith(".ttf") and font_id.isdigit():
-				shutil.copyfile(os.path.join(work_dir, file_name), os.path.join(fonts_dir, f"{font_id}.ttf"))

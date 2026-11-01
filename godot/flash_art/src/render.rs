@@ -75,6 +75,18 @@ impl Art {
     }
 }
 
+impl Art {
+    /// Draws the state (0 up, 1 over, 2 down) of a button on a new image of
+    /// its canvas, which covers all its states.
+    pub fn render_button(&self, id: CharacterId, state: usize, canvas: Canvas) -> Option<Pixmap> {
+        let Some(Character::Button(states)) = self.characters.get(&id) else { return None };
+        let mut pixmap = Pixmap::new(canvas.width, canvas.height)?;
+        let transform = Transform::from_row(1.0 / TWIPS, 0.0, 0.0, 1.0 / TWIPS, -canvas.x, -canvas.y);
+        Renderer { art: self, scale: 1.0 }.draw_list(&mut pixmap, states.get(state)?, 0, 1, transform, &ColorTransform::IDENTITY, None);
+        Some(pixmap)
+    }
+}
+
 struct Renderer<'a> {
     art: &'a Art,
     /// Pixels of the image for each pixel of Flash. Filters are in pixels of Flash.
@@ -97,6 +109,9 @@ impl Renderer<'_> {
                 let list = &sprite.frames[age % sprite.frames.len()];
                 self.draw_list(target, list, age, sprite.frames.len(), transform, color, mask);
             }
+            Some(Character::Text { matrix, records, .. }) => self.draw_text(target, records, transform.pre_concat(*matrix), color, mask),
+            // A button inside a sprite shows its up state.
+            Some(Character::Button(states)) => self.draw_list(target, &states[0], age, 1, transform, color, mask),
             _ => {}
         }
     }
@@ -198,6 +213,41 @@ impl Renderer<'_> {
         let layers = Arc::new(shape::convert(&styles, &shape::morph_records(&m.start.shape, &m.end.shape, t)));
         cache.0.lock().unwrap().insert((id, ratio), layers.clone());
         Some(layers)
+    }
+
+    /// Static text: each glyph is the shape of its font glyph, scaled to the
+    /// height of its run, at the pen position, which moves by the advance of each glyph.
+    fn draw_text(&self, target: &mut Pixmap, records: &[swf::TextRecord], transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+        let (mut font, mut fill, mut height) = (None, swf::Color { r: 0, g: 0, b: 0, a: 255 }, 0.0f32);
+        let (mut x, mut y) = (0.0f32, 0.0f32);
+        for record in records {
+            if let Some(id) = record.font_id {
+                font = match self.art.characters.get(&id) {
+                    Some(Character::Font(f)) => Some(f),
+                    _ => None,
+                };
+            }
+            if let Some(c) = record.color {
+                fill = c;
+            }
+            if let Some(h) = record.height {
+                height = h.get() as f32;
+            }
+            if let Some(v) = record.x_offset {
+                x = v.get() as f32;
+            }
+            if let Some(v) = record.y_offset {
+                y = v.get() as f32;
+            }
+            let Some(font) = font else { continue };
+            let scale = height / font.em();
+            for glyph in &record.glyphs {
+                let layers = font.glyph_layers(glyph.index as usize, fill);
+                let at = transform.pre_concat(Transform::from_row(scale, 0.0, 0.0, scale, x, y));
+                self.draw_shape(target, &layers, at, color, mask);
+                x += glyph.advance as f32;
+            }
+        }
     }
 
     fn draw_shape(&self, target: &mut Pixmap, layers: &[ShapeLayer], transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {

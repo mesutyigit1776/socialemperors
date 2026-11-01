@@ -1,9 +1,7 @@
-"""Reads the bounds of exported symbols in a SWF file.
-
-An exported PNG of a symbol loses the symbol's registration point. The game
-places the registration point on the map, so the importer needs the offset
-from the registration point to the top-left corner of the image. This module
-computes that offset from the shape bounds and placement matrices in the SWF.
+"""Reads the parts of SWF files that the importer needs: the exported symbols,
+the placements, bounds and text fields of the client windows (ui_import.py),
+and the frame labels of the spell graphics. The port reads the art and the
+data of the frames itself, with the extension flash_art.
 """
 
 import struct
@@ -21,9 +19,6 @@ SYMBOL_CLASS_TAG = 76
 SHOW_FRAME_TAG = 1
 FRAME_LABEL_TAG = 43
 REMOVE_OBJECT2_TAG = 28
-# Names of the point in a graphic where the shots of the client start. The
-# client looks for the first name; for some shots it also accepts the second.
-SHOT_POINT_NAMES = ('proyectilePoint', 'projectilePoint')
 
 
 class SwfError(Exception):
@@ -79,16 +74,6 @@ def _read_matrix(data, pos):
 	return (a, b, c, d, tx, ty), bits.byte_pos()
 
 
-def _skip_color_transform(data, pos):
-	"Returns the position after a CXFORMWITHALPHA record."
-	bits = _Bits(data, pos)
-	has_add = bits.read(1)
-	has_mult = bits.read(1)
-	n = bits.read(4)
-	bits.read(n * 4 * (has_add + has_mult))
-	return bits.byte_pos()
-
-
 def _read_color_transform_alpha(data, pos):
 	"Returns the alpha multiplier (0 to 1, or None) of a CXFORMWITHALPHA record and the position after it."
 	bits = _Bits(data, pos)
@@ -104,17 +89,6 @@ def _read_color_transform_alpha(data, pos):
 	if has_add:
 		bits.read(n * 4)
 	return alpha, bits.byte_pos()
-
-
-def _skip_filters(data, pos):
-	"Returns the position after a FILTERLIST with filters of a fixed size."
-	sizes = {0: 23, 1: 9, 2: 15, 3: 27}  # drop shadow, blur, glow, bevel
-	p = pos + 1
-	for _ in range(data[pos]):
-		if data[p] not in sizes:
-			raise SwfError(f"filter {data[p]} of a button is not supported")
-		p += 1 + sizes[data[p]]
-	return p
 
 
 def _first_glow(data, pos):
@@ -211,7 +185,6 @@ class SwfFile:
 		self.buttons = {}     # button id -> (start, end) of its DefineButton2 tag
 		self._read_definitions(pos, len(body))
 		self._sprite_bounds = {}
-		self._sprite_first_frame_bounds = {}
 
 	def _read_definitions(self, pos, end):
 		data = self.data
@@ -419,15 +392,6 @@ class SwfFile:
 						entry["glow"] = glow
 		return frames
 
-	def _first_frame_bounds(self, char_id):
-		if char_id not in self.sprites:
-			return self.bounds.get(char_id)
-		if char_id not in self._sprite_first_frame_bounds:
-			self._sprite_first_frame_bounds[char_id] = None  # stops recursion on bad files
-			frames = self._frame_bounds(*self.sprites[char_id], self._first_frame_bounds)
-			self._sprite_first_frame_bounds[char_id] = frames[0] if frames else None
-		return self._sprite_first_frame_bounds[char_id]
-
 	def _symbol_sprite(self, class_name):
 		if class_name not in self.symbols:
 			raise SwfError(f"symbol '{class_name}' is not exported")
@@ -436,23 +400,9 @@ class SwfFile:
 			raise SwfError(f"symbol '{class_name}' is not a sprite")
 		return char_id
 
-	def symbol_frame_rects(self, class_name):
-		"""Returns (x, y, width, height) in pixels of each frame of the symbol, as Flash reports them:
-		the bounds relative to the registration point.
-
-		The client stops nested sprites on their first frame, so they count with that frame.
-		"""
-		rects = []
-		for rect in self._frame_bounds(*self.sprites[self._symbol_sprite(class_name)], self._first_frame_bounds):
-			rects.append((0.0, 0.0, 0.0, 0.0) if rect is None else (rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20))
-		return rects
-
 	def symbol_frame_labels(self, class_name):
 		"Returns the frame labels of the symbol: label -> frame number (1-based)."
 		return self.sprite_frame_labels(self._symbol_sprite(class_name))
-
-	def sprite_frame_count(self, sprite_id):
-		return len(self._frame_places(*self.sprites[sprite_id]))
 
 	def sprite_frame_labels(self, sprite_id):
 		"Returns the frame labels of a sprite: label -> frame number (1-based)."
@@ -464,88 +414,3 @@ class SwfFile:
 			elif code == SHOW_FRAME_TAG:
 				frame += 1
 		return labels
-
-	def symbol_shot_points(self, class_name):
-		"""Returns for each frame of the symbol the point (x, y) in pixels where its shots start, or None.
-
-		The client looks for the point in the first child of the frame, a sprite.
-		The point can be in any frame of that sprite; this takes the first frame
-		that has it.
-		"""
-		points = []
-		for places in self._frame_places(*self.sprites[self._symbol_sprite(class_name)]):
-			point = None
-			if places:
-				char_id, matrix, _ = places[min(places)]
-				if char_id in self.sprites:
-					point = self._named_point(char_id, matrix)
-			points.append(point)
-		return points
-
-	def _named_point(self, sprite_id, matrix):
-		found = {}
-		for places in self._frame_places(*self.sprites[sprite_id]):
-			for _, point_matrix, name in places.values():
-				if name in SHOT_POINT_NAMES and name not in found:
-					found[name] = point_matrix
-		for name in SHOT_POINT_NAMES:
-			if name in found:
-				a, b, c, d, tx, ty = matrix
-				x, y = found[name][4], found[name][5]
-				return ((a * x + c * y + tx) / 20, (b * x + d * y + ty) / 20)
-		return None
-
-	def symbol_offset(self, class_name):
-		"Returns the top-left corner of the symbol's bounds in pixels, relative to its registration point."
-		if class_name not in self.symbols:
-			raise SwfError(f"symbol '{class_name}' is not exported")
-		rect = self.character_bounds(self.symbols[class_name])
-		if rect is None:
-			raise SwfError(f"symbol '{class_name}' has no visible content")
-		return rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20
-
-	def symbol_frame_clips(self, class_name):
-		"""Returns for each frame of the symbol (character id, matrix) of its clip, or None.
-
-		A clip is a nested sprite with more than one frame. A frame of a unit graphic shows one nested sprite, the clip, which plays
-		its own frames: for example the walk in one direction. The client shows
-		only the first frame of nested sprites in buildings, but units play them.
-		"""
-		char_id = self.symbols[class_name]
-		result = []
-		for places in self._frame_places(*self.sprites[char_id]):
-			clips = list(places.values())
-			if len(clips) == 1 and clips[0][0] in self.sprites and len(self._frame_places(*self.sprites[clips[0][0]])) > 1:
-				result.append(clips[0][:2])
-			else:
-				result.append(None)
-		return result
-
-	def button_offset(self, button_id):
-		"""Returns the top-left corner in pixels of the up state of a button, relative to its
-		registration point: the place of the image that JPEXS exports for the state."""
-		data = self.data
-		start, end = self.buttons[button_id]
-		p = start + 5  # button id, flags, offset of the actions
-		rect = None
-		while p < end and data[p] != 0:
-			flags = data[p]
-			char_id = struct.unpack_from('<H', data, p + 1)[0]
-			matrix, p = _read_matrix(data, p + 5)
-			p = _skip_color_transform(data, p)
-			if flags & 0x10:
-				p = _skip_filters(data, p)
-			if flags & 0x20:
-				p += 1  # blend mode
-			if flags & 0x01:  # up state
-				rect = _union(rect, _transform_or_none(self.character_bounds(char_id), matrix))
-		if rect is None:
-			raise SwfError(f"button {button_id} has no up state")
-		return rect[0] / 20, rect[1] / 20
-
-	def sprite_offset(self, char_id):
-		"Returns the top-left corner of a sprite's bounds in pixels, relative to its registration point."
-		rect = self.character_bounds(char_id)
-		if rect is None:
-			raise SwfError(f"sprite {char_id} has no visible content")
-		return rect[0] / 20, rect[1] / 20

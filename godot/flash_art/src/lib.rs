@@ -6,6 +6,7 @@ mod art;
 mod bitmap;
 mod color;
 mod filters;
+mod font;
 mod layout;
 mod render;
 mod shape;

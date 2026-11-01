@@ -144,6 +144,23 @@ impl FlashArt {
         Image::create_from_data(width as i32, height as i32, false, Format::RGBA8, &PackedByteArray::from(pixels))
     }
 
+    /// Draws the state (0 up, 1 over, 2 down) of a button on an image of its
+    /// canvas, which covers all its states. Null when the id is not a button.
+    #[func]
+    fn render_button(&self, id: i64, state: i64) -> Option<Gd<Image>> {
+        let art = &self.shared.art;
+        let canvas = art.canvas(id as u16)?;
+        let pixmap = art.render_button(id as u16, state.clamp(0, 2) as usize, canvas)?;
+        Image::create_from_data(canvas.width as i32, canvas.height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take())))
+    }
+
+    /// A font of the file as the bytes of a TrueType file, for FontFile.data.
+    /// Empty when the id is not a font.
+    #[func]
+    fn font_data(&self, id: i64) -> PackedByteArray {
+        PackedByteArray::from(self.shared.art.font_ttf(id as u16).unwrap_or_default())
+    }
+
     /// Starts to draw these frames of a character on other threads, so that
     /// render() later only takes them.
     #[func]
@@ -205,7 +222,11 @@ fn draw(art: &Art, (id, frame): Key) -> Option<(Vec<u8>, u32, u32)> {
     let canvas = art.canvas(id)?;
     let area = art.frame_area(id, frame, canvas)?;
     let pixmap = art.render_area(id, frame, canvas, area, 1.0)?;
-    let mut pixels = pixmap.take();
+    Some((straight(pixmap.take()), area.2, area.3))
+}
+
+/// Premultiplied pixels made straight, as Godot images keep them.
+fn straight(mut pixels: Vec<u8>) -> Vec<u8> {
     for p in pixels.chunks_exact_mut(4) {
         let a = p[3] as u32;
         if a != 0 && a != 255 {
@@ -214,5 +235,5 @@ fn draw(art: &Art, (id, frame): Key) -> Option<(Vec<u8>, u32, u32)> {
             }
         }
     }
-    Some((pixels, area.2, area.3))
+    pixels
 }

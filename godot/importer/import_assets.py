@@ -14,7 +14,6 @@ socialemperors server folder that the user supplies and writes:
                                      "loop_from": frame where the graphic goes on after its last frame, or null}
   <out>/ui/...                       windows of the client, see ui_import.py
 
-It needs Java and the JPEXS decompiler (ffdec-cli.jar) for the windows of the client.
 
 The import continues after a stop: run it again with the same --out folder.
 A graphic is done when its meta.json is written; meta.json also records the
@@ -32,7 +31,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 
 from swf_bounds import SwfError, SwfFile
 from ui_import import CAST_SWF, CLIENT_SWF, import_ui
@@ -47,7 +45,7 @@ MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
 # the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
 SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
 # The code that decides the content of the output. A graphic from other code is imported again.
-IMPORTER_FILES = ("import_assets.py", "jpexs.py", "swf_bounds.py", "ui_import.py")
+IMPORTER_FILES = ("import_assets.py", "swf_bounds.py", "ui_import.py")
 # The copy of the SWF file in the folder of a graphic, from which the port draws it.
 GRAPHIC_FILE = "graphic.swf"
 
@@ -214,7 +212,6 @@ def main():
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 	parser.add_argument("--source", default=repo_root, help="socialemperors server folder with assets/ and config/")
 	parser.add_argument("--out", required=True, help="output folder that the Godot port reads")
-	parser.add_argument("--jpexs", required=True, help="path to ffdec-cli.jar or the ffdec start script")
 	parser.add_argument("--village", action="append", default=[], help="village save to import (repeatable); default villages/initial.json")
 	parser.add_argument("--all", action="store_true", help="export the graphics of every item, not only the land, the store buildings and the items in the villages")
 	parser.add_argument("--jobs", type=int, default=4, help="number of graphics that are imported at the same time (default 4)")
@@ -297,7 +294,7 @@ def main():
 				failed.append((job[0], error))
 			print(f"[{count}/{len(jobs)}] {job[0]}", flush=True)
 	except KeyboardInterrupt:
-		# The JPEXS processes get the interrupt too. Without this, the pool would run all jobs that wait.
+		# Without this, the pool would run all jobs that wait.
 		pool.shutdown(wait=True, cancel_futures=True)
 		print("stopped: run the import again with the same --out folder to continue", file=sys.stderr)
 		sys.exit(130)
@@ -312,7 +309,7 @@ def main():
 	else:
 		shutil.rmtree(os.path.join(out_dir, "ui"), ignore_errors=True)
 		try:
-			print(f"windows: {import_ui(args.jpexs, source, out_dir, unit_thumbs, spell_images)} sprites", flush=True)
+			print(f"windows: {import_ui(source, out_dir, unit_thumbs, spell_images)} sprites", flush=True)
 			write_json_last(ui_record_path, {"windows": ui_record})
 		except (SwfError, RuntimeError, OSError) as e:
 			failed.append(("windows of the client", str(e)))

@@ -18,6 +18,12 @@ pub enum Character {
     Morph(Box<swf::DefineMorphShape>),
     Sprite(Sprite),
     Bitmap(BitmapData),
+    /// The display lists of the states up, over and down of a button.
+    Button([Vec<Placed>; 3]),
+    /// Static text: its bounds, its matrix and its runs of glyphs.
+    Text { bounds: Rect, matrix: Transform, records: Vec<swf::TextRecord> },
+    /// A font of text fields, which Godot gets as a TrueType font (font.rs).
+    Font(Box<crate::font::FontData>),
     /// Text and the other characters that the art of the game does not draw.
     /// Texts have bounds, which count in the bounds of their sprites.
     Other { bounds: Option<Rect> },
@@ -90,9 +96,10 @@ impl Art {
             Tag::DefineBitsJpeg2 { id, jpeg_data } => (*id, Character::Bitmap(BitmapData::jpeg(jpeg_data, None, None))),
             Tag::DefineBitsJpeg3(b) => (b.id, Character::Bitmap(BitmapData::jpeg(b.data, None, Some(b.alpha_data)))),
             Tag::DefineBitsLossless(b) => (b.id, Character::Bitmap(BitmapData::lossless(b))),
-            Tag::DefineText(t) => (t.id, Character::Other { bounds: Some(rect(&t.bounds)) }),
+            Tag::DefineText(t) | Tag::DefineText2(t) => (t.id, Character::Text { bounds: rect(&t.bounds), matrix: matrix(&t.matrix), records: t.records.clone() }),
             Tag::DefineEditText(t) => (t.id(), Character::Other { bounds: Some(rect(t.bounds())) }),
-            Tag::DefineButton2(b) => (b.id, Character::Other { bounds: None }),
+            Tag::DefineButton2(b) => (b.id, Character::Button(button_states(b))),
+            Tag::DefineFont2(f) => (f.id, Character::Font(Box::new(crate::font::FontData::from_swf(f)))),
             Tag::SymbolClass(links) => {
                 for link in links {
                     self.symbols.insert(link.class_name.to_string_lossy(swf::UTF_8), link.id);
@@ -166,14 +173,37 @@ impl Art {
         // Stops the recursion in a file in which a sprite contains itself.
         self.bounds.lock().unwrap().insert((id, with_filters), None);
         let result = match self.characters.get(&id) {
-            Some(Character::Shape { bounds, .. } | Character::Other { bounds: Some(bounds) }) => Some(*bounds),
+            Some(Character::Shape { bounds, .. } | Character::Text { bounds, .. } | Character::Other { bounds: Some(bounds) }) => Some(*bounds),
             Some(Character::Morph(m)) => union(Some(rect(&m.start.shape_bounds)), Some(rect(&m.end.shape_bounds))),
             Some(Character::Sprite(s)) => s.frames.iter().flatten().fold(None, |r, placed| union(r, self.placed_bounds(placed, with_filters))),
+            Some(Character::Button(states)) => states.iter().flatten().fold(None, |r, placed| union(r, self.placed_bounds(placed, with_filters))),
             _ => None,
         };
         self.bounds.lock().unwrap().insert((id, with_filters), result);
         result
     }
+}
+
+/// The records of a button for each of the states up, over and down, in the order of their depths.
+fn button_states(button: &swf::Button) -> [Vec<Placed>; 3] {
+    let state = |bit: swf::ButtonState| {
+        let mut list: Vec<Placed> = button
+            .records
+            .iter()
+            .filter(|r| r.states.contains(bit))
+            .map(|r| {
+                let mut placed = Placed::new(r.depth, r.id, 0);
+                placed.matrix = matrix(&r.matrix);
+                placed.color = ColorTransform::from_swf(&r.color_transform);
+                placed.filters = Arc::new(r.filters.clone());
+                placed.blend = r.blend_mode;
+                placed
+            })
+            .collect();
+        list.sort_by_key(|p| p.depth);
+        list
+    };
+    [state(swf::ButtonState::UP), state(swf::ButtonState::OVER), state(swf::ButtonState::DOWN)]
 }
 
 fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
@@ -294,6 +324,16 @@ impl Art {
             }
             Some(Character::Morph(_)) => println!("{pad}morph {id}"),
             _ => println!("{pad}other {id}"),
+        }
+    }
+}
+
+impl Art {
+    /// A font of the file as a TrueType file, or None when the id is not a font.
+    pub fn font_ttf(&self, id: CharacterId) -> Option<Vec<u8>> {
+        match self.characters.get(&id) {
+            Some(Character::Font(font)) => Some(font.to_ttf()),
+            _ => None,
         }
     }
 }
