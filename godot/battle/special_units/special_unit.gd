@@ -105,6 +105,40 @@ static func circular_push(sim: BattleSim, unit: BattleFighter, range_tiles: int,
 			sim.push_in_air(enemy, unit, push)
 
 
+## The unit becomes the item item_id for seconds (transformTo of the client):
+## it gets the look, the attack, the range, the speed, the ability and the
+## buttons of that item and keeps its life. Then it becomes itself again and
+## plays back_animation when it is not -1 (transformBack).
+static func transform(sim: BattleSim, unit: BattleFighter, item_id: int, seconds: int, back_animation := -1) -> void:
+	var def := sim.config_item(item_id)
+	if def == null or unit.dead:
+		return
+	var own_def := unit.def
+	var own_ability := unit.ability
+	_take_stats(unit, def)
+	var ability := AbilityTable.create(item_id)
+	unit.ability = ability if ability != null else BattleAbility.new()
+	unit.ability.on_added(sim, unit)
+	unit.ability.make_buttons(sim, unit)
+	sim.change_look(unit, null)
+	sim.after(seconds * BattleSim.FRAMES_PER_SECOND, func() -> void:
+		if unit.dead:
+			return
+		_take_stats(unit, own_def)
+		unit.ability = own_ability
+		sim.change_look(unit, null)
+		if back_animation >= 0:
+			sim.play_special(unit, back_animation, sim.animation_frames(unit, back_animation, 30), {}, Callable(), true))
+
+
+static func _take_stats(unit: BattleFighter, def: GameConfig.ItemDef) -> void:
+	unit.def = def
+	unit.attack = def.attack
+	unit.attack_range = def.attack_range
+	unit.attack_interval = def.attack_interval
+	unit.speed = def.velocity
+
+
 ## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
 static func thumb(item_id: int, name: String, number: int) -> String:
 	return "%d_%s_button_%d" % [item_id, name, number]

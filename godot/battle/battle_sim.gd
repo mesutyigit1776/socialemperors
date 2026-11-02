@@ -297,6 +297,9 @@ func attack(unit: BattleFighter, target: BattleFighter) -> void:
 func walk(unit: BattleFighter, tile: Vector2i) -> bool:
 	if unit.dead or unit.incapacitated:
 		return false
+	if unit.ability != null and unit.ability.teleports and unit.forced_action < 0 and frame >= unit.ability.teleport_ready:
+		_teleport(unit, tile)
+		return true
 	var nodes: Array[Vector2i] = []
 	if unit.flying:
 		nodes = _line(unit.tile, tile)
@@ -707,6 +710,32 @@ func push_in_air(unit: BattleFighter, source: BattleFighter, distance: int, fram
 		if not unit.dead:
 			unit.ai.on_arrived(self, unit)
 		state_changed.emit(unit))
+
+
+## Teleport of the client (enableTeleport): the unit plays its first special
+## animation, then after 0.25 seconds it is on the free tile nearest to
+## tile and plays its second special animation. It can teleport again 3
+## seconds later.
+func _teleport(unit: BattleFighter, tile: Vector2i) -> void:
+	unit.ability.teleport_ready = frame + 1000000
+	var first := UnitSprite.Action.SPECIAL
+	play_special(unit, first, animation_frames(unit, first, 20), {}, func() -> void:
+		after(roundi(0.25 * FRAMES_PER_SECOND), func() -> void:
+			if unit.dead:
+				return
+			var landing: Variant = BattleFormation.nearest_free_tile(tile, IsoGrid.MAP_TILES, is_free)
+			if landing != null and not _water.has(landing):
+				if _tiles.get(unit.tile) == unit:
+					_tiles.erase(unit.tile)
+				unit.tile = landing
+				_tiles[landing] = unit
+				unit.position = IsoGrid.tile_to_map(landing)
+				unit.next_point = unit.position
+				unit.walk_point = null
+				unit.path.clear()
+				unit.moving = false
+			play_special(unit, first + 1, animation_frames(unit, first + 1, 20), {}, func() -> void:
+				unit.ability.teleport_ready = frame + 3 * FRAMES_PER_SECOND, true)), true)
 
 
 ## The unit flies half the way to source in one second, then flies tiles away

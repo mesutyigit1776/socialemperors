@@ -31,7 +31,10 @@ var immune_to_push := false
 var giant := false
 ## Seconds of cast and cooldown time that go in each second (coolDownMult):
 ## 2 while the units of a combo are on the map, see SpecialUnit.combo().
-var cooldown_speed := 1  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
+var cooldown_speed := 1
+## The unit teleports instead of walking, see BattleSim._teleport().
+var teleports := false
+var teleport_ready := 0  ## The frame from which the unit can teleport again.  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
 var immune_to_freeze := false
 var immune_to_poison := false
 var immune_to_swallow := false

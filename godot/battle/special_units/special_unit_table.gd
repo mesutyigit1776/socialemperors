@@ -18,6 +18,7 @@ static func _families() -> Array:
 		Colossi,
 		Heroes,
 		Gladiators,
+		ClassicDragons,
 	]
 
 
