@@ -135,6 +135,9 @@ static func create(quest_island: QuestIsland, map: Village, army: Dictionary, co
 	quest._land_army()
 	quest.sim.died.connect(quest._on_died)
 	quest.sim.converted.connect(quest._on_converted)
+	quest.sim.gold_earned.connect(func(amount: int) -> void:
+		quest.gold += amount
+		quest.changed.emit())
 	return quest
 
 

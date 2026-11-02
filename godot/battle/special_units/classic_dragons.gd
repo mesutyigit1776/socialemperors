@@ -14,8 +14,13 @@ const UNITS := {
 	2016: "snake_electric", 2018: "snake_electric",
 	2057: "three_headed", 2058: "three_headed",
 	2043: "dual_gods", 2045: "dual_gods",
+	2132: "three_head_elemental", 2134: "three_head_elemental",
+	2069: "golden_dynasty", 2071: "golden_dynasty",
+	736: "double_head_2", 838: "double_head_2",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838]
+const GOLD_PER_STATUE := 10
+const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
 
 
@@ -206,6 +211,104 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					below_minions(3), "3 draggies max", COOLDOWN_OLD)
 			if rider:
 				limit_lightning(ability, beams(SP7, [23], 50, LIMIT_RED_BEAM))
+		"three_head_elemental":
+			add(ability, 0, "Mega Slash", "2132_1", SpecialAttacks.Frames.new(sim, unit, SP6, [53, 59], func() -> void:
+				circular_push(sim, unit, 8, 10, int(atk * 1.5), 8)), Callable(), "No target within range")
+			# A rain of heavy rocks: a unit that a rock hits falls into a hole
+			# and dies (one hole for each tile); a building takes the attack.
+			add(ability, 1, "Ultra Fireball", "2132_2", SpecialAttacks.Rain.new(sim, unit, 4, 2.5, SP5, MagicParticles.HEAVY_ROCK_RAIN,
+					_HoleHit.new(sim, unit)).with_multiplier(0.5).with_frames([25]), Callable(), "No target within range")
+			# The 5 nearest enemies within 5 tiles with less than 500 life turn
+			# around the dragon for 3 seconds and die.
+			add(ability, 2, "Hyper Whirlwind", "2132_3", SpecialAttacks.Frames.new(sim, unit, SP4, [30, 35, 40, 45], func() -> void:
+				for enemy in sim.items_near(unit.tile, 5, 5, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and not item.swallowed and item.max_life() < 500 \
+								and (item.ability == null or not item.ability.immune_to_push)):
+					var target := enemy
+					target.incapacitated = true
+					target.swallowed = true
+					sim.state_changed.emit(target)
+					sim.after(3 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if not target.dead:
+							sim.kill(target, unit))))
+			add(ability, 3, "God Minions", "2132_4", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 2133),
+					below_minions(3), "3 " + MINIONS_MAX)
+			if rider:
+				limit_healing(ability, beams(SP7, [22], 50, LIMIT_GREEN_BEAM))
+		"golden_dynasty":
+			add(ability, 0, "Shoot Balls", "bolas_dragon_2069", SpecialAttacks.Frames.new(sim, unit, SP3, [11], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					sim.shoot(unit, target, "p.lightBall", int(atk / 2)), 6), has_target(), "No targets in range")
+			add(ability, 1, "Horn Attack", "dale_cabeza_2069", SpecialAttacks.Frames.new(sim, unit, SP4, [11], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or not target.is_unit():
+					return
+				if target.max_life() <= 500:
+					sim.kill(target, unit)
+				else:
+					sim.receive_attack(target, int(atk * 3), unit)
+					sim.push_in_air(target, unit, 4)), has_target(), "No targets in range")
+			# Up to 10 enemies with less than 500 life become gold statues for
+			# 10 seconds; each statue gives the player 10 gold. The others are
+			# pulled in, fly 4 tiles and take half the attack.
+			var statues := [0]
+			var whirl := SpecialAttacks.Frames.new(sim, unit, SP5, [17, 27], func() -> void:
+				for enemy in sim.items_near(unit.tile, 6, 5, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_push)):
+					var target := enemy
+					if statues[0] < MAX_STATUES and target.max_life() < 500:
+						if target.frozen:
+							continue
+						statues[0] += 1
+						sim.push_in_air(target, unit, -maxi(sim.distance(target, unit) / 2, 1))
+						sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+							if not target.dead:
+								Damages.Freeze.new(sim, unit, 25, 5, 5).apply(target)
+								sim.gold_earned.emit(GOLD_PER_STATUE))
+						sim.after(10 * BattleSim.FRAMES_PER_SECOND, func() -> void: statues[0] = maxi(statues[0] - 1, 0))
+					else:
+						sim.absorb_and_push(target, unit, 4)
+						sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+							if not target.dead:
+								sim.receive_attack(target, int(atk / 2), unit)), 10)
+			whirl.incapacitate = false
+			add(ability, 2, "Whirlwind", "whirwind_2069", whirl)
+			add(ability, 3, "Spawn Minions", "draggie_dinasty_2069", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 2070),
+					below_minions(3), "3 draggies max")
+			ability.teleports = true
+			if rider:
+				limit_lightning(ability, beams(SP5, [16], 50, LIMIT_RED_BEAM))
+		"double_head_2":
+			ability.giant = true
+			add(ability, 0, "Culazo digo... culetazo", "botonCuletazo", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, 42, {18: func() -> void:
+					for enemy in sim.items_near(unit.tile, 2, 20, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+							return item.is_unit() and not item.dead):
+						sim.push_in_air(enemy, unit, 3)
+						sim.receive_attack(enemy, int(atk / 2.2), unit)
+						if unit.target == null and not enemy.dead:
+							sim.set_target(unit, enemy)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			# For 12 seconds the dragon turns and walks slowly with a range of
+			# 1; each second the items on the 5 x 5 tiles around it take half
+			# the attack, and units fly 2 tiles.
+			add(ability, 1, "Torbelliiiino murtal", "botonTorbellino", func(_s: BattleSim, _f: BattleFighter) -> void:
+				unit.speed = 15
+				unit.attack_range = 1
+				for second in range(1, 13):
+					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if unit.dead:
+							return
+						if second == 12:
+							unit.speed = unit.def.velocity
+							unit.attack_range = unit.def.attack_range
+							return
+						for item in sim.items_near(unit.tile, 2, 25, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool: return not other.dead):
+							sim.receive_attack(item, int(atk / 2), unit)
+							if item.is_unit() and not item.dead:
+								sim.push_in_air(item, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			if rider:
+				limit_lightning(ability, beams(SP5, [17], 50, LIMIT_RED_BEAM))
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
@@ -214,3 +317,27 @@ class _StarHit extends UnitDamage:
 		sim.receive_attack(target, attacker.def.attack / 2, _source())
 		if not target.dead and not target.dizzy:
 			Damages.Dizzy.new(sim, attacker, 0, 5, 1).apply(target)
+
+
+## A heavy rock of the Three-Headed Elemental Dragon: a unit falls into a
+## hole and dies, once for each tile; a building takes the attack.
+class _HoleHit extends UnitDamage:
+	var _holes: Array[Vector2i] = []
+
+	func apply(target: BattleFighter, _multiplier := 1.0) -> void:
+		if not target.is_unit():
+			sim.receive_attack(target, attacker.def.attack, _source())
+			return
+		if target.tile in _holes or target.swallowed:
+			return
+		_holes.append(target.tile)
+		target.incapacitated = true
+		sim.particle(attacker, target.tile, MagicParticles.ROCK_HOLE, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void:
+			target.swallowed = true
+			sim.state_changed.emit(target)
+			sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+				if not target.dead:
+					sim.kill(target, _source())), true)
+
+	func can_apply(target: BattleFighter) -> bool:
+		return target != null and not target.dead

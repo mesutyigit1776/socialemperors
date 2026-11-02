@@ -31,6 +31,9 @@ signal state_changed(fighter: BattleFighter)
 ## A magic particle of the client (MagicParticle) appears on tile after delay
 ## frames, see particle().
 signal particle_added(type: int, tile: Vector2i, delay: int)
+## The player earns gold during the battle (CMD_GOLD_STATUE_CONVERSION of the
+## Golden Dynasty Dragon).
+signal gold_earned(amount: int)
 ## The unit shows the graphic of another item now, see change_look().
 signal look_changed(fighter: BattleFighter)
 ## An effect graphic of <data>/fx plays once on tile, see effect().
