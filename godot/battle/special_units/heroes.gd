@@ -19,6 +19,9 @@ const UNITS := {
 	832: "furious_red_rider",
 	839: "infernal_rider",
 	833: "lightning_rider",
+	2090: "infraworld_colossus",
+	2099: "golden_slayer",
+	897: "scarab_rider",
 }
 const COOLDOWN_OLD := 25
 const HUNTER_TILES := 5
@@ -147,6 +150,103 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			# The beams come from the normal attack animation, which stops meanwhile.
 			limit_lightning(ability, LimitAttacks.Beams.new(UnitSprite.Action.ATTACKING, [15], 100, 50, LIMIT_RED_BEAM, 0.25, true))
 
+		"infraworld_colossus":
+			var cant := "No targets in sight"
+			var in_range := func(_s: BattleSim, fighter: BattleFighter) -> bool: return not _near(sim, fighter, fighter.attack_range, 20).is_empty()
+			# For 4 seconds: a beam at the first enemy in range; while it lives,
+			# the next hits take 1.5 times the attack.
+			var hit := [null]
+			add(ability, 0, "Rays!", "2090_infra_colossus_1", SpecialAttacks.Frames.new(sim, unit, SP1, [10], func() -> void:
+				var enemies := _near(sim, unit, unit.attack_range, 20)
+				if enemies.is_empty():
+					return
+				if enemies[0] != hit[0]:
+					hit[0] = enemies[0]
+					sim.shoot(unit, enemies[0], "p.dualBeamPurple", unit.attack)
+				else:
+					sim.receive_attack(enemies[0], int(atk * 1.5), unit), 4), in_range, cant)
+			# The smash of the limit settings of the client, as a button.
+			add(ability, 1, "Jump!", "2090_infra_colossus_2", func(battle: BattleSim, fighter: BattleFighter) -> void:
+				LimitAttacks.smash(battle, fighter, SP3, [33], 2, 4, 6), in_range, cant)
+			add(ability, 2, "Deadly Breath!", "2090_infra_colossus_3", SpecialAttacks.Frames.new(sim, unit, SP2, [21], func() -> void:
+				for enemy in _near(sim, unit, unit.attack_range, 20):
+					Damages.Freeze.new(sim, unit, sim.rng.randi_range(15, 20) * 3, 3, 3).apply(enemy)
+					sim.receive_attack(enemy, int(atk * 0.75), unit)), in_range, cant)
+			# A soul whirlwind that cannot die comes next to the colossus.
+			add(ability, 3, "Souls Attack!", "2090_infra_colossus_4", SpecialAttacks.Frames.new(sim, unit, SP4, [50], func() -> void:
+				var soul := sim.spawn(sim.config_item(2110), unit.tile + Vector2i(2, 2), unit.team)
+				if soul != null:
+					soul.cannot_die = true
+				unit.ability.add_limit(sim, unit, int(atk * 3), false)), Callable(), cant)
+			# The deadly hole (the limit button, with a cooldown of 24 seconds):
+			# up to 20 enemy units within 7 tiles that attack and have at most
+			# 500 life fall into it and die.
+			ability.has_limit = true
+			var eatable := func(fighter: BattleFighter) -> Array[BattleFighter]:
+				return sim.items_near(fighter.tile, 7, 20, BattleAbility.enemy_side(fighter), false, func(item: BattleFighter) -> bool:
+					return item.is_unit() and not item.dead and item.attack > 0 and item.health <= 500)
+			add(ability, BattleAbility.LIMIT_BUTTON, "Deadly Hole!", "", SpecialAttacks.Frames.new(sim, unit, SP5, [22], func() -> void:
+				var prey: Array[BattleFighter] = eatable.call(unit)
+				for i in prey.size():
+					var target := prey[i]
+					target.incapacitated = true
+					target.swallowed = true
+					sim.state_changed.emit(target)
+					sim.after(2 * (i / ceili(prey.size() / 10.0)) + 15, func() -> void:
+						if not target.dead:
+							sim.kill(target, unit))), func(_s: BattleSim, fighter: BattleFighter) -> bool: return not eatable.call(fighter).is_empty(), cant)
+		"golden_slayer":
+			var cant := "No targets in sight"
+			add(ability, 0, "Sword!", "2099_medieval_slayer_btn1", SpecialAttacks.Frames.new(sim, unit, SP1, [28], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					if target.is_unit():
+						sim.push_in_air(target, unit, 3)
+					sim.receive_attack(target, int(atk * 5), unit)), func(_s: BattleSim, fighter: BattleFighter) -> bool:
+						return fighter.target != null and sim.distance(fighter, fighter.target) <= 3, cant)
+			# 3 loops of 11 beams at the enemies within 8 tiles; each enemy takes
+			# at most 500 / the number of enemies from them.
+			add(ability, 1, "Beams!", "2099_medieval_slayer_btn2", func(_s: BattleSim, _f: BattleFighter) -> void: _slayer_beams(sim, unit),
+					func(_s: BattleSim, fighter: BattleFighter) -> bool: return not _near(sim, fighter, 8, 10).is_empty(), cant)
+			# 30 loops; every third loop, the 8 nearest enemies within 3 tiles
+			# take half the attack and fly 3 tiles.
+			add(ability, 2, "Whirlwind!", "2099_medieval_slayer_btn3", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP3, 30 * 8 + 5, {}, Callable(), false)
+				for loop in range(0, 30, 3):
+					sim.after(5 + loop * 8, func() -> void:
+						if not unit.dead:
+							circular_push(sim, unit, 3, 8, unit.attack / 2, 3)))
+			# A drone comes within 4 tiles; at most 3.
+			add(ability, 3, "Drone!", "2099_medieval_slayer_btn4", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var tile := unit.tile + Vector2i(sim.rng.randi_range(-4, 4), sim.rng.randi_range(-4, 4))
+				var drone := sim.spawn(sim.config_item(2103), tile.clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1)), unit.team)
+				if drone != null:
+					unit.ability.add_minion(sim, drone)
+					if unit.target != null:
+						sim.set_target(drone, unit.target), below_minions(3), "Max 3 drones")
+		"scarab_rider":
+			var busy := func(_s: BattleSim, fighter: BattleFighter) -> bool: return fighter.forced_action < 0
+			add(ability, 0, "Fly attack", "897_scarab_rider_button1", func(_s: BattleSim, _f: BattleFighter) -> void: _scarab_fly(sim, unit),
+					func(_s: BattleSim, fighter: BattleFighter) -> bool: return _scarab_prey(sim, fighter) != null, "No small units in range")
+			# 15 loops; every third loop a whirlwind.
+			add(ability, 1, "Whirlwind", "897_scarab_rider_button2", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP1, 14 + 15 * 8, {}, Callable(), true)
+				for loop in range(0, 15, 3):
+					sim.after(14 + loop * 8, func() -> void:
+						if not unit.dead:
+							sim.whirlwind(unit, 0.45, 2)), busy)
+			# 5 scarabs come within 4 tiles; each lives 15 seconds.
+			add(ability, 2, "Spawn Minions", "897_scarab_rider_button3", func(_s: BattleSim, _f: BattleFighter) -> void:
+				for i in 5:
+					var tile := (unit.tile + Vector2i(sim.rng.randi_range(-4, 4), sim.rng.randi_range(-4, 4))).clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+					var scarab := sim.spawn(sim.config_item(898), tile, unit.team)
+					if scarab == null:
+						continue
+					if unit.target != null:
+						sim.set_target(scarab, unit.target)
+					sim.after(15 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if not scarab.dead:
+							sim.kill(scarab, null)), busy)
 
 static func _not_in_limit() -> Callable:
 	return func(_s: BattleSim, fighter: BattleFighter) -> bool: return not fighter.ability.in_limit_attack
@@ -182,3 +282,71 @@ static func _copy_stats(unit: BattleFighter, source: GameConfig.ItemDef, life_pa
 	unit.attack_range = source.attack_range
 	unit.attack_interval = source.attack_interval
 	unit.speed = source.velocity
+
+
+## The enemy units within range_tiles of the unit, at most count.
+static func _near(sim: BattleSim, unit: BattleFighter, range_tiles: int, count: int) -> Array[BattleFighter]:
+	return sim.items_near(unit.tile, range_tiles, count, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead)
+
+
+static func _slayer_beams(sim: BattleSim, unit: BattleFighter) -> void:
+	var enemies := _near(sim, unit, 8, 10)
+	if enemies.is_empty():
+		return
+	var limit := ceili(500.0 / enemies.size())
+	var dealt := {}
+	var frames := [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 59]
+	var events := {}
+	for loop in 3:
+		for frame: int in frames:
+			events[loop * 59 + frame] = func() -> void:
+				var target: BattleFighter = null
+				for enemy in enemies:
+					if not enemy.dead and dealt.get(enemy, 0) < limit:
+						target = enemy
+						break
+				if target == null or unit.dead:
+					return
+				var amount := int(unit.attack * 0.5)
+				var done: int = dealt.get(target, 0)
+				if done > limit - 1:
+					amount = 5
+				elif done + amount > limit - 10:
+					amount = limit - 10 - done
+				sim.shoot_beam(unit, target, target.tile, "p.yellowLightning", 5, -1)
+				sim.receive_attack(target, maxi(amount, 0), unit)
+				dealt[target] = done + amount
+	sim.play_special(unit, SP2, 3 * 59 + 5, events, Callable(), true)
+
+
+## The nearest enemy unit within 6 tiles with at most 350 life that is not a
+## boss, for the Scarab Rider.
+static func _scarab_prey(sim: BattleSim, unit: BattleFighter) -> BattleFighter:
+	var found := sim.items_near(unit.tile, 6, 1, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead and item.def.life <= 350 and item.def.subcat_functional != BattleSim.SUBCAT_BOSS and not item.incapacitated)
+	return found[0] if not found.is_empty() else null
+
+
+## The Scarab Rider flies fast next to its prey, grabs it and eats it.
+static func _scarab_fly(sim: BattleSim, unit: BattleFighter) -> void:
+	var prey := _scarab_prey(sim, unit)
+	if prey == null:
+		return
+	prey.incapacitated = true
+	var speed := unit.speed
+	unit.speed = 114
+	sim.order_walk(unit, prey.tile)
+	var watch := func(again: Callable) -> void:
+		if unit.dead:
+			return
+		if unit.moving and sim.distance(unit, prey) > 1:
+			sim.after(1, again.bind(again))
+			return
+		unit.speed = speed
+		sim.play_special(unit, SP2, 40, {7: func() -> void:
+			prey.swallowed = true
+			sim.state_changed.emit(prey), 35: func() -> void:
+				if not prey.dead:
+					sim.kill(prey, unit)}, Callable(), true)
+	sim.after(1, watch.bind(watch))
