@@ -85,8 +85,8 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			_god_minions(sim, unit, ability, pic.call(2), 2170)
 			# A rain of swords; where one hits a unit, the unit flies 3 tiles and
 			# the 3 nearest units within 3 tiles take half the attack and fly 2.
-			limit_special(ability, SP5, [115], func(battle: BattleSim, god: BattleFighter) -> void:
-				SpecialAttacks.Rain.new(battle, god, 8, 4, SP5, MagicParticles.SWORD_RAIN, _SwordHit.new(battle, god)).with_multiplier(2).with_delay(0.075).start())
+			var sword_rain := SpecialAttacks.Rain.new(sim, unit, 8, 4, SP5, MagicParticles.SWORD_RAIN, _SwordHit.new(sim, unit)).with_multiplier(2).with_delay(0.075)
+			limit_special(ability, SP5, [115], func(_battle: BattleSim, _god: BattleFighter) -> void: sword_rain.start())
 		"genesis_shadow":
 			var pic := func(number: int) -> String: return "2160_%d" % number
 			add(ability, 0, "Mega Slash", pic.call(1), SpecialAttacks.Frames.new(sim, unit, SP1, [37], func() -> void: _god_slash(sim, unit)),

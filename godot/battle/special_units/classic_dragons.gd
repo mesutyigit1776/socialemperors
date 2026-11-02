@@ -21,8 +21,10 @@ const UNITS := {
 	2140: "four_wing", 2142: "four_wing",
 	2129: "hell", 2131: "hell",
 	826: "necro", 845: "necro",
+	2023: "frost_fire", 2026: "frost_fire",
+	777: "crystal", 841: "crystal",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845, 2026, 841]
 const GOLD_PER_STATUE := 10
 const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
@@ -419,6 +421,70 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					below_minions(3), "3 draggies max", COOLDOWN_OLD)
 			if rider:
 				limit_smash(ability, SP4, [29], 2, 6, 5)
+		"frost_fire":
+			add(ability, 0, "Red Rays", "2023_bolafuego", SpecialAttacks.Frames.new(sim, unit, SP5, [23, 28], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead and sim.distance(unit, target) <= unit.attack_range:
+					sim.shoot(unit, target, "p.catapultFireball", unit.attack), 6))
+			# A frozen rain; after 1.5 seconds the units within 3 tiles of its
+			# centre freeze for 6 seconds.
+			var frozen_rain := SpecialAttacks.Rain.new(sim, unit, 3, 2.75, SP6, MagicParticles.FROZEN_RAIN, null).with_multiplier(0.5)
+			add(ability, 1, "Red Rays", "2023_lluvia", SpecialAttacks.Frames.new(sim, unit, SP6, [24], func() -> void:
+				var centre := unit.target.tile if unit.target != null and not unit.target.dead else unit.tile
+				frozen_rain.start()
+				sim.after(45, func() -> void:
+					for enemy in sim.items_near(centre, 3, 15, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+							return item.is_unit() and not item.dead):
+						Damages.Freeze.new(sim, unit, 0, 6, 6).apply(enemy))))
+			# Units within 3 tiles take half the attack; every second one
+			# freezes, the others burn; then they fly 2 tiles.
+			add(ability, 2, "Red Rays", "2023_whirlwind", SpecialAttacks.Frames.new(sim, unit, SP4, [25, 30, 35], func() -> void:
+				var index := 1
+				for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					sim.receive_attack(enemy, int(atk / 2), unit)
+					if index % 2 == 0:
+						if not enemy.frozen:
+							Damages.Freeze.new(sim, unit, 0, 6, 6).apply(enemy)
+					elif not enemy.incapacitated:
+						sim.incinerate(enemy, unit, 5, 5, BattleSim.FRAMES_PER_SECOND)
+					index += 1
+					sim.push_in_air(enemy, unit, 2), 10))
+			add(ability, 3, "Spawn Draggies", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 2024),
+					below_minions(3), "3 draggies max")
+			if rider:
+				limit_healing(ability, beams(SP7, [30], 50, LIMIT_GREEN_BEAM))
+		"crystal":
+			ability.giant = true
+			var free_unit := func(item: BattleFighter) -> bool:
+				return item.is_unit() and not item.dead and not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS
+			add(ability, 0, "Crystal Light Balls", "boton_crystal_energy_ball", SpecialAttacks.Frames.new(sim, unit, SP1, [16, 20, 24, 28, 32, 36, 40], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					sim.shoot(unit, target, "p.crystalBall", unit.attack), 6), Callable(), "", COOLDOWN_OLD)
+			# A crystal laser at the target in range; a unit freezes for 4 seconds.
+			add(ability, 1, "Crystalizer Ray", "boton_crystal_eye_beam", SpecialAttacks.Frames.new(sim, unit, SP2, [13], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or sim.distance(unit, target) > unit.attack_range:
+					return
+				sim.shoot_beam(unit, target, target.tile, "p.crystalLaser", BattleSim.FRAMES_PER_SECOND, unit.attack)
+				if target.is_unit():
+					sim.particle(unit, target.tile, MagicParticles.FREEZE_UNITS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+					sim.freeze(target, 120)), Callable(), "", COOLDOWN_OLD)
+			# A crystal rain; after 1.5 seconds the 20 nearest enemies within 7
+			# tiles take the attack.
+			add(ability, 2, "Crystal Rain", "boton_crystal_rain", SpecialAttacks.Frames.new(sim, unit, SP3, [11], func() -> void:
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.CRYSTAL_RAIN, 20, 5, 0, 0, 30)
+				sim.after(45, func() -> void:
+					if not unit.dead:
+						for enemy in sim.items_near(unit.tile, 7, 20, BattleAbility.enemy_side(unit), true, free_unit):
+							sim.receive_attack(enemy, unit.attack, unit))), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Sorrounding Multi-Ray", "boton_crystal_rainbow", SpecialAttacks.Frames.new(sim, unit, SP4, [17], func() -> void:
+				for enemy in sim.items_near(unit.tile, 4, 2, BattleAbility.enemy_side(unit), true, free_unit):
+					sim.receive_attack(enemy, unit.attack, unit)
+					sim.push_in_air(enemy, unit, 3), 7), Callable(), "", COOLDOWN_OLD)
+			if rider:
+				limit_healing(ability, beams(SP2, [16], 50, LIMIT_GREEN_BEAM))
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
