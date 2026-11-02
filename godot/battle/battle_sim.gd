@@ -31,6 +31,8 @@ signal state_changed(fighter: BattleFighter)
 ## A magic particle of the client (MagicParticle) appears on tile after delay
 ## frames, see particle().
 signal particle_added(type: int, tile: Vector2i, delay: int)
+## The unit shows the graphic of another item now, see change_look().
+signal look_changed(fighter: BattleFighter)
 ## An effect graphic of <data>/fx plays once on tile, see effect().
 signal effect_played(graphic: String, tile: Vector2i)
 ## An attack pushed the unit through the air to its new tile, see push_in_air().
@@ -839,6 +841,13 @@ func shoot_beam(shooter: BattleFighter, target: BattleFighter, tile: Vector2i, g
 	projectiles.append(shot)
 	shot_fired.emit(shot)
 	return shot
+
+
+## The unit shows the graphic of look, or its own graphic when look is null
+## (setGraphic of the client, for the Chameleon).
+func change_look(fighter: BattleFighter, look: GameConfig.ItemDef) -> void:
+	fighter.look = look
+	look_changed.emit(fighter)
 
 
 ## Plays the effect graphic once on tile. Only the view uses it.

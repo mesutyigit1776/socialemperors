@@ -164,10 +164,11 @@ static func combo(sim: BattleSim, unit: BattleFighter, ids: Array) -> void:
 
 
 ## The limit button with a special attack of the unit (initSpecialUnitAttack).
-static func limit_special(ability: BattleAbility, action: int, frames: Array[int], attack: Callable) -> void:
+## can_use and cant are those of the button (canDoSpecialUnitAttack).
+static func limit_special(ability: BattleAbility, action: int, frames: Array[int], attack: Callable, can_use := Callable(), cant := "") -> void:
 	ability.has_limit = true
 	add(ability, BattleAbility.LIMIT_BUTTON, "", "", func(sim: BattleSim, fighter: BattleFighter) -> void:
-		LimitAttacks.special(sim, fighter, action, frames, func() -> void: attack.call(sim, fighter)), Callable(), "", 0)
+		LimitAttacks.special(sim, fighter, action, frames, func() -> void: attack.call(sim, fighter)), can_use, cant, 0)
 
 
 ## The usual beams of a limit attack: beams of 0.25 seconds every 100 ms.

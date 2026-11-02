@@ -16,6 +16,7 @@ var position: Vector2
 var frame := 0  ## The direction of the graphic of a building, as in a save.
 ## The shot points of the graphic, or null: shots start and aim at the position.
 var graphic: BattleGraphic
+var look: GameConfig.ItemDef  ## The item whose graphic the unit shows, or null for def; see BattleSim.change_look().
 var health: int
 var max_health: int  ## The life of the item, or the life that a summoning spell gives.
 var attack: int

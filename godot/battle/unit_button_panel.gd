@@ -141,9 +141,9 @@ func _process(delta: float) -> void:
 		elif active != null and ability.button_state == BattleAbility.ButtonState.COOLDOWN and active.cooldown_seconds > 0:
 			part = float(ability.button_seconds) / active.cooldown_seconds
 		if id == BattleAbility.LIMIT_BUTTON:
-			part = 1.0 - float(ability.limit) / BattleAbility.LIMIT_MAX
+			part = 1.0 - float(ability.limit) / ability.limit_max
 			var bar: ColorRect = _bars[id]
-			bar.size = Vector2(BUTTON_SIZE * float(ability.limit) / BattleAbility.LIMIT_MAX, 5)
+			bar.size = Vector2(BUTTON_SIZE * float(ability.limit) / ability.limit_max, 5)
 			bar.position = Vector2(0, BUTTON_SIZE - 5)
 		var mask: ColorRect = _masks[id]
 		mask.size = Vector2(BUTTON_SIZE, BUTTON_SIZE * clampf(part, 0, 1))

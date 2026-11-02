@@ -16,6 +16,7 @@ static func _families() -> Array:
 		Dragons,
 		Gods,
 		Colossi,
+		Heroes,
 	]
 
 

@@ -88,6 +88,7 @@ var button_state := ButtonState.IDLE
 var button_seconds := 0  ## Seconds left in the state.
 var active_button: UnitButton
 var has_limit := false
+var limit_max := LIMIT_MAX  ## The Dragon Hunters need a quarter of it.
 var limit := 0
 var limit_type := LimitType.DAMAGE
 var in_limit_attack := false
@@ -136,7 +137,7 @@ func use_button(sim: BattleSim, fighter: BattleFighter, id: int) -> bool:
 		return false
 	if button_state != ButtonState.IDLE and id != LIMIT_BUTTON:
 		return false
-	if id == LIMIT_BUTTON and limit < LIMIT_MAX:
+	if id == LIMIT_BUTTON and limit < limit_max:
 		return false
 	if button.uses == 0 or (button.can_use.is_valid() and not button.can_use.call(sim, fighter)):
 		return false
@@ -182,7 +183,7 @@ func add_limit(sim: BattleSim, fighter: BattleFighter, amount: int, healing: boo
 	if not adder.is_empty():
 		amount *= 2
 		sim.particle(fighter, fighter.tile, MagicParticles.STARS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass)
-	limit = mini(limit + amount, LIMIT_MAX)
+	limit = mini(limit + amount, limit_max)
 
 
 const SUBCAT_LIMIT_ADDER := 91

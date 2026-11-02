@@ -123,6 +123,11 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 	for fighter in sim.fighters:
 		_add(fighter)
 	sim.added.connect(_add)
+	sim.look_changed.connect(func(fighter: BattleFighter) -> void:
+		if _nodes.has(fighter):
+			_nodes[fighter].queue_free()
+			_nodes.erase(fighter)
+		_add(fighter))
 	sim.removed.connect(_on_removed)
 	sim.shot_fired.connect(_on_shot_fired)
 	sim.shot_landed.connect(_on_shot_landed)
@@ -209,7 +214,7 @@ func _add(fighter: BattleFighter) -> void:
 		if building != null:
 			_nodes[fighter] = building
 		return
-	var sprite := _sprites.get_sprite(fighter.def.img_name)
+	var sprite := _sprites.get_sprite((fighter.look if fighter.look != null else fighter.def).img_name)
 	if sprite == null:
 		return
 	var node := UnitSprite.new(sprite)

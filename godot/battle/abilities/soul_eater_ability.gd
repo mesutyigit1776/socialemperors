@@ -40,9 +40,9 @@ func configure(item_id: int) -> void:
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 	var far := sim.distance(fighter, fighter.target) > 2
 	if _specials and far and _long == 6:
-		sim.play_special(fighter, UnitSprite.Action.SPECIAL + 1, BattleSim.FRAMES_PER_SECOND, {20: func() -> void: _beam(sim, fighter)}, Callable(), true)
+		sim.play_special(fighter, UnitSprite.Action.SPECIAL + 1, BattleSim.FRAMES_PER_SECOND, {20: func() -> void: soul_beam(sim, fighter)}, Callable(), true)
 	elif _specials and not far and _short == 6:
-		play(sim, fighter, UnitSprite.Action.SPECIAL, 40, {31: func() -> void: _smash(sim, fighter)}, Callable(), true)
+		play(sim, fighter, UnitSprite.Action.SPECIAL, 40, {31: func() -> void: soul_smash(sim, fighter)}, Callable(), true)
 	else:
 		sim.after(BALL_DELAY, func() -> void:
 			var target := fighter.target
@@ -88,7 +88,7 @@ func _eat(fighter: BattleFighter) -> void:
 		_step += 1
 
 
-func _beam(sim: BattleSim, fighter: BattleFighter) -> void:
+func soul_beam(sim: BattleSim, fighter: BattleFighter) -> void:
 	var target := fighter.target
 	if target == null or target.dead or sim.distance(fighter, target) > fighter.attack_range:
 		return
@@ -96,7 +96,7 @@ func _beam(sim: BattleSim, fighter: BattleFighter) -> void:
 	sim.shoot(fighter, target, "p.purpleBeam" if _specials else "p.egyptianBeam", fighter.attack)
 
 
-func _smash(sim: BattleSim, fighter: BattleFighter) -> void:
+func soul_smash(sim: BattleSim, fighter: BattleFighter) -> void:
 	for unit in sim.items_near(fighter.tile, 3, 10, enemy_side(fighter), false, func(item: BattleFighter) -> bool: return item.is_unit() and not item.dead):
 		if unit.ability == null or not unit.ability.immune_to_push:
 			sim.receive_attack(unit, fighter.attack / 2, fighter)
