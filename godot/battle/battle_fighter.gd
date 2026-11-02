@@ -47,6 +47,7 @@ var opened := false  ## A door that is open, see BattleSim.open_door().
 var dizzy := false  ## Stars turn over the unit (DizzyDamage).
 var levitating := false  ## The unit floats in the air (LevitateDamage, AttractDamage).
 var damage_factor := 1.0  ## The part of each damage that the unit takes (recieveDamageModifier), see ShieldAttack.
+var invisible := false  ## Others cannot attack the unit (isInvisible of some delegates).
 var cannot_die := false  ## The life does not go below 1 (canDie of the client), during some special attacks.
 
 # Units only.
@@ -95,7 +96,7 @@ func footprint() -> Rect2i:
 
 ## Others can attack the fighter, see BattleAbility.is_valid_target().
 func is_valid_target() -> bool:
-	return ability == null or ability.is_valid_target()
+	return not invisible and (ability == null or ability.is_valid_target())
 
 
 func is_special() -> bool:

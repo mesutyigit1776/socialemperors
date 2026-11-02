@@ -19,6 +19,7 @@ static func _families() -> Array:
 		Heroes,
 		Gladiators,
 		ClassicDragons,
+		Monsters,
 	]
 
 
