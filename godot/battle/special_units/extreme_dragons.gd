@@ -87,7 +87,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 		"forest":
 			add(ability, 0, "Mega Slash", pic.call(1), SpecialAttacks.Frames.new(sim, unit, SP1, [24], func() -> void: _plant_beam(sim, unit)),
 					has_target(), NO_TARGET)
-			add(ability, 1, "Ultra Fireball", pic.call(2), SpecialAttacks.Frames.new(sim, unit, SP2, [23], func() -> void: _plants(sim, unit)),
+			add(ability, 1, "Ultra Fireball", pic.call(2), SpecialAttacks.Frames.new(sim, unit, SP2, [23], func() -> void: carnivorous_plants(sim, unit)),
 					has_target(), NO_TARGET_TEXT)
 			var whirl := _whirlwind(sim, unit, atk / 2, null, 1000)
 			add(ability, 2, "Hyper Whirlwind", pic.call(3), func(_s: BattleSim, _f: BattleFighter) -> void:
@@ -230,7 +230,7 @@ static func _plant_beam(sim: BattleSim, unit: BattleFighter) -> void:
 ## plant grows under one of the 18 nearest enemy units within 8 tiles and eats
 ## it; the plant takes only units with at most 500 life, except one time in
 ## eleven. The other plants grow on random tiles in range and eat nothing.
-static func _plants(sim: BattleSim, unit: BattleFighter) -> void:
+static func carnivorous_plants(sim: BattleSim, unit: BattleFighter) -> void:
 	var enemies := sim.items_near(unit.tile, 8, PLANTS, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
 		return item.is_unit() and not item.dead)
 	for i in range(1, PLANTS + 1):
