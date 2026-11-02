@@ -146,7 +146,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 2. Campaign quests: the island list, open islands, the limit of quests in a row, the army, the map, the goals of the troll and civilisation islands (12 islands), and the end of the quest as `end_quest` writes it: gold, experience, honour, stars and lost units (battle stage 3). The windows of the quests use the art and the fonts of the client.
 3. Let the loader read the quest maps `100000053` and `100000054`, which store the level as text.
 
-**2. Spells and the first comparison**
+**2. Spells and the first comparison** (done)
 
 1. Spells: mana, buying and using spells, shields (battle stage 4). Done.
 2. An import that continues after a stop. Done. The port then draws the SWF art itself while it runs (the Rust extension `godot/flash_art`), so the import only copies the files and takes less than a minute. Done.
