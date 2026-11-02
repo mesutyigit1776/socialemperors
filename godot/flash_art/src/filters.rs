@@ -9,7 +9,8 @@ use tiny_skia::{Pixmap, PremultipliedColorU8};
 pub fn is_active(filter: &Filter) -> bool {
     match filter {
         Filter::BlurFilter(f) => !f.impotent(),
-        Filter::GlowFilter(f) => f.is_knockout() || (f.strength.to_f32() > 0.0 && f.color.a > 0),
+        // Without the object ("composite source" off) a glow of strength 0 draws nothing at all.
+        Filter::GlowFilter(f) => f.is_knockout() || !f.composite_source() || (f.strength.to_f32() > 0.0 && f.color.a > 0),
         Filter::DropShadowFilter(f) => f.is_knockout() || f.hide_object() || (f.strength.to_f32() > 0.0 && f.color.a > 0),
         Filter::BevelFilter(f) => f.is_knockout() || f.strength.to_f32() > 0.0,
         Filter::GradientGlowFilter(f) => f.is_knockout() || f.strength.to_f32() > 0.0,
@@ -47,6 +48,21 @@ pub fn margin(filter: &Filter, scale: f32) -> (f32, f32) {
     }
 }
 
+/// How far a filter makes the bounds of an object larger, as Ruffle counts
+/// them for the bounds of a sprite: (left, top, right, bottom) in twips.
+pub fn bounds_growth(filter: &Filter) -> (i32, i32, i32, i32) {
+    use swf::{Rectangle, Twips};
+    let zero = Rectangle { x_min: Twips::ZERO, x_max: Twips::ZERO, y_min: Twips::ZERO, y_max: Twips::ZERO };
+    let r = match filter {
+        Filter::BlurFilter(f) => f.calculate_dest_rect(zero),
+        Filter::GlowFilter(f) => f.calculate_dest_rect(zero),
+        Filter::DropShadowFilter(f) => f.calculate_dest_rect(zero),
+        Filter::BevelFilter(f) => f.calculate_dest_rect(zero),
+        _ => zero,
+    };
+    (-r.x_min.get(), -r.y_min.get(), r.x_max.get(), r.y_max.get())
+}
+
 pub fn apply(layer: &mut Pixmap, filter: &Filter, scale: f32) {
     let (w, h) = (layer.width() as usize, layer.height() as usize);
     match filter {
@@ -65,7 +81,7 @@ pub fn apply(layer: &mut Pixmap, filter: &Filter, scale: f32) {
                 strength: f.strength.to_f32(),
                 inner: f.is_inner(),
                 knockout: f.is_knockout(),
-                show_object: true,
+                composite: f.composite_source(),
                 offset: (0.0, 0.0),
                 gradient: None,
             };
@@ -80,7 +96,7 @@ pub fn apply(layer: &mut Pixmap, filter: &Filter, scale: f32) {
                 strength: f.strength.to_f32(),
                 inner: f.is_inner(),
                 knockout: f.is_knockout(),
-                show_object: !f.hide_object(),
+                composite: !f.hide_object(),
                 offset: (angle.cos() * distance, angle.sin() * distance),
                 gradient: None,
             };
@@ -95,7 +111,7 @@ pub fn apply(layer: &mut Pixmap, filter: &Filter, scale: f32) {
                 strength: f.strength.to_f32(),
                 inner: f.is_inner(),
                 knockout: f.is_knockout(),
-                show_object: true,
+                composite: f.flags.contains(swf::GradientFilterFlags::COMPOSITE_SOURCE),
                 offset: (angle.cos() * distance, angle.sin() * distance),
                 gradient: Some(gradient_table(&f.colors)),
             };
@@ -117,7 +133,8 @@ pub fn apply(layer: &mut Pixmap, filter: &Filter, scale: f32) {
 }
 
 /// Glow, drop shadow and gradient glow: a blurred copy of the alpha of the
-/// object, in one color, behind the object (outer) or on it inside its edges (inner).
+/// object, in one color, behind the object (outer) or on it inside its edges
+/// (inner). The object and the glow are mixed as in the glow shader of Ruffle.
 struct Glow {
     color: [u8; 4],
     blur: (f32, f32),
@@ -125,7 +142,8 @@ struct Glow {
     strength: f32,
     inner: bool,
     knockout: bool,
-    show_object: bool,
+    /// Show the object with the glow ("composite source"); else only the glow.
+    composite: bool,
     offset: (f32, f32),
     /// For a gradient glow: the color for each strength of the glow.
     gradient: Option<Vec<[f32; 4]>>,
@@ -135,13 +153,15 @@ impl Glow {
     fn apply(&self, layer: &mut Pixmap) {
         let (w, h) = (layer.width() as usize, layer.height() as usize);
         let source: Vec<f32> = layer.pixels().iter().map(|p| p.alpha() as f32).collect();
-        // An inner glow comes from the area outside the object.
-        let mut alpha: Vec<f32> = shifted(&source, w, h, self.offset, if self.inner { 0.0 } else { 0.0 });
-        if self.inner {
-            let outside = shifted(&source.iter().map(|a| 255.0 - a).collect::<Vec<_>>(), w, h, self.offset, 255.0);
-            alpha = outside;
-        }
+        // As in Ruffle: the alpha is blurred, then moved. An inner glow comes
+        // from the area outside the object: 255 minus the blurred alpha (the
+        // blur rounds down, so this is not the blur of 255 minus the alpha).
+        let mut alpha = source.clone();
         box_blur(&mut alpha, w, h, self.blur.0, self.blur.1, self.passes);
+        let mut alpha = shifted(&alpha, w, h, self.offset, 0.0);
+        if self.inner {
+            alpha.iter_mut().for_each(|a| *a = 255.0 - *a);
+        }
         for (pixel, (a, s)) in layer.pixels_mut().iter_mut().zip(alpha.iter().zip(source.iter())) {
             let strength = (a * self.strength).clamp(0.0, 255.0) / 255.0;
             let (rgb, glow_alpha) = match &self.gradient {
@@ -153,24 +173,22 @@ impl Glow {
             };
             let s = s / 255.0;
             // The glow as a premultiplied color, before it meets the object.
-            let mut g = [rgb[0] * glow_alpha, rgb[1] * glow_alpha, rgb[2] * glow_alpha, glow_alpha * 255.0];
+            let g = [rgb[0] * glow_alpha, rgb[1] * glow_alpha, rgb[2] * glow_alpha, glow_alpha * 255.0];
             let object = [pixel.red() as f32, pixel.green() as f32, pixel.blue() as f32, pixel.alpha() as f32];
-            let keep = if self.inner { s } else { 1.0 - s };
-            if self.inner || self.show_object {
-                for v in g.iter_mut() {
-                    *v *= keep;
-                }
+            let mut out = [0.0f32; 4];
+            for c in 0..4 {
+                out[c] = if self.inner {
+                    // On the object, inside its edges.
+                    g[c] * s + if self.composite && !self.knockout { object[c] * (1.0 - glow_alpha) } else { 0.0 }
+                } else if self.knockout {
+                    g[c] * (1.0 - s)
+                } else if self.composite {
+                    // Behind the object.
+                    g[c] * (1.0 - s) + object[c]
+                } else {
+                    g[c]
+                };
             }
-            let out = if self.knockout || !self.show_object {
-                g
-            } else if self.inner {
-                // On the object, inside its edges.
-                let ga = g[3] / 255.0;
-                [g[0] + object[0] * (1.0 - ga), g[1] + object[1] * (1.0 - ga), g[2] + object[2] * (1.0 - ga), g[3] + object[3] * (1.0 - ga)]
-            } else {
-                // Behind the object.
-                [object[0] + g[0] * (1.0 - s), object[1] + g[1] * (1.0 - s), object[2] + g[2] * (1.0 - s), object[3] + g[3] * (1.0 - s)]
-            };
             *pixel = premultiplied(out);
         }
     }
@@ -187,26 +205,24 @@ fn bevel(layer: &mut Pixmap, f: &swf::BevelFilter, scale: f32) {
     let toward = shifted(&blurred, w, h, (dx, dy), 0.0);
     let away = shifted(&blurred, w, h, (-dx, -dy), 0.0);
     let strength = f.strength.to_f32();
-    let full = f.is_on_top();
+    let premultiplied_color = |c: swf::Color| [c.r as f32 * c.a as f32 / 255.0, c.g as f32 * c.a as f32 / 255.0, c.b as f32 * c.a as f32 / 255.0, c.a as f32];
+    let (light, dark) = (premultiplied_color(f.highlight_color), premultiplied_color(f.shadow_color));
+    // The object and the bevel are mixed as in the bevel shader of Ruffle.
     for (i, pixel) in layer.pixels_mut().iter_mut().enumerate() {
         let s = source[i] / 255.0;
         let highlight = ((away[i] - toward[i]) * strength / 255.0).clamp(0.0, 1.0);
         let shadow = ((toward[i] - away[i]) * strength / 255.0).clamp(0.0, 1.0);
-        let keep = if full { 1.0 } else if f.is_inner() { s } else { 1.0 - s };
-        let ha = highlight * f.highlight_color.a as f32 / 255.0 * keep;
-        let sa = shadow * f.shadow_color.a as f32 / 255.0 * keep;
-        let mut g = [0.0f32; 4];
-        for (c, (hc, sc)) in [(f.highlight_color.r, f.shadow_color.r), (f.highlight_color.g, f.shadow_color.g), (f.highlight_color.b, f.shadow_color.b)].iter().enumerate() {
-            g[c] = *hc as f32 * ha + *sc as f32 * sa;
-        }
-        g[3] = (ha + sa).min(1.0) * 255.0;
+        let g: [f32; 4] = std::array::from_fn(|c| light[c] * highlight + dark[c] * shadow);
+        let ga = g[3] / 255.0;
         let object = [pixel.red() as f32, pixel.green() as f32, pixel.blue() as f32, pixel.alpha() as f32];
-        let out = if f.is_knockout() {
-            g
-        } else {
-            let ga = g[3] / 255.0;
-            [g[0] + object[0] * (1.0 - ga), g[1] + object[1] * (1.0 - ga), g[2] + object[2] * (1.0 - ga), g[3] + object[3] * (1.0 - ga)]
-        };
+        let out: [f32; 4] = std::array::from_fn(|c| match (f.is_on_top(), f.is_inner(), f.is_knockout()) {
+            (true, _, true) => g[c],
+            (true, _, false) => object[c] * (1.0 - ga) + g[c],
+            (false, true, true) => g[c] * s,
+            (false, true, false) => g[c] * s + object[c] * (1.0 - ga),
+            (false, false, true) => g[c] * (1.0 - s),
+            (false, false, false) => object[c] + g[c] * (1.0 - s),
+        });
         *pixel = premultiplied(out);
     }
 }
@@ -278,7 +294,8 @@ fn join(layer: &mut Pixmap, channels: &[Vec<f32>; 4]) {
 
 /// The box blur of Flash: each pass averages a box of blur_x by blur_y
 /// pixels around each pixel. A box of a size that is not whole counts its
-/// two outer pixels in part.
+/// two outer pixels in part. As in Ruffle, the part and each result are
+/// rounded down to steps of 1/255, as the fixed-point numbers of Flash Player.
 pub fn box_blur(values: &mut [f32], w: usize, h: usize, blur_x: f32, blur_y: f32, passes: u8) {
     let mut line = Vec::new();
     for _ in 0..passes.max(1) {
@@ -305,13 +322,14 @@ pub fn box_blur(values: &mut [f32], w: usize, h: usize, blur_x: f32, blur_y: f32
 
 fn blur_line(input: &[f32], output: &mut [f32], _stride: usize, size: f32) {
     let n = input.len() as isize;
+    let size = size.min(255.0);
     let radius = (size - 1.0) / 2.0;
     let whole = radius.floor() as isize;
-    let part = radius - whole as f32;
+    let part = ((radius - whole as f32) * 255.0).floor() / 255.0;
     let at = |i: isize| if i >= 0 && i < n { input[i as usize] } else { 0.0 };
     let mut sum: f32 = (-whole..=whole).map(at).sum();
     for i in 0..n {
-        output[i as usize] = (sum + part * (at(i - whole - 1) + at(i + whole + 1))) / size;
+        output[i as usize] = ((sum + part * (at(i - whole - 1) + at(i + whole + 1))) / size).floor();
         sum += at(i + whole + 1) - at(i - whole);
     }
 }

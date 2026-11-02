@@ -9,7 +9,9 @@ mod filters;
 mod font;
 mod layout;
 mod render;
+mod samples;
 mod shape;
+mod snap;
 
 #[cfg(feature = "godot")]
 mod godot_api;

@@ -194,71 +194,63 @@ fn add_edge(path: &mut PathBuilder, edge: &Edge) {
 
 /// The records of a morph shape at ratio (0: start, 1: end), as the records of a shape.
 pub fn morph_records(start: &[ShapeRecord], end: &[ShapeRecord], ratio: f32) -> Vec<ShapeRecord> {
-    use swf::{Point as SwfPoint, PointDelta, StyleChangeData, Twips};
-    let lerp = |a: i32, b: i32| Twips::new((a as f32 + (b - a) as f32 * ratio).round() as i32);
+    use swf::{Point as SwfPoint, PointDelta, Twips};
+    let lerp = |a: i32, b: i32| (a as f32 * (1.0 - ratio) + b as f32 * ratio).round() as i32;
+    let lerp_point = |a: Point, b: Point| (lerp(a.0, b.0), lerp(a.1, b.1));
+    let delta = |from: Point, to: Point| PointDelta::new(Twips::new(to.0 - from.0), Twips::new(to.1 - from.1));
     let mut result = Vec::with_capacity(start.len());
-    let mut ends = end.iter();
-    // The positions in both shapes, so that the deltas of the result stay exact after rounding.
-    let (mut a, mut b, mut out): (Point, Point, Point) = ((0, 0), (0, 0), (0, 0));
-    for record in start {
-        match record {
-            ShapeRecord::StyleChange(change) => {
-                let mut change: StyleChangeData = (**change).clone();
-                if let Some(to) = change.move_to {
-                    a = (to.x.get(), to.y.get());
-                    // The end shape has a move for each move of the start shape.
-                    let end_move = loop {
-                        match ends.clone().next() {
-                            Some(ShapeRecord::StyleChange(e)) => {
-                                ends.next();
-                                if let Some(m) = e.move_to {
-                                    break Some(m);
-                                }
-                            }
-                            _ => break None,
-                        }
-                    };
-                    if let Some(m) = end_move {
-                        b = (m.x.get(), m.y.get());
-                    } else {
-                        b = a;
-                    }
-                    out = (lerp(a.0, b.0).get(), lerp(a.1, b.1).get());
-                    change.move_to = Some(SwfPoint::new(Twips::new(out.0), Twips::new(out.1)));
+    let (mut starts, mut ends) = (start.iter().peekable(), end.iter().peekable());
+    // The pen in each shape. A move can be in one shape only; the other shape keeps its pen.
+    let (mut a, mut b): (Point, Point) = ((0, 0), (0, 0));
+    let move_to = |pen: &mut Point, record: &ShapeRecord| {
+        if let ShapeRecord::StyleChange(c) = record
+            && let Some(m) = c.move_to
+        {
+            *pen = (m.x.get(), m.y.get());
+        }
+    };
+    while let (Some(s), Some(e)) = (starts.peek().copied(), ends.peek().copied()) {
+        match (s, e) {
+            (ShapeRecord::StyleChange(change), _) => {
+                let mut change = change.clone();
+                let both = matches!(e, ShapeRecord::StyleChange(_));
+                move_to(&mut a, s);
+                if both {
+                    move_to(&mut b, e);
+                    ends.next();
                 }
-                result.push(ShapeRecord::StyleChange(Box::new(change)));
+                let moved = change.move_to.is_some() || (both && matches!(e, ShapeRecord::StyleChange(c) if c.move_to.is_some()));
+                if moved {
+                    let to = lerp_point(a, b);
+                    change.move_to = Some(SwfPoint::new(Twips::new(to.0), Twips::new(to.1)));
+                }
+                result.push(ShapeRecord::StyleChange(change));
+                starts.next();
             }
-            edge => {
-                let end_edge = loop {
-                    match ends.next() {
-                        Some(ShapeRecord::StyleChange(e)) => {
-                            if let Some(m) = e.move_to {
-                                b = (m.x.get(), m.y.get());
-                            }
-                        }
-                        Some(e) => break Some(e),
-                        None => break None,
-                    }
-                };
-                let (ac, at) = edge_points(a, edge);
-                let (bc, bt) = match end_edge {
-                    Some(e) => edge_points(b, e),
-                    None => (ac, at),
-                };
-                a = at;
-                b = bt;
-                let to = (lerp(at.0, bt.0).get(), lerp(at.1, bt.1).get());
-                let straight = matches!(edge, ShapeRecord::StraightEdge { .. }) && matches!(end_edge, Some(ShapeRecord::StraightEdge { .. }) | None);
-                if straight {
-                    result.push(ShapeRecord::StraightEdge { delta: PointDelta::new(Twips::new(to.0 - out.0), Twips::new(to.1 - out.1)) });
-                } else {
-                    let control = (lerp(ac.0, bc.0).get(), lerp(ac.1, bc.1).get());
-                    result.push(ShapeRecord::CurvedEdge {
-                        control_delta: PointDelta::new(Twips::new(control.0 - out.0), Twips::new(control.1 - out.1)),
-                        anchor_delta: PointDelta::new(Twips::new(to.0 - control.0), Twips::new(to.1 - control.1)),
-                    });
+            (_, ShapeRecord::StyleChange(change)) => {
+                move_to(&mut b, e);
+                let mut change = change.clone();
+                if change.move_to.is_some() {
+                    let to = lerp_point(a, b);
+                    change.move_to = Some(SwfPoint::new(Twips::new(to.0), Twips::new(to.1)));
                 }
-                out = to;
+                result.push(ShapeRecord::StyleChange(change));
+                ends.next();
+            }
+            _ => {
+                let pen = lerp_point(a, b);
+                let (ac, at) = edge_points(a, s);
+                let (bc, bt) = edge_points(b, e);
+                let to = lerp_point(at, bt);
+                if matches!((s, e), (ShapeRecord::StraightEdge { .. }, ShapeRecord::StraightEdge { .. })) {
+                    result.push(ShapeRecord::StraightEdge { delta: delta(pen, to) });
+                } else {
+                    let control = lerp_point(ac, bc);
+                    result.push(ShapeRecord::CurvedEdge { control_delta: delta(pen, control), anchor_delta: delta(control, to) });
+                }
+                (a, b) = (at, bt);
+                starts.next();
+                ends.next();
             }
         }
     }
@@ -266,12 +258,12 @@ pub fn morph_records(start: &[ShapeRecord], end: &[ShapeRecord], ratio: f32) -> 
 }
 
 /// The control point and the end of an edge that starts at from. A straight
-/// edge gets its middle as control point, so that it can morph into a curve.
+/// edge has its control point in the middle, rounded to twips as Ruffle does.
 fn edge_points(from: Point, edge: &ShapeRecord) -> (Point, Point) {
     match edge {
         ShapeRecord::StraightEdge { delta } => {
             let to = (from.0 + delta.dx.get(), from.1 + delta.dy.get());
-            (((from.0 + to.0) / 2, (from.1 + to.1) / 2), to)
+            ((from.0 + delta.dx.get() / 2, from.1 + delta.dy.get() / 2), to)
         }
         ShapeRecord::CurvedEdge { control_delta, anchor_delta } => {
             let control = (from.0 + control_delta.dx.get(), from.1 + control_delta.dy.get());

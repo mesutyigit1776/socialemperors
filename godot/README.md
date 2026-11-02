@@ -68,11 +68,11 @@ cargo build --release --manifest-path godot/flash_art/Cargo.toml
 
 The windows of the client come from the same extension: it draws their sprites, buttons and static texts, and it turns the fonts of their text fields into TrueType fonts for Godot.
 
-`flash_art.gdextension` loads the library from `flash_art/target/release/`. The build is tested on Linux; for Windows, the cross build with `--target x86_64-pc-windows-gnu` compiles, but the port was not run on Windows or macOS. The examples of the crate help to compare the frames with other programs: `render` writes the frames of a symbol to PNG files, `dump` prints the display list of a frame, and `layout` prints the data of the frames as JSON.
+`flash_art.gdextension` loads the library from `flash_art/target/release/`. The build is tested on Linux; for Windows, the cross build with `--target x86_64-pc-windows-gnu` compiles, but the port was not run on Windows or macOS. The examples of the crate help to compare the frames with other programs: `render` writes the frames of a symbol to PNG files, `dump` prints the display list of a frame, `layout` prints the data of the frames as JSON, `stage` writes a SWF file that shows one symbol, so that the Ruffle exporter draws the same frames, and `compare` compares the two sets of frames.
 
 `docs/FLASH_ART.md` records the import failures, the differences from other renderers and the open items of the extension.
 
-The frames are drawn at the size of Flash, as the frames of JPEXS (the tool of earlier imports) were, with the same canvas. Compared with the JPEXS frames of the earlier import, most pixels are the same. These differences remain: a bitmap that is not scaled or turned is on whole pixels, so it is sharper than in JPEXS; the edges of turned bitmaps and the softness of glows differ a little; and blend modes such as overlay and multiply mix only with the graphic itself, not with the map behind it, as before.
+The frames are drawn at the size of Flash. The reference for the pictures is Ruffle (the version in `templates/js/ruffle/`): in a comparison of 428 graphics, 0.34 % of the pixels differ by more than 24 of 255. As in Ruffle, shapes are drawn with 4 samples in each pixel, and an object with filters is put on whole pixels. Blend modes such as overlay and multiply still mix only with the graphic itself, not with the map behind it.
 
 ## Run
 

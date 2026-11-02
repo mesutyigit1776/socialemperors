@@ -2,15 +2,22 @@
 
 The port draws the art of the SWF files while it runs, with the Rust extension `godot/flash_art` (see "Graphics" in `godot/README.md`). This file records what does not work yet and where the pictures differ from other renderers, so that we can work on each item.
 
-The measurements come from the default import of this repository (1516 graphics). The reference for the pictures was JPEXS, the tool of the earlier imports. JPEXS is not Flash Player. For the items marked "reference needed", the planned comparison with Ruffle (`docs/NATIVE_PORT.md`, step 2.3) must decide which picture is correct.
+The measurements come from the default import of this repository (1516 graphics). The reference for the pictures is Ruffle at commit `89a7049` (the 0.7.1 build in `templates/js/ruffle/`). Ruffle is not Flash Player either; section 3 names the places where we kept a rule of Flash Player instead.
 
 ## How to measure
 
-- `cargo build --release --no-default-features --examples --manifest-path godot/flash_art/Cargo.toml` builds three tools in `godot/flash_art/target/release/examples/`:
-  - `render <file.swf> <symbol or id> <out dir> [frame]` writes the frames to PNG files and prints the canvas.
+- `cargo build --release --no-default-features --examples --manifest-path godot/flash_art/Cargo.toml` builds these tools in `godot/flash_art/target/release/examples/`:
+  - `render <file.swf> <symbol or id> <out dir> [frame | -count]` writes frames to PNG files and prints the canvas. `-count` draws the first frames, also after a loop.
   - `dump <file.swf> <symbol or id> [frame]` prints the display list of a frame: depths, matrices, color transforms, blend modes and the filters that change the picture.
   - `layout <file.swf> <symbol> ...` prints the bounds, shot points and clips of the frames as JSON.
-- JPEXS exports frames for a comparison: `java -jar ffdec-cli.jar -selectclass <symbol> -format sprite:png -export sprite <out dir> <file.swf>`.
+  - `stage <file.swf> <symbol or id> <out.swf> <background RRGGBB> [frames]` writes a SWF file that shows the symbol on a stage of the size of its canvas, so that another player draws the same frames as `render`.
+  - `compare <ours dir> <black dir> <white dir> [diff dir]` compares the frames of `render` with the frames that another player drew of two `stage` files, one on black and one on white. It prints, for each frame, the percent of the drawn pixels in which a premultiplied channel differs by more than 24 of 255, and the mean difference. The diff images show our frame, the other frame and the difference (red: more than 24).
+- The Ruffle exporter draws the frames of a SWF file without a browser. Build it from the Ruffle source at the commit above: `cargo build --release -p exporter`. It needs a Vulkan driver; on a machine without a GPU, the Mesa software driver works (`mesa-vulkan-drivers`, then `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
+- One comparison:
+  1. `stage art.swf sym b.swf 000000` and `stage art.swf sym w.swf ffffff`
+  2. `exporter -g vulkan --frames N b.swf black` and the same for `w.swf`
+  3. `render art.swf sym ours`
+  4. `compare ours black white diff`
 - The counts of features below come from a scan of all files in `assets/buildingsprites/` and `assets/fx/`. A "placement" is one PlaceObject tag; one animation has many.
 
 ## 1. Import failures
@@ -30,26 +37,57 @@ To do:
 
 ## 2. Frame data that changed
 
-The extension now reads the bounds, the shot points and the clips of the frames; before, the Python importer read them. For 1511 of 1513 graphics the values are the same. Two effects differ: `fx/p.steamRay` and `fx/dead.teeth`.
+The extension reads the bounds, the shot points and the clips of the frames; before, the Python importer read them. For 1511 of 1513 graphics the values are the same. Two effects differ: `fx/p.steamRay` and `fx/dead.teeth`.
 
 Cause: a frame replaces the character at a depth (PlaceObject with the flags Move and HasCharacter) and gives no new matrix. The Python code reset the matrix to the identity. The extension keeps the old matrix, as the SWF specification and Ruffle do. This changes the bounds of these frames, for example frame 1 of `p.steamRay`: x from -478.25 to -23.13.
 
-To do (reference needed): play both effects in Ruffle and compare their positions.
+Ruffle confirms the new values: `p.steamRay` and `dead.teeth` draw at the same places in Ruffle and in the extension (0.0 % of the pixels differ). No action is necessary.
 
-## 3. Differences from JPEXS
+## 3. Comparison with Ruffle
 
-| Difference | Where it shows | Size | Cause |
-|---|---|---|---|
-| 3.1 Bitmaps on whole pixels | Units whose frames are one bitmap, for example `2006_elf_archer` | In one frame of the archer, 20.7 % of the drawn pixels differ by more than 24 of 255; 9.2 % for all frames | A bitmap that is not scaled or turned is put on whole pixels, rounded to the nearest pixel, and is not resampled. JPEXS resamples it at half pixels, so it is softer. |
-| 3.2 Edges of turned bitmaps | `1236_molino` (the turned sails) | 6.9 % of the drawn pixels in frame 1 | The two programs sample turned bitmaps in different ways (tiny-skia bilinear against Java 2D). |
-| 3.3 Softness of glows and blurs | `2093_elemental_heaven_god` (the glow of the lightning), most units with glows | 6.5 % mean over 40 frames | The blur is a box blur with `passes` steps of the size of the filter. The exact blur of Flash is not known. Ruffle uses other sizes for each step (`PASS_SCALES` in the `swf` crate). |
-| 3.4 Blend modes mix only with the graphic | Overlay in 11486 placements, multiply in 4031, hard light in 885, screen in 48, lighten in 30, darken in 4; 441 files set a blend mode | Not measured on the map | A blend mode mixes the part with what the graphic drew under it. In Flash it also mixes with the map behind the graphic. The JPEXS frames had the same limit. |
-| 3.5 Canvas without the extra space of JPEXS | `1209_portal`, `2023_frostfire_bahamut`, `2093_elemental_heaven_god` | JPEXS images are 10 to 54 pixels larger | JPEXS adds empty space around some symbols. The importer did not know about this space, so the old port showed these graphics 5 to 27 pixels too far to the right and down. The new canvas has the space of the filters only, and the position is correct. No action is necessary; this is recorded because the old screenshots differ. |
+### Result
+
+428 graphics, 6 frames each (all 231 files of `assets/fx/` and 197 random files of `assets/buildingsprites/`, 65.7 million drawn pixels): 0.34 % of the pixels differ by more than 24 of 255.
+
+| Pixels that differ | Graphics |
+|---|---|
+| less than 0.1 % | 320 |
+| 0.1 to 1 % | 67 |
+| 1 to 3 % | 27 |
+| 3 to 10 % | 10 |
+| 10 % or more | 4 |
+
+Frames after a loop were compared too (`stage ... [frames]`, `render ... -count`): `2000_bahamut` for 50 frames, `2006_elf_archer` for 40 and `p.dragonSkull` for 20, each 0.0 %.
+
+### Changes to the renderer
+
+Each change made our frames equal to the frames of Ruffle. The numbers are the pixels that differ, before and after.
+
+| Change | Example |
+|---|---|
+| 3.1 A smoothed bitmap is sampled bilinear at its exact place, also between two pixels. Before, a bitmap that was only moved was put on whole pixels and sampled with the nearest pixel. tiny-skia does that for every bitmap that is only moved, so the renderer adds a scale that changes no pixel. JPEXS was right here. | `2006_elf_archer`: 12.9 % to 0.0 % |
+| 3.2 Shapes are drawn as with 4x multisampling (MSAA), as in Ruffle: each pixel has 4 samples at the standard positions; a shape covers a sample or not; its color comes from the center of the pixel (`samples.rs`). Before, each shape had antialiased edges of its own, and two shapes that touch left thin gaps between them. Edges now have 5 steps of alpha, as in Ruffle. Masks cover each sample or not, as the stencil of Ruffle. Lines are at least one pixel wide. | `777_crystal_dragon`: 27.3 % to 0.6 % |
+| 3.3 An object with filters, also with filters that change nothing, is drawn as one image and put back on whole pixels (as cacheAsBitmap). The top-left corner of its bounds moves to the nearest pixel. Ruffle computes these bounds in whole twips with a rounding at each matrix product, and rounds the corner of the image with the space of the filters; the extension does the same (`snap.rs`). Nested objects with filters snap in the coordinates of the image of their parent. Its color transform applies to the whole image. | `2000_bahamut` 2.2 % to 0.0 %; `p.axeSkeleton` 22.7 % to 0.7 % |
+| 3.4 Glow and drop shadow: the factor "behind the object" applied twice; the flag "composite source" was not used; an inner glow blurred the inverted alpha. Now as in the glow shader of Ruffle. The bevel mixes the light, the shadow and the object as the bevel shader of Ruffle. Each blur step rounds down to 1/255, as in Ruffle and Flash Player. The light and shadow of the bevel were already the same. | `p.dragonSkull` 63.2 % to 0.0 %; `p.wraithBeam` 5.1 % to 0.1 % |
+| 3.5 Morph shapes: when only one of the two shapes moves its pen, the other shape keeps its pen. Before, it took the pen of the first shape, which moved the edges. Colors, ratios and matrices are interpolated with the rounding of Ruffle. | `t.blueEnergy` 25.6 % to 0.1 % |
+| 3.6 After its parent loops, a nested sprite of the first frame plays on only if the last frame of the parent also has it. Else it starts again (see section 5). | `2006_elf_archer` after the loop: 1.1 % to 0.0 % |
+| 3.7 The canvas starts on a whole twip, so that a SWF file can place a frame exactly on its grid. The change in position is less than 0.05 pixels. | |
+
+These rules were already the same as in Ruffle: the sizes of filters are in pixels of the stage and do not change with the scale of the object; the matrix of a replaced character stays (section 2); the bevel, gradient glow and color matrix filters of the cerberus and devil dragons and of `2117_priest_glad` and `2131_hell_rider` (0.0 %).
+
+### Differences that remain
+
+| Difference | Where | Cause |
+|---|---|---|
+| 3.8 Blend modes over the empty canvas | Overlay and multiply in `p.fireballBahamut` (44 %), `p.catapultFireball`, `p.largeFireball`, `p.hugeFire`, `2341_thunderForgeDragonRider` | Ruffle mixes these parts with the stage behind the graphic, here black or white, so the comparison cannot measure them. In the game they must mix with the map; see 3.11. Where the part is over the graphic itself, the two agree. |
+| 3.9 Blend mode "layer" with alpha | The shadow of `2367_devilAncientDraggy` (7.6 %) | Ruffle applies the alpha of the object to each of its parts; two overlapping parts become darker. The documentation of Flash says that "layer" makes a transparency group, so the alpha applies to the group. The artist used exactly this: two overlapping fills with "layer" and alpha 0.3. The extension keeps the rule of Flash. |
+| 3.10 Thin lines | Small shots, for example `p.ulisesArrow` (5.6 % of 305 pixels) | Single pixels along lines of about one pixel differ. Ruffle tessellates lines; the extension strokes them. |
 
 To do:
 
-- 3.1 to 3.3 (reference needed): compare the same frames with Ruffle, then change the renderer where it differs from Ruffle. For 3.3, the parameters are in `godot/flash_art/src/filters.rs` (`box_blur`, `margin`).
-- 3.4: draw the parts with a blend mode as separate nodes in Godot, with a shader that reads the map behind them, or draw the graphic with the map behind it. This changes the structure of `ClipSprite`, because a frame is no longer one image.
+- 3.11 Blend modes with the map: draw the parts with a blend mode as separate nodes in Godot, with a shader that reads the map behind them, or draw the graphic with the map behind it. This changes the structure of `ClipSprite`, because a frame is no longer one image. Blend modes are in 441 files: overlay in 11486 placements, multiply in 4031, hard light in 885, screen in 48, lighten in 30, darken in 4.
+
+The pictures of JPEXS, the tool of the earlier imports, are no longer a reference. JPEXS adds empty space around some symbols; the old import did not know about it, so the old port showed `1209_portal`, `2023_frostfire_bahamut` and `2093_elemental_heaven_god` 5 to 27 pixels too far to the right and down. Old screenshots differ for this reason.
 
 ## 4. Features that the renderer does not have
 
@@ -62,22 +100,20 @@ These features are not in the art of the game, or the effect is small. Each one 
 | GIF images in DefineBitsJPEG2 | 0 | Ignored. |
 | Gradients with linear RGB interpolation | Not counted | Interpolated in sRGB. |
 | Strokes that do not scale (LineStyle2 flags) | Not counted | Only the case "no scale in x and y" is handled. |
-| Bevel filter | 503 filters in 4 files (the cerberus and devil dragons) | Drawn by a simple method: the light and shadow come from the blurred alpha, moved by the distance. Not compared with any other renderer. |
-| Gradient glow filter | 369 filters in 3 files (`2117_priest_glad`, `2129_hell_dragon`, `2131_hell_rider`) | Drawn as a glow whose color comes from the gradient. Not compared. |
-| Masks | 736 placements | Masks have soft edges (antialiased). Flash Player and Ruffle may use hard edges. Reference needed. |
-| Filters on scaled parts | Many | Filter sizes are in pixels and do not change when the part is scaled. Not compared with Flash Player or Ruffle. |
+| Gradient glow filter | 369 filters in 3 files (`2117_priest_glad`, `2129_hell_dragon`, `2131_hell_rider`) | Drawn as a glow whose color comes from the gradient. The Ruffle renderer (wgpu) does not draw this filter, so it cannot be a reference here; the frames that were compared agree. |
 | Kerning of fonts | The fonts of the windows | The TrueType fonts have no kerning table, as the JPEXS fonts had none. |
 
 ## 5. Rules that are estimated
 
-- **Nested animations after their parent loops.** Every sprite plays on from the frame in which it was placed. After the parent goes back to its first frame, the extension assumes that the parts of the first frame stay and play on, and that the other parts were removed and placed again (`child_age` in `render.rs`). Flash keeps a part only when it is on the display list without a break. A part that stays on the list through the loop, but was placed after frame 1, gets a wrong age.
 - **Frame scripts.** The extension does not run ActionScript. A `stop()` or `gotoAndPlay()` in a nested animation has no effect; the animation loops. The spells use the frame labels and the rules in `spells.json` instead.
+
+The rule for nested animations after their parent loops is no longer estimated: a character of the first frame keeps playing only if the last frame also has it at the same depth (`Placed::stays`). This is the rule of Ruffle, and the comparison after loops agrees. The game asks for frames 0 to count - 1 only, so this rule changes nothing in the game today.
 
 ## 6. Performance and memory
 
-- **First display.** A frame is drawn when the game first shows it. One frame of a large unit takes 17 ms (`2000_bahamut`) to 118 ms (`2093_elemental_heaven_god`) on one core. When an animation starts, 3 threads draw its frames ahead. The first loop of a large unit can still wait for frames.
+- **First display.** A frame is drawn when the game first shows it. The 4 samples of each pixel (3.2) make the drawing 1.6 to 2.1 times slower than before. On one core of the test machine, one frame takes 5 ms (`2006_elf_archer`, before 2.6 ms), 97 ms (`2000_bahamut`, before 46 ms) and 312 ms (`2093_elemental_heaven_god`, before 195 ms). When an animation starts, 3 threads draw its frames ahead. The first loop of a large unit can still wait for frames. A possible improvement: use the 4 samples only at the edges of shapes.
 - **No limit on memory.** The port keeps every frame that it drew until the graphic is no longer used. Frames that the threads drew ahead, but that the game never showed, stay in the cache of the extension. A long session with many large units can use much memory. A limit with the least recently used frames is a possible fix.
-- **Zoom.** The frames are drawn at the size of Flash. When the camera zooms in, Godot enlarges the image, and the art becomes soft. The extension can draw at another scale (`Art::render` has a `scale` argument), but the port does not use it yet.
+- **Zoom.** The frames are drawn at the size of Flash. When the camera zooms in, Godot enlarges the image, and the art becomes soft. The extension can draw at another scale (`Art::render` has a `scale` argument), but the port does not use it yet. The snapping of 3.3 uses the pixels of Flash at every scale.
 
 ## 7. Platforms
 

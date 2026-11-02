@@ -51,6 +51,10 @@ pub struct Placed {
     /// The frame (from 0) in which the character came on the list. A nested
     /// sprite plays its frames from there.
     pub start: usize,
+    /// For a character of the first frame: it stays on the list when the
+    /// sprite goes from its last frame back to the first, because the last
+    /// frame has it too. Else it comes on the list again and starts again.
+    pub stays: bool,
     pub visible: bool,
     /// The instance name, by which the client finds a part.
     pub name: Option<String>,
@@ -265,6 +269,10 @@ fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
     while frames.len() < frame_count.max(1) {
         frames.push(list.values().cloned().collect());
     }
+    let last: Vec<(Depth, CharacterId)> = frames.last().map_or(Vec::new(), |l: &Vec<Placed>| l.iter().filter(|p| p.start == 0).map(|p| (p.depth, p.id)).collect());
+    for placed in frames.iter_mut().flatten().filter(|p| p.start == 0) {
+        placed.stays = last.contains(&(placed.depth, placed.id));
+    }
     Sprite { frames }
 }
 
@@ -280,6 +288,7 @@ impl Placed {
             filters: Arc::new(Vec::new()),
             blend: swf::BlendMode::Normal,
             start,
+            stays: true,
             visible: true,
             name: None,
         }
@@ -312,7 +321,7 @@ impl Art {
             Some(Character::Sprite(s)) => {
                 println!("{pad}sprite {id} frame {}/{}", frame + 1, s.frames.len());
                 for p in &s.frames[frame % s.frames.len()] {
-                    let child = if p.start == 0 { frame } else { (frame % s.frames.len()).saturating_sub(p.start) };
+                    let child = crate::render::child_age(p, frame, s.frames.len());
                     let m = p.matrix;
                     println!("{pad} depth {} clip {} m [{:.3} {:.3} {:.3} {:.3} {} {}] cx {:?} blend {:?} filters {:?} start {}", p.depth, p.clip_depth, m.sx, m.ky, m.kx, m.sy, m.tx, m.ty, if p.color.is_identity() { None } else { Some(p.color) }, p.blend, p.filters.iter().filter(|f| crate::filters::is_active(f)).collect::<Vec<_>>(), p.start);
                     self.dump(p.id, child, indent + 2);

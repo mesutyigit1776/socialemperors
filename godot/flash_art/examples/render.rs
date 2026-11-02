@@ -1,5 +1,6 @@
 //! Renders the frames of a symbol or sprite to PNG files, to compare them with other renderers.
-//! cargo run --release --no-default-features --example render -- <file.swf> <symbol name or id> <out dir> [frame]
+//! cargo run --release --no-default-features --example render -- <file.swf> <symbol name or id> <out dir> [frame or frame count]
+//! With "N" as the last argument it draws frame N (from 0); with "-N" it draws the first N frames, also after a loop.
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -9,6 +10,7 @@ fn main() {
     std::fs::create_dir_all(&args[3]).unwrap();
     println!("{{\"x\": {}, \"y\": {}, \"width\": {}, \"height\": {}, \"frames\": {}}}", canvas.x, canvas.y, canvas.width, canvas.height, art.frame_count(id));
     let frames: Vec<usize> = match args.get(4) {
+        Some(f) if f.starts_with('-') => (0..f[1..].parse().unwrap()).collect(),
         Some(f) => vec![f.parse().unwrap()],
         None => (0..art.frame_count(id)).collect(),
     };

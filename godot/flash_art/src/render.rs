@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use swf::{BlendMode, CharacterId, FillStyle, GradientSpread, LineCapStyle, LineJoinStyle, LineStyle};
 use tiny_skia::{
-    FillRule, FilterQuality, GradientStop, LinearGradient, Mask, MaskType, Paint, Pattern, Pixmap, PixmapPaint, Point, RadialGradient, Rect,
+    FilterQuality, GradientStop, LinearGradient, Paint, Pattern, Pixmap, PixmapPaint, Point, RadialGradient, Rect,
     Shader, SpreadMode, Stroke, Transform,
 };
 
@@ -13,6 +13,8 @@ use crate::art::{self, Art, Character, Placed};
 use crate::color::ColorTransform;
 use crate::filters;
 use crate::shape::{self, ShapeLayer};
+use crate::samples::{Masks, Samples};
+use crate::snap;
 
 /// The place of the frame images of a character: the top-left corner in
 /// pixels relative to the registration point, and the size.
@@ -36,14 +38,16 @@ pub struct MorphCache(Mutex<HashMap<(CharacterId, u16), Arc<Vec<ShapeLayer>>>>);
 impl Art {
     /// The canvas of a character over all its frames: its bounds with the
     /// space of its filters, rounded up to whole pixels. It starts at the
-    /// corner of the bounds, as the frames that the Flash tools export.
+    /// corner of the bounds, as the frames that the Flash tools export, moved
+    /// to a whole twip, so that a SWF file can place a frame on its grid of pixels.
     pub fn canvas(&self, id: CharacterId) -> Option<Canvas> {
         let r = self.visual_bounds(id)?;
+        let (left, top) = (r.left().floor(), r.top().floor());
         Some(Canvas {
-            x: r.left() / TWIPS,
-            y: r.top() / TWIPS,
-            width: (r.width() / TWIPS).ceil().max(1.0) as u32,
-            height: (r.height() / TWIPS).ceil().max(1.0) as u32,
+            x: left / TWIPS,
+            y: top / TWIPS,
+            width: ((r.right() - left) / TWIPS).ceil().max(1.0) as u32,
+            height: ((r.bottom() - top) / TWIPS).ceil().max(1.0) as u32,
         })
     }
 
@@ -67,11 +71,12 @@ impl Art {
     pub fn render_area(&self, id: CharacterId, frame: usize, canvas: Canvas, area: (u32, u32, u32, u32), scale: f32) -> Option<Pixmap> {
         let width = ((area.2 as f32 * scale).ceil() as u32).max(1);
         let height = ((area.3 as f32 * scale).ceil() as u32).max(1);
-        let mut pixmap = Pixmap::new(width, height)?;
+        let mut samples = Samples::new(width, height)?;
         let (x, y) = (canvas.x + area.0 as f32, canvas.y + area.1 as f32);
         let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -x * scale, -y * scale);
-        Renderer { art: self, scale }.draw(&mut pixmap, id, frame, 0, transform, &ColorTransform::IDENTITY, None);
-        Some(pixmap)
+        let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
+        Renderer { art: self, scale }.draw(&mut samples, id, frame, 0, transform, &flash, &ColorTransform::IDENTITY, None);
+        Some(samples.resolve())
     }
 }
 
@@ -80,10 +85,11 @@ impl Art {
     /// its canvas, which covers all its states.
     pub fn render_button(&self, id: CharacterId, state: usize, canvas: Canvas) -> Option<Pixmap> {
         let Some(Character::Button(states)) = self.characters.get(&id) else { return None };
-        let mut pixmap = Pixmap::new(canvas.width, canvas.height)?;
+        let mut samples = Samples::new(canvas.width, canvas.height)?;
         let transform = Transform::from_row(1.0 / TWIPS, 0.0, 0.0, 1.0 / TWIPS, -canvas.x, -canvas.y);
-        Renderer { art: self, scale: 1.0 }.draw_list(&mut pixmap, states.get(state)?, 0, 1, transform, &ColorTransform::IDENTITY, None);
-        Some(pixmap)
+        let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
+        Renderer { art: self, scale: 1.0 }.draw_list(&mut samples, states.get(state)?, 0, 1, transform, &flash, &ColorTransform::IDENTITY, None);
+        Some(samples.resolve())
     }
 }
 
@@ -96,8 +102,10 @@ struct Renderer<'a> {
 impl Renderer<'_> {
     /// age: the frames that the character played since it was placed; a
     /// sprite shows frame age modulo its frame count. transform: from twips
-    /// of the character to pixels of the target.
-    fn draw(&self, target: &mut Pixmap, id: CharacterId, age: usize, ratio: u16, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    /// of the character to pixels of the target. flash: the same place as
+    /// Ruffle computes it, for the objects with filters (see snap.rs).
+    #[allow(clippy::too_many_arguments)]
+    fn draw(&self, target: &mut Samples, id: CharacterId, age: usize, ratio: u16, transform: Transform, flash: &snap::Matrix, color: &ColorTransform, mask: Option<&Masks>) {
         match self.art.characters.get(&id) {
             Some(Character::Shape { layers, .. }) => self.draw_shape(target, layers, transform, color, mask),
             Some(Character::Morph(_)) => {
@@ -107,44 +115,56 @@ impl Renderer<'_> {
             }
             Some(Character::Sprite(sprite)) => {
                 let list = &sprite.frames[age % sprite.frames.len()];
-                self.draw_list(target, list, age, sprite.frames.len(), transform, color, mask);
+                self.draw_list(target, list, age, sprite.frames.len(), transform, flash, color, mask);
             }
             Some(Character::Text { matrix, records, .. }) => self.draw_text(target, records, transform.pre_concat(*matrix), color, mask),
             // A button inside a sprite shows its up state.
-            Some(Character::Button(states)) => self.draw_list(target, &states[0], age, 1, transform, color, mask),
+            Some(Character::Button(states)) => self.draw_list(target, &states[0], age, 1, transform, flash, color, mask),
             _ => {}
         }
     }
 
     /// Draws a display list. A mask applies to the depths after it up to its clip depth.
-    fn draw_list(&self, target: &mut Pixmap, list: &[Placed], age: usize, count: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    #[allow(clippy::too_many_arguments)]
+    fn draw_list(&self, target: &mut Samples, list: &[Placed], age: usize, count: usize, transform: Transform, flash: &snap::Matrix, color: &ColorTransform, mask: Option<&Masks>) {
         let mut i = 0;
         while i < list.len() {
             let placed = &list[i];
             if placed.clip_depth == 0 {
-                self.draw_placed(target, placed, child_age(placed, age, count), transform, color, mask);
+                self.draw_placed(target, placed, child_age(placed, age, count), transform, flash, color, mask);
                 i += 1;
                 continue;
             }
             let end = i + 1 + list[i + 1..].iter().take_while(|p| p.depth <= placed.clip_depth).count();
-            if let Some(group_mask) = self.mask(target, placed, child_age(placed, age, count), transform, mask) {
-                self.draw_list(target, &list[i + 1..end], age, count, transform, color, Some(&group_mask));
+            if let Some(group_mask) = self.mask(target, placed, child_age(placed, age, count), transform, flash, mask) {
+                self.draw_list(target, &list[i + 1..end], age, count, transform, flash, color, Some(&group_mask));
             }
             i = end;
         }
     }
 
     /// age: the age of the placed character, see draw().
-    fn draw_placed(&self, target: &mut Pixmap, placed: &Placed, age: usize, transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    #[allow(clippy::too_many_arguments)]
+    fn draw_placed(&self, target: &mut Samples, placed: &Placed, age: usize, transform: Transform, flash: &snap::Matrix, color: &ColorTransform, mask: Option<&Masks>) {
         if !placed.visible {
             return;
         }
-        let transform = transform.pre_concat(placed.matrix);
+        let mut transform = transform.pre_concat(placed.matrix);
         let color = color.then_child(&placed.color);
         let frame = age;
         let active: Vec<&swf::Filter> = placed.filters.iter().filter(|f| filters::is_active(f)).collect();
-        if active.is_empty() && matches!(placed.blend, BlendMode::Normal) {
-            self.draw(target, placed.id, frame, placed.ratio, transform, &color, mask);
+        // An object with filters, also with filters that change nothing, is drawn
+        // as one image (as cacheAsBitmap) and put back on whole pixels: the
+        // top-left corner of its bounds moves to the nearest pixel. Its color
+        // transform then applies to the whole image. This is the rule of Ruffle.
+        let cached = !placed.filters.is_empty();
+        let mut flash = flash.then(&placed.matrix);
+        if cached && let Some(snapped) = snap::offset(self.art, placed, frame, &flash) {
+            transform = transform.post_translate(snapped.shift.0 * self.scale, snapped.shift.1 * self.scale);
+            flash = snapped.inner;
+        }
+        if active.is_empty() && matches!(placed.blend, BlendMode::Normal) && !(cached && !color.is_identity()) {
+            self.draw(target, placed.id, frame, placed.ratio, transform, &flash, &color, mask);
             return;
         }
         // Filters and blend modes work on the whole object: it is drawn on a
@@ -163,9 +183,11 @@ impl Renderer<'_> {
         if right <= left || bottom <= top {
             return;
         }
-        let Some(mut layer) = Pixmap::new((right - left) as u32, (bottom - top) as u32) else { return };
+        let Some(mut samples) = Samples::new((right - left) as u32, (bottom - top) as u32) else { return };
         let layer_transform = transform.post_translate(-left as f32, -top as f32);
-        self.draw(&mut layer, placed.id, frame, placed.ratio, layer_transform, &ColorTransform::IDENTITY, None);
+        self.draw(&mut samples, placed.id, frame, placed.ratio, layer_transform, &flash, &ColorTransform::IDENTITY, None);
+        // Ruffle averages the samples of the image of the object before its filters.
+        let mut layer = samples.resolve();
         for filter in active {
             filters::apply(&mut layer, filter, self.scale);
         }
@@ -176,21 +198,15 @@ impl Renderer<'_> {
             color.apply_pixmap(&mut layer);
         }
         let paint = PixmapPaint { opacity, blend_mode: blend_mode(placed.blend), quality: FilterQuality::Nearest };
-        target.draw_pixmap(left, top, layer.as_ref(), &paint, Transform::identity(), mask);
+        target.draw_pixmap(left, top, &layer, &paint, mask);
     }
 
     /// The area that a mask covers on the target, within the outer mask.
-    fn mask(&self, target: &Pixmap, placed: &Placed, age: usize, transform: Transform, outer: Option<&Mask>) -> Option<Mask> {
-        let mut pixmap = Pixmap::new(target.width(), target.height())?;
-        let frame = age;
-        self.draw(&mut pixmap, placed.id, frame, placed.ratio, transform.pre_concat(placed.matrix), &MASK_COLOR, None);
-        let mut mask = Mask::from_pixmap(pixmap.as_ref(), MaskType::Alpha);
-        if let Some(outer) = outer {
-            for (value, &o) in mask.data_mut().iter_mut().zip(outer.data()) {
-                *value = ((*value as u32 * o as u32 + 127) / 255) as u8;
-            }
-        }
-        Some(mask)
+    /// A mask covers each sample fully or not at all, as the stencil of Ruffle.
+    fn mask(&self, target: &Samples, placed: &Placed, age: usize, transform: Transform, flash: &snap::Matrix, outer: Option<&Masks>) -> Option<Masks> {
+        let mut samples = Samples::new(target.width(), target.height())?;
+        self.draw(&mut samples, placed.id, age, placed.ratio, transform.pre_concat(placed.matrix), &flash.then(&placed.matrix), &MASK_COLOR, None);
+        Some(samples.masks(outer))
     }
 
     fn morph(&self, id: CharacterId, ratio: u16) -> Option<Arc<Vec<ShapeLayer>>> {
@@ -217,7 +233,7 @@ impl Renderer<'_> {
 
     /// Static text: each glyph is the shape of its font glyph, scaled to the
     /// height of its run, at the pen position, which moves by the advance of each glyph.
-    fn draw_text(&self, target: &mut Pixmap, records: &[swf::TextRecord], transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    fn draw_text(&self, target: &mut Samples, records: &[swf::TextRecord], transform: Transform, color: &ColorTransform, mask: Option<&Masks>) {
         let (mut font, mut fill, mut height) = (None, swf::Color { r: 0, g: 0, b: 0, a: 255 }, 0.0f32);
         let (mut x, mut y) = (0.0f32, 0.0f32);
         for record in records {
@@ -250,10 +266,10 @@ impl Renderer<'_> {
         }
     }
 
-    fn draw_shape(&self, target: &mut Pixmap, layers: &[ShapeLayer], transform: Transform, color: &ColorTransform, mask: Option<&Mask>) {
+    fn draw_shape(&self, target: &mut Samples, layers: &[ShapeLayer], transform: Transform, color: &ColorTransform, mask: Option<&Masks>) {
         for layer in layers {
             for (style, path) in &layer.fills {
-                self.with_paint(style, color, transform, |paint| target.fill_path(path, paint, FillRule::EvenOdd, transform, mask));
+                self.with_paint(style, color, transform, |paint| target.fill_path(path, paint, transform, mask));
             }
             for (line, path) in &layer.strokes {
                 let stroke = self.stroke(line, transform);
@@ -269,9 +285,9 @@ impl Renderer<'_> {
         if !line.allow_scale_x() && !line.allow_scale_y() && pixels_per_twip > 0.0 {
             width = width / TWIPS * self.scale / pixels_per_twip;
         }
-        // Flash draws thinner lines one pixel wide; a width of 0 makes a line of one pixel.
-        if width * pixels_per_twip < 1.0 {
-            width = 0.0;
+        // Lines are at least one pixel wide, as in Ruffle.
+        if pixels_per_twip > 0.0 {
+            width = width.max(1.0 / pixels_per_twip);
         }
         let cap = |c: LineCapStyle| match c {
             LineCapStyle::Round => tiny_skia::LineCap::Round,
@@ -289,7 +305,8 @@ impl Renderer<'_> {
     /// Calls draw with the paint of a fill style. Does nothing when the style
     /// cannot draw. transform: from the shape to the target.
     fn with_paint(&self, style: &FillStyle, color: &ColorTransform, transform: Transform, draw: impl FnOnce(&Paint)) {
-        let mut paint = Paint { anti_alias: true, ..Paint::default() };
+        // Without antialiasing: each sample is covered or not (see samples.rs).
+        let mut paint = Paint { anti_alias: false, ..Paint::default() };
         let gradient = |g: &swf::Gradient| -> (Vec<GradientStop>, SpreadMode, Transform) {
             let stops = g.records.iter().map(|r| GradientStop::new(r.ratio as f32 / 255.0, color.apply_color(r.color))).collect();
             let spread = match g.spread {
@@ -331,17 +348,14 @@ impl Renderer<'_> {
                     &changed
                 };
                 let spread = if *is_repeating { SpreadMode::Repeat } else { SpreadMode::Pad };
-                let mut quality = if *is_smoothed { FilterQuality::Bilinear } else { FilterQuality::Nearest };
+                let quality = if *is_smoothed { FilterQuality::Bilinear } else { FilterQuality::Nearest };
                 let mut pattern = art::matrix(matrix);
-                // Flash puts a bitmap that is not scaled or turned on whole pixels, so that it stays sharp.
+                // A smoothed bitmap is sampled bilinear at its exact place, also between
+                // two pixels, as Ruffle does. tiny-skia samples a bitmap that is only
+                // moved with the nearest pixel, so a scale that changes no pixel turns it.
                 let on_target = transform.pre_concat(pattern);
-                let unit = |v: f32| (v.abs() - 1.0).abs() < 0.001;
-                if unit(on_target.sx) && unit(on_target.sy) && on_target.kx.abs() < 0.001 && on_target.ky.abs() < 0.001 {
-                    let snapped = Transform::from_row(on_target.sx.signum(), 0.0, 0.0, on_target.sy.signum(), (on_target.tx + 0.5).floor(), (on_target.ty + 0.5).floor());
-                    if let Some(inverse) = transform.invert() {
-                        pattern = inverse.pre_concat(snapped);
-                        quality = FilterQuality::Nearest;
-                    }
+                if *is_smoothed && on_target.is_translate() && (on_target.tx.fract() != 0.0 || on_target.ty.fract() != 0.0) {
+                    pattern = pattern.pre_scale(1.0 + 1e-6, 1.0);
                 }
                 paint.shader = Pattern::new(pixels.as_ref(), spread, quality, opacity, pattern);
                 draw(&paint);
@@ -358,10 +372,11 @@ impl Renderer<'_> {
 /// The age of a character on the display list of a sprite of this age and
 /// frame count. Every sprite of Flash plays on from the frame in which it was
 /// placed, also when its parent has only one frame. After the parent loops,
-/// the characters of its first frame stay and play on; the others came back
-/// on the list and count from their frame.
-fn child_age(placed: &Placed, age: usize, count: usize) -> usize {
-    if placed.start == 0 { age } else { (age % count).saturating_sub(placed.start) }
+/// a character of its first frame that the last frame also has stays and
+/// plays on (see Placed::stays); the others came back on the list and count
+/// from their frame.
+pub(crate) fn child_age(placed: &Placed, age: usize, count: usize) -> usize {
+    if placed.start == 0 && placed.stays { age } else { (age % count).saturating_sub(placed.start) }
 }
 
 fn blend_mode(mode: BlendMode) -> tiny_skia::BlendMode {
@@ -399,38 +414,31 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
+/// A fill of a morph shape at t, interpolated as Ruffle does: colors and
+/// gradient ratios rounded down, matrices in fixed point.
 fn lerp_fill(a: &FillStyle, b: &FillStyle, t: f32) -> FillStyle {
-    let color = |a: &swf::Color, b: &swf::Color| swf::Color {
-        r: lerp(a.r as f32, b.r as f32, t).round() as u8,
-        g: lerp(a.g as f32, b.g as f32, t).round() as u8,
-        b: lerp(a.b as f32, b.b as f32, t).round() as u8,
-        a: lerp(a.a as f32, b.a as f32, t).round() as u8,
+    let (wa, wb) = (1.0 - t, t);
+    let color = |a: &swf::Color, b: &swf::Color| {
+        let mix = |x: u8, y: u8| (wa * x as f32 + wb * y as f32) as u8;
+        swf::Color { r: mix(a.r, b.r), g: mix(a.g, b.g), b: mix(a.b, b.b), a: mix(a.a, b.a) }
     };
-    let matrix = |a: &swf::Matrix, b: &swf::Matrix| swf::Matrix {
-        a: swf::Fixed16::from_f32(lerp(a.a.to_f32(), b.a.to_f32(), t)),
-        b: swf::Fixed16::from_f32(lerp(a.b.to_f32(), b.b.to_f32(), t)),
-        c: swf::Fixed16::from_f32(lerp(a.c.to_f32(), b.c.to_f32(), t)),
-        d: swf::Fixed16::from_f32(lerp(a.d.to_f32(), b.d.to_f32(), t)),
-        tx: swf::Twips::new(lerp(a.tx.get() as f32, b.tx.get() as f32, t).round() as i32),
-        ty: swf::Twips::new(lerp(a.ty.get() as f32, b.ty.get() as f32, t).round() as i32),
+    let matrix = |a: &swf::Matrix, b: &swf::Matrix| {
+        let (fa, fb) = (swf::Fixed16::from_f32(wa), swf::Fixed16::from_f32(wb));
+        let twips = |x: swf::Twips, y: swf::Twips| swf::Twips::new((x.get() as f32 * wa + y.get() as f32 * wb).round() as i32);
+        swf::Matrix { a: a.a * fa + b.a * fb, b: a.b * fa + b.b * fb, c: a.c * fa + b.c * fb, d: a.d * fa + b.d * fb, tx: twips(a.tx, b.tx), ty: twips(a.ty, b.ty) }
     };
     let gradient = |a: &swf::Gradient, b: &swf::Gradient| swf::Gradient {
         matrix: matrix(&a.matrix, &b.matrix),
         spread: a.spread,
         interpolation: a.interpolation,
-        records: a
-            .records
-            .iter()
-            .zip(&b.records)
-            .map(|(ra, rb)| swf::GradientRecord { ratio: lerp(ra.ratio as f32, rb.ratio as f32, t).round() as u8, color: color(&ra.color, &rb.color) })
-            .collect(),
+        records: a.records.iter().zip(&b.records).map(|(ra, rb)| swf::GradientRecord { ratio: (wa * ra.ratio as f32 + wb * rb.ratio as f32) as u8, color: color(&ra.color, &rb.color) }).collect(),
     };
     match (a, b) {
         (FillStyle::Color(x), FillStyle::Color(y)) => FillStyle::Color(color(x, y)),
         (FillStyle::LinearGradient(x), FillStyle::LinearGradient(y)) => FillStyle::LinearGradient(gradient(x, y)),
         (FillStyle::RadialGradient(x), FillStyle::RadialGradient(y)) => FillStyle::RadialGradient(gradient(x, y)),
         (FillStyle::FocalGradient { gradient: x, focal_point: fx }, FillStyle::FocalGradient { gradient: y, focal_point: fy }) => {
-            FillStyle::FocalGradient { gradient: gradient(x, y), focal_point: swf::Fixed8::from_f32(lerp(fx.to_f32(), fy.to_f32(), t)) }
+            FillStyle::FocalGradient { gradient: gradient(x, y), focal_point: *fx * swf::Fixed8::from_f32(wa) + *fy * swf::Fixed8::from_f32(wb) }
         }
         (FillStyle::Bitmap { id, matrix: x, is_smoothed, is_repeating }, FillStyle::Bitmap { matrix: y, .. }) => {
             FillStyle::Bitmap { id: *id, matrix: matrix(x, y), is_smoothed: *is_smoothed, is_repeating: *is_repeating }
