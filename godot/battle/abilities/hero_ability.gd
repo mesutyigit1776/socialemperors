@@ -32,8 +32,6 @@ const UNITS := {
 	609: ["shoot", [120], [30]],  # Archer level 5
 	652: ["merlin", [140], [100]], 691: ["merlin", [140], [100]],  # Red Merlins
 }
-## The client streams fire in these steps, by direction.
-const STREAM_STEPS := {1: Vector2i(-1, -1), 2: Vector2i(0, -1), 3: Vector2i(1, -1), 4: Vector2i(1, 0), 5: Vector2i(1, 1), 6: Vector2i(-1, 0), 7: Vector2i(-1, 1), 8: Vector2i(0, 1)}
 ## The units that the auras of the Valkyrie and of Wallace help: peasants,
 ## clerics, footmen, horsemen and archers.
 const AURA_SUBCATS: Array[int] = [71, 72, 78, 79, 80]
@@ -144,7 +142,7 @@ func _whirl(sim: BattleSim, fighter: BattleFighter) -> void:
 ## count magic particles of type in a line in front of the fighter, 10 frames
 ## one after the other, each with its attack (attackSpecialStream).
 func _stream(sim: BattleSim, fighter: BattleFighter, type: int, count: int) -> void:
-	var step: Vector2i = STREAM_STEPS[direction(fighter)]
+	var step: Vector2i = TILE_STEPS[direction(fighter)]
 	for i in count:
 		sim.particle(fighter, fighter.tile + step * (i + 1), type, fighter.attack, 10 * i)
 

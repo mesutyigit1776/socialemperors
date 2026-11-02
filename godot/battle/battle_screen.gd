@@ -33,6 +33,7 @@ const SUBCAT_KAMIKAZE := 89
 const ELEMENT_KINDS := {96: Kind.FOREST, 92: Kind.LIGHT, 95: Kind.FIRE, 94: Kind.SOUL, 93: Kind.WATER}
 
 signal stepped  ## The battle ran one frame.
+signal selection_changed(selected: Array[BattleFighter])
 signal item_clicked(item: BattleFighter)  ## The player clicked an item that is not theirs and that they cannot attack now.
 
 var sim: BattleSim
@@ -51,7 +52,10 @@ var _last_click_msec := 0
 func _init(battle: BattleSim, view: BattleView) -> void:
 	sim = battle
 	_view = view
-	sim.removed.connect(func(fighter: BattleFighter) -> void: _selected.erase(fighter))
+	sim.removed.connect(func(fighter: BattleFighter) -> void:
+		if fighter in _selected:
+			_selected.erase(fighter)
+			selection_changed.emit(_selected))
 
 
 ## A battle for trying the battle rules and controls until the quests come:
@@ -160,6 +164,7 @@ func _item_at(point: Vector2) -> BattleFighter:
 func _select(fighters: Array) -> void:
 	_selected.assign(fighters)
 	_view.show_selection(_selected)
+	selection_changed.emit(_selected)
 
 
 func _is_own_unit(fighter: BattleFighter) -> bool:

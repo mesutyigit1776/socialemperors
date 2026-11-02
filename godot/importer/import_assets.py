@@ -308,7 +308,9 @@ def main():
 		sys.exit(130)
 	pool.shutdown()
 
-	unit_thumbs = sorted(f"{img_name}.jpg" for img_name, item in items.items() if item["type"] == "u")
+	# All pictures of buildingthumbs: the windows show the units, and the
+	# portrait buttons of the special units show pictures of their attacks.
+	unit_thumbs = sorted(os.path.basename(path) for path in glob.glob(os.path.join(source, "assets", "buildingthumbs", "*.jpg")))
 	spell_images = [image for name in spell_labels for image in (f"{name}.jpg", f"prev_{name}.jpg")]
 	ui_record_path = os.path.join(out_dir, "ui", "import.json")
 	ui_record = {"importer": version, "sources": [file_stamp(os.path.join(source, path)) for path in (CLIENT_SWF, CAST_SWF)], "pictures": unit_thumbs + spell_images}

@@ -160,7 +160,8 @@ const SCRIPTS := {
 static func create(item_id: int) -> BattleAbility:
 	var script: Variant = SCRIPTS.get(item_id)
 	if script == null:
-		return null
+		# A special unit without a delegate gets a plain ability for its buttons.
+		return BattleAbility.new() if SpecialUnitTable.has(item_id) else null
 	var ability: BattleAbility = script.new()
 	ability.configure(item_id)
 	return ability

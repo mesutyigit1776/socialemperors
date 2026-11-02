@@ -164,8 +164,10 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 	fighters.append(item)
 	if item.is_unit():
 		item.ai.on_added(self, item)
+	item.added_frame = frame
 	if item.ability != null:
 		item.ability.on_added(self, item)
+		item.ability.make_buttons(self, item)
 	added.emit(item)
 	return item
 
@@ -204,11 +206,19 @@ func step() -> void:
 			_update_forced(item)
 		if item.ability != null and not item.dead:
 			item.ability.on_update(self, item)
+			if not item.ability.buttons.is_empty() and (frame - item.added_frame) % FRAMES_PER_SECOND == 0:
+				item.ability.tick_buttons(self, item)
 		if item.is_unit():
 			_update_unit(item)
 		elif not item.dead:
 			_update_building(item)
 	frame += 1
+
+
+## The player clicks button id of the portrait of fighter, see
+## BattleAbility.use_button(). Returns false when it cannot be used now.
+func use_button(fighter: BattleFighter, id: int) -> bool:
+	return fighter.ability != null and fighter.team == BattleFighter.Team.PLAYER and fighter.ability.use_button(self, fighter, id)
 
 
 ## An order of the player: the unit walks to tile and does not attack on the way.
@@ -373,6 +383,7 @@ func heal(target: BattleFighter, amount: int, healer: BattleFighter = null) -> v
 	target.health = mini(target.health + amount, target.max_life())
 	healed.emit(target, amount)
 	if healer != null and healer.ability != null:
+		healer.ability.add_limit(self, healer, amount, true)
 		healer.ability.on_healing_done(self, healer, amount)
 
 
@@ -394,10 +405,14 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var variance := rng.randf() * DAMAGE_VARIANCE - DAMAGE_VARIANCE / 2
 	points = (points + absf(variance)) * CRITICAL_MULTIPLIER if critical else points + variance
 	points -= floorf(points - points * shield_factor(target.tile, target.team) + 0.5)
+	points *= target.damage_factor
 	var damage := maxi(floori(points - target.defense + 0.5), 1)
 	target.health -= damage
+	if target.cannot_die:
+		target.health = maxi(target.health, 1)
 	hit.emit(target, attacker, damage, critical)
 	if attacker != null and attacker.ability != null:
+		attacker.ability.add_limit(self, attacker, damage, false)
 		attacker.ability.on_damage_done(self, attacker, damage)
 	if target.health <= 0:
 		target.health = 0
@@ -795,6 +810,18 @@ func shoot(shooter: BattleFighter, target: BattleFighter, graphic: String, damag
 ## nobody; on_land runs when it lands, with the shot.
 func shoot_at(shooter: BattleFighter, tile: Vector2i, graphic: String, on_land: Callable) -> BattleProjectile:
 	var shot := BattleProjectile.fire_at(shooter, IsoGrid.tile_to_map(tile), graphic)
+	shot.on_land = on_land
+	projectiles.append(shot)
+	shot_fired.emit(shot)
+	return shot
+
+
+## A beam of shooter with its own graphic to target, or to tile when target
+## is null, that lasts frames frames. It hurts target by damage when it ends,
+## or nobody when damage is negative. on_land runs when it ends, with the shot.
+func shoot_beam(shooter: BattleFighter, target: BattleFighter, tile: Vector2i, graphic: String, frames: int, damage := -1, on_land := Callable()) -> BattleProjectile:
+	var shot := BattleProjectile.beam_to(shooter, target, IsoGrid.tile_to_map(tile), graphic, frames)
+	shot.damage = damage if target != null else -1
 	shot.on_land = on_land
 	projectiles.append(shot)
 	shot_fired.emit(shot)

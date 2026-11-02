@@ -43,10 +43,15 @@ var converted := false  ## A monk converted the unit to the other side, see Batt
 var enlarged := false  ## The unit does 1.5 times the damage and cannot be stunned.
 var swallowed := false  ## The unit or building goes into a hole and dies soon.
 var opened := false  ## A door that is open, see BattleSim.open_door().
+var dizzy := false  ## Stars turn over the unit (DizzyDamage).
+var levitating := false  ## The unit floats in the air (LevitateDamage, AttractDamage).
+var damage_factor := 1.0  ## The part of each damage that the unit takes (recieveDamageModifier), see ShieldAttack.
+var cannot_die := false  ## The life does not go below 1 (canDie of the client), during some special attacks.
 
 # Units only.
 var ai: BattleAI
 var origin: Vector2i  ## The tile where the unit was at the start.
+var added_frame := 0  ## The frame of the battle when the item came on the map.
 var attacking := false
 var moving := false
 var path: Array[Vector2i] = []  ## Tiles after the current walk point.

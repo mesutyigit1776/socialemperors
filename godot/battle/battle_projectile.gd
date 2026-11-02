@@ -144,6 +144,27 @@ static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumb
 	return shot
 
 
+## A beam of an ability from attacker to target, or to point when target is
+## null. It lasts frames frames and carries no damage; see BattleSim.shoot_beam().
+static func beam_to(attacker: BattleFighter, target: BattleFighter, point: Vector2, graphic: String, frames: int) -> BattleProjectile:
+	var shot := BattleProjectile.new()
+	shot.attacker = attacker
+	shot.target = target
+	shot.kind = Kind.TIMED
+	shot.beam = true
+	shot.damage = -1
+	shot.graphic_name = graphic
+	if target != null:
+		point = target.position + (target.graphic.aim() if target.graphic != null else Vector2.ZERO)
+	shot.start = attacker.position
+	if attacker.graphic != null:
+		shot.start += attacker.graphic.shot_start(point - attacker.position, false)
+	shot.aim = point
+	shot.end = point
+	shot.frames_left = maxi(frames, 1)
+	return shot
+
+
 ## A timed shot of an ability from attacker to point, a map position, with
 ## no target. It carries no damage; see BattleSim.shoot_at().
 static func fire_at(attacker: BattleFighter, point: Vector2, graphic: String) -> BattleProjectile:

@@ -44,6 +44,147 @@ func configure(_item_id: int) -> void:
 	pass
 
 
+## A button of the portrait of a special unit (SpecialUnitAttack of the
+## client). Only the player uses them; see BattleSim.use_button().
+class UnitButton:
+	var id: int
+	var name := ""  ## The text over the unit when the player uses the button.
+	var thumb := ""  ## The picture of the button in the unit pictures (buildingthumbs).
+	var cant_text := ""  ## The text over the unit when can_use is false.
+	var uses := -1  ## Uses that are left, or -1 for no limit.
+	var cast_seconds := 0
+	var cooldown_seconds := 24
+	var action: Callable  ## (sim, fighter) -> void
+	var can_use: Callable  ## (sim, fighter) -> bool, or an invalid Callable for always.
+
+	func _init(button_id: int, button_name: String, button_thumb: String, cast: int, cooldown: int, button_action: Callable, button_can_use := Callable(), cant := "") -> void:
+		id = button_id
+		name = button_name
+		thumb = button_thumb
+		cast_seconds = cast
+		cooldown_seconds = cooldown
+		action = button_action
+		can_use = button_can_use
+		cant_text = cant
+
+
+## The states of the buttons (IsoSpecialUnit): after a click the unit casts
+## for cast_seconds, then the action runs, then the buttons wait for
+## cooldown_seconds. The limit button can be used in any state.
+enum ButtonState { IDLE, CASTING, COOLDOWN }
+const LIMIT_BUTTON := 4
+## The limit bar (LimitDelegate): the damage or the healing that the unit does
+## fills it, at most once in 30 frames, up to LIMIT_MAX; when it is full, the
+## limit button can be used, and then the bar is empty.
+const LIMIT_MAX := 2000
+enum LimitType { DAMAGE, HEALTH, ALL }
+
+var buttons := {}  ## Button id (0 to 4) -> UnitButton.
+var button_state := ButtonState.IDLE
+var button_seconds := 0  ## Seconds left in the state.
+var active_button: UnitButton
+var has_limit := false
+var limit := 0
+var limit_type := LimitType.DAMAGE
+var in_limit_attack := false
+var _last_limit_frame := -1000
+
+
+## The summoned units of the fighter that are alive (minionsAlive of the client).
+var minions_alive := 0
+var minions: Array[BattleFighter] = []
+
+
+## count summoned units unit_id near tile (or near the fighter), on the side of
+## the fighter; each flies 3 tiles away from it (spawnMinions of the client).
+func spawn_minions(sim: BattleSim, fighter: BattleFighter, unit_id: int, count: int, near: Variant = null) -> Array[BattleFighter]:
+	var spawned: Array[BattleFighter] = []
+	for i in count:
+		var unit := sim.spawn(sim.config_item(unit_id), near if near != null else fighter.tile, fighter.team)
+		if unit == null:
+			continue
+		sim.push_in_air(unit, fighter, 3)
+		add_minion(sim, unit)
+		spawned.append(unit)
+	return spawned
+
+
+## Counts unit as a minion of the fighter until it dies.
+func add_minion(sim: BattleSim, unit: BattleFighter) -> void:
+	minions_alive += 1
+	minions.append(unit)
+	sim.died.connect(func(item: BattleFighter, _killer: BattleFighter) -> void:
+		if item == unit:
+			minions_alive -= 1
+			minions.erase(unit))
+
+
+## Makes the portrait buttons of the unit, see SpecialUnitTable.
+func make_buttons(sim: BattleSim, fighter: BattleFighter) -> void:
+	SpecialUnitTable.make(sim, fighter, self)
+
+
+## The player clicks button id (doAttack of the client). Returns false when
+## the button cannot be used now.
+func use_button(sim: BattleSim, fighter: BattleFighter, id: int) -> bool:
+	var button: UnitButton = buttons.get(id)
+	if button == null or fighter.dead:
+		return false
+	if button_state != ButtonState.IDLE and id != LIMIT_BUTTON:
+		return false
+	if id == LIMIT_BUTTON and limit < LIMIT_MAX:
+		return false
+	if button.uses == 0 or (button.can_use.is_valid() and not button.can_use.call(sim, fighter)):
+		return false
+	if button.uses > 0:
+		button.uses -= 1
+	active_button = button
+	button_state = ButtonState.CASTING
+	button_seconds = button.cast_seconds
+	return true
+
+
+## Called once a second (tTick of the client).
+func tick_buttons(sim: BattleSim, fighter: BattleFighter) -> void:
+	match button_state:
+		ButtonState.CASTING:
+			button_seconds -= 1
+			if button_seconds <= 0:
+				var button := active_button
+				button_state = ButtonState.COOLDOWN
+				button_seconds = button.cooldown_seconds
+				if button.id == LIMIT_BUTTON:
+					limit = 0
+				button.action.call(sim, fighter)
+		ButtonState.COOLDOWN:
+			button_seconds -= 1
+			if button_seconds <= 0:
+				active_button = null
+				button_state = ButtonState.IDLE
+
+
+## The damage (or healing) amount that the fighter did fills the limit bar.
+## A Limit Wizard near the fighter doubles it.
+func add_limit(sim: BattleSim, fighter: BattleFighter, amount: int, healing: bool) -> void:
+	if not has_limit or in_limit_attack:
+		return
+	if limit_type != LimitType.ALL and (limit_type == LimitType.HEALTH) != healing:
+		return
+	if sim.frame - _last_limit_frame <= BattleSim.FRAMES_PER_SECOND:
+		return
+	_last_limit_frame = sim.frame
+	var adder := sim.items_near(fighter.tile, LIMIT_ADDER_RANGE, 1, fighter.team, true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead and item.def.subcat_functional == SUBCAT_LIMIT_ADDER)
+	if not adder.is_empty():
+		amount *= 2
+		sim.particle(fighter, fighter.tile, MagicParticles.STARS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass)
+	limit = mini(limit + amount, LIMIT_MAX)
+
+
+const SUBCAT_LIMIT_ADDER := 91
+const LIMIT_ADDER_RANGE := 10
+
+
 ## The fighter came into the battle (onInit).
 func on_added(_sim: BattleSim, _fighter: BattleFighter) -> void:
 	pass
@@ -131,6 +272,9 @@ static func enemies_near(sim: BattleSim, fighter: BattleFighter, tile: Vector2i,
 ## The client throws eggs and similar shots by the direction of the unit.
 const DIRECTION_STEPS := {1: Vector2i(0, -1), 2: Vector2i(1, -1), 3: Vector2i(1, 0), 4: Vector2i(1, 1), 5: Vector2i(0, 1), 6: Vector2i(-1, -1), 7: Vector2i(-1, 0), 8: Vector2i(-1, 1)}
 const EGG := "p.egg"
+## The tile step in front of a unit, by its direction (directionToVector of
+## the client): the directions of the screen on the tiles of the map.
+const TILE_STEPS := {1: Vector2i(-1, -1), 2: Vector2i(0, -1), 3: Vector2i(1, -1), 4: Vector2i(1, 0), 5: Vector2i(1, 1), 6: Vector2i(-1, 0), 7: Vector2i(-1, 1), 8: Vector2i(0, 1)}
 
 
 ## Throws an egg 4 to 7 tiles in front of the fighter, from which a summoned

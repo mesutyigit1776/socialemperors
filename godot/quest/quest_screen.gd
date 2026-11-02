@@ -7,7 +7,8 @@ extends Node2D
 ##    (QuestStartWindow). The battle waits.
 ## 2. The start button starts the battle with the chosen stars (started).
 ## 3. During the battle the bar shows the gold and experience (QuestHud), and
-##    the player can cast spells (SpellBook). An item that the player can
+##    the player can cast spells (SpellBook). A selected special unit shows its
+##    portrait buttons (UnitButtonPanel). An item that the player can
 ##    collect (the treasure of a troll island, a key of a boss island) gets a
 ##    mark when it opens; a click on it collects it.
 ## 4. At the end, or after the Withdraw button and "Yes", the result window
@@ -83,6 +84,9 @@ func _on_started(stars: int, start_window: QuestStartWindow) -> void:
 	_hud = QuestHud.new(_ui, _config, quest)
 	_hud.withdraw_requested.connect(_on_withdraw_requested)
 	_windows.add_child(_hud)
+	var buttons := UnitButtonPanel.new(quest.sim, _ui, _config)
+	_screen.selection_changed.connect(buttons.show_selection)
+	_windows.add_child(buttons)
 	if SpellBook.is_shown(_village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
 		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)

@@ -67,8 +67,8 @@ WINDOWS_FILE = "windows.swf"
 
 
 def import_ui(source, out_dir, unit_thumbs, spell_images):
-	"""unit_thumbs: the file names "<img_name>.jpg" of the units whose
-	pictures the windows can show. spell_images: the pictures of the spells
+	"""unit_thumbs: the file names of the pictures in buildingthumbs that the
+	windows and the portrait buttons can show. spell_images: the pictures of the spells
 	("<img_name>.jpg" and "prev_<img_name>.jpg"). Returns the number of
 	imported sprites."""
 	ui_dir = os.path.join(out_dir, "ui")
