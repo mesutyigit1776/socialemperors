@@ -7,8 +7,9 @@ extends Node2D
 ##    (QuestStartWindow). The battle waits.
 ## 2. The start button starts the battle with the chosen stars (started).
 ## 3. During the battle the bar shows the gold and experience (QuestHud), and
-##    the player can cast spells (SpellBook). On a troll island the treasure
-##    gets a mark when it opens; a click on it wins.
+##    the player can cast spells (SpellBook). An item that the player can
+##    collect (the treasure of a troll island, a key of a boss island) gets a
+##    mark when it opens; a click on it collects it.
 ## 4. At the end, or after the Withdraw button and "Yes", the result window
 ##    shows (QuestEndWindow). Its OK button gives the result (closed).
 
@@ -16,7 +17,7 @@ signal started(stars: int)
 signal closed(result: Dictionary)  ## The result for Village.end_quest().
 signal village_changed  ## A spell or mana changed the village; the owner saves it.
 
-const TREASURE_RESOURCE := "g"  ## The mark of the treasure has the color of gold.
+const COLLECTABLE_RESOURCE := "g"  ## The mark of a collectable item has the color of gold.
 ## The client fills the screen behind a quest island with this blue, which is
 ## the sea around the island.
 const SEA_COLOR := Color8(0x2e, 0x94, 0xe6)
@@ -57,6 +58,7 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	add_child(_screen)
 	_screen.stepped.connect(quest.update)
 	_screen.item_clicked.connect(func(item: BattleFighter) -> void: quest.collect(item))
+	quest.collectable_opened.connect(func(item: BattleFighter) -> void: _view.show_collectable(item, COLLECTABLE_RESOURCE))
 	quest.treasure_opened.connect(_on_treasure_opened)
 	quest.ended.connect(_on_ended)
 	add_child(_windows)
@@ -114,10 +116,9 @@ func _mark(tile: Variant, area: int, team: Variant) -> void:
 	_view.show_marked(marked)
 
 
-## The client moves the view to the treasure and marks it.
+## The client moves the view to the treasure.
 func _on_treasure_opened() -> void:
 	var treasure: BattleFighter = quest.sim.fighters.filter(quest.is_treasure).front()
-	_view.show_collectable(treasure, TREASURE_RESOURCE)
 	create_tween().tween_property(_camera, "position", treasure.position, 1.5).set_trans(Tween.TRANS_SINE)
 
 

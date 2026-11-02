@@ -47,6 +47,7 @@ class ItemDef:
 	var sm_training_time: int  ## Seconds that the Soul Mixer needs to make this unit.
 	var potion: int  ## Potions that bring this unit back from the graveyard.
 	var cost_unit_cash: int  ## The Heroes Grave brings a hero back for this value times Village.RESURRECT_GOLD_PER_CASH gold.
+	var groups: String  ## The group of a unit, for example "god" or "dragon"; some quests ask for units of a group.
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -126,7 +127,10 @@ var quest_gold: Dictionary = {}  ## Gold key of a quest, for example "QUEST_ISLA
 var quest_gold_multipliers: Array[float] = []  ## For 1, 2 and 3 stars.
 var quest_gold_replayed: float  ## Multiplies the gold when the island already has these stars.
 var quest_max_xp: int  ## The experience of one quest is at most this.
+var quest_max_xp_god: int  ## The same for the god islands.
 var quest_units_back_percent: int  ## The part of the dead units that come back after a quest.
+var quest_units_back_boss: int  ## The same after a quest on a boss island.
+var quest_units_back_hardcore: int  ## The same after a quest on a hard or god island.
 var quest_honour: Array[int] = []  ## For a win with 1, 2 and 3 stars.
 var quest_honour_first: Array[int] = []  ## For the first win with these stars.
 var quest_honour_lost: int
@@ -292,6 +296,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.type = str(entry.get("type", ""))
 	item.race = str(entry.get("race", ""))
 	item.img_name = str(entry.get("img_name", ""))
+	item.groups = str(entry.get("groups", ""))
 	item.width = numbers["width"]
 	item.height = numbers["height"]
 	item.category_id = numbers["category_id"]
@@ -418,13 +423,17 @@ static func _parse_quest_globals(config: GameConfig, globals: Dictionary) -> boo
 				return false
 			pair[0].append(to_int(value))
 	var replayed: Variant = globals.get("QUEST_GOLD_REWARD_REPLAYED")
-	var numbers := [to_int(globals.get("MAX_XP_QUEST")), to_int(globals.get("PERCENT_UNITS_RECOVERED_ISLE")), to_int(globals.get("HONOR_POINT_QUEST_LOSE"))]
+	var numbers := [to_int(globals.get("MAX_XP_QUEST")), to_int(globals.get("PERCENT_UNITS_RECOVERED_ISLE")), to_int(globals.get("HONOR_POINT_QUEST_LOSE")),
+			to_int(globals.get("MAX_XP_GOD_QUEST")), to_int(globals.get("PERCENT_UNITS_RECOVERED_BOSS")), to_int(globals.get("PERCENT_UNITS_RECOVERED_HARDCORE_ISLAND"))]
 	if null in numbers or not (replayed is float or replayed is int or (replayed is String and replayed.is_valid_float())):
 		return false
 	config.quest_gold_replayed = float(replayed)
 	config.quest_max_xp = numbers[0]
 	config.quest_units_back_percent = numbers[1]
 	config.quest_honour_lost = numbers[2]
+	config.quest_max_xp_god = numbers[3]
+	config.quest_units_back_boss = numbers[4]
+	config.quest_units_back_hardcore = numbers[5]
 	return config.quest_gold_multipliers.size() == QuestBook.MAX_STARS and config.quest_honour.size() == QuestBook.MAX_STARS and config.quest_honour_first.size() == QuestBook.MAX_STARS
 
 

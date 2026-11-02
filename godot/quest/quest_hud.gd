@@ -35,7 +35,7 @@ func _init(ui: UiLibrary, config: GameConfig, quest: QuestBattle) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar = ui.make("GuiMC/barraAttackArriba")
 	_bar.show_frame(BAR_FRAME)
-	_bar.set_text("nameText", config.text(quest.island.title_text))
+	_bar.set_text("nameText", quest.island.title(config))
 	add_child(_bar)
 	_exit = ui.make("GuiMC/bgBar/btnExit")
 	_exit.scale = EXIT_SCALE
@@ -54,7 +54,6 @@ func _init(ui: UiLibrary, config: GameConfig, quest: QuestBattle) -> void:
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(label)
-	_counter_title.text = config.text("QUEST_CIVILIZACION_ENEMIGOS" if quest.counts_town_halls() else "TIMER_EJERCITO_ENEMIGO")
 	quest.changed.connect(_update)
 	_update()
 
@@ -72,8 +71,10 @@ func _ready() -> void:
 func _update() -> void:
 	_bar.set_text("goldGained", str(_quest.gold))
 	_bar.set_text("xpGained", str(_quest.xp))
-	var left := _quest.enemies_left()
-	if _quest.counts_town_halls():
-		_counter.text = _config.text("QUEST_CIVILIZACION_HQ_SINGULAR") if left == 1 else _config.text("QUEST_CIVILIZACION_HQ_PLURAL").replace("#0#", str(left))
-	else:
-		_counter.text = _config.text("QUEST_ENEMIES_ALIVE_SINGULAR") if left == 1 else _config.text("QUEST_ENEMIES_ALIVE_PLURAL").replace("#0#", str(left))
+	# Islands without a counter (the dragon islands) hide it.
+	var texts := _quest.counter_texts()
+	_counter_title.visible = not texts.is_empty()
+	_counter.visible = not texts.is_empty()
+	if not texts.is_empty():
+		_counter_title.text = texts[0]
+		_counter.text = texts[1]

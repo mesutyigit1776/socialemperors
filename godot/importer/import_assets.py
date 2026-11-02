@@ -182,6 +182,11 @@ def write_json_last(path, data):
 	os.replace(path + ".tmp", path)
 
 
+# The library of magic particles that the client loads (ExternalClass.LIB_MAGICPARTICLES).
+MAGIC_PARTICLES_SWF = os.path.join("assets", "swf", "20131010_magicParticles.swf")
+MAGIC_PARTICLES_SYMBOL = "MagicParticleMC"
+
+
 def import_sprite(swf_path, symbol, sprite_dir, animated, record):
 	"""Copies the SWF file of a symbol to sprite_dir/graphic.swf. The port
 	draws the frames from it and reads their bounds, shot points and clips.
@@ -260,6 +265,9 @@ def main():
 	# (name shown in the progress, SWF file, symbol, output folder, animated)
 	jobs = [(img_name, os.path.join(sprite_dir, f"{img_name}.swf"), img_name, os.path.join(out_dir, "sprites", img_name), items[img_name]["type"] == "u") for img_name in sorted(items)]
 	jobs += [(f"fx/{name}", os.path.join(source, "assets", "fx", f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in fx_names]
+	# The magic particles of the abilities: one frame for each type of particle
+	# (MagicParticle of the client), with the clip that plays.
+	jobs.append((f"fx/{MAGIC_PARTICLES_SYMBOL}", os.path.join(source, MAGIC_PARTICLES_SWF), MAGIC_PARTICLES_SYMBOL, os.path.join(out_dir, "fx", MAGIC_PARTICLES_SYMBOL), True))
 	# The graphics of the spells, which the battles show like the effects.
 	jobs += [(f"fx/{name}", os.path.join(sprite_dir, f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in sorted(spell_labels)]
 

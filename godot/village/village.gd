@@ -100,9 +100,15 @@ func find_collectible(from_treasure_mine: bool, rng: RandomNumberGenerator) -> V
 	var roll := rng.randf() * (Collections.TREASURE_ROLL if from_treasure_mine else Collections.HARVEST_ROLL)
 	var found := Collections.loot(source, roll, rng)
 	if found != Vector2i.ZERO:
-		var counts := _collection(found.x)
-		counts[found.y] = int(counts[found.y]) + 1
+		add_collectible(found)
 	return found
+
+
+## Adds one item of a collection: Vector2i(collection, item index), as the
+## server command "add_collectable" does.
+func add_collectible(found: Vector2i) -> void:
+	var counts := _collection(found.x)
+	counts[found.y] = int(counts[found.y]) + 1
 
 
 ## True when the player has each item of the collection, and the client allows
@@ -651,6 +657,9 @@ func quest_honour(quest_id: String, difficulty: int, won: bool) -> int:
 ##   gets experience.
 ## - The units that died and did not come back leave the map. The graveyard
 ##   takes them, see _bury().
+## - The items of "item_rewards" (item id -> number), which some islands give
+##   for a win, go to the store. The client puts them in the store itself; the
+##   server of this project does not read the field.
 func end_quest(result: Dictionary) -> void:
 	var quest_id := str(result["quest_id"])
 	var difficulty := int(result["difficulty"])
@@ -670,6 +679,9 @@ func end_quest(result: Dictionary) -> void:
 	_add_resource("g", int(result["resources"]["g"]))
 	# The client adds this experience during the quest, outside its normal mode.
 	_add_xp(int(result["resources"]["x"]), false)
+	var rewards: Variant = result.get("item_rewards", {})
+	for key: Variant in rewards if rewards is Dictionary else {}:
+		_stored()[str(key)] = int(_stored().get(str(key), 0)) + int(rewards[key])
 	for entry: Array in result["units"]:
 		var lost := int(entry[2]) - int(entry[3])
 		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):

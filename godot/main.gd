@@ -193,14 +193,26 @@ func _on_island_chosen(quest_id: String, window: QuestListWindow) -> void:
 			_start_quest(quest_id)
 
 
-## Leaves the village for the island: the army lands and the start window opens.
+## Leaves the village for the island: the army lands and the start window
+## opens. On an island with teams the player first chooses the team (TeamWindow).
 func _start_quest(quest_id: String) -> void:
+	var island := QuestIsland.find(quest_id)
+	if not island.team:
+		_land(quest_id, _village.quest_army())
+		return
+	var window := TeamWindow.new(_ui, _config, island, _village.quest_army())
+	window.closed.connect(_open_quests)
+	window.accepted.connect(func(team: Dictionary) -> void: _land(quest_id, team))
+	_windows.add_child(window)
+
+
+## army: unit id -> number, the units that go to the island.
+func _land(quest_id: String, army: Dictionary) -> void:
 	var map := Village.load_from_file(_data_dir.path_join("quests/%s.save.json" % quest_id), _config)
 	if map == null:
 		_alert("Cannot read the map of this island. Import the game files again.")
 		return
-	var army := _village.quest_army()
-	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng)
+	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
 	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
 	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
@@ -215,6 +227,8 @@ func _start_quest(quest_id: String) -> void:
 ## Saves the result of the quest and goes home. The client then opens the island window again.
 func _on_quest_closed(result: Dictionary) -> void:
 	var old_level := _village.get_level()
+	for found in _quest_screen.quest.collectibles:
+		_village.add_collectible(found)
 	_village.end_quest(result)
 	_save()
 	_quest_screen.queue_free()

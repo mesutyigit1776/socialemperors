@@ -38,6 +38,26 @@ const SURVIVE_UNITS: Array[int] = [604, 866, 886]  # Troll drummer and two heale
 
 var state := State.IDLE
 var condition: Condition
+var aggro_range := AGGRO_RANGE  ## Tiles in which the unit looks for an enemy.
+
+
+## The AI of a unit: the special AI of a boss, or this one.
+static func create(unit: GameConfig.ItemDef) -> BattleAI:
+	match unit.id:
+		RockdrillerAI.ROCKDRILLER_BOSS:
+			return RockdrillerAI.new(unit)
+		RockdrillerAI.SANDDRILLER:
+			return SanddrillerAI.new(unit)
+		DragonBossAI.DRAGON_BOSS:
+			return DragonBossAI.new(unit)
+	if unit.subcat_functional in BossAI.SUBCATS:
+		return BossAI.new(unit)
+	return BattleAI.new(unit)
+
+
+## Called once when the unit comes into the battle.
+func on_added(_sim: BattleSim, _unit: BattleFighter) -> void:
+	pass
 
 
 func _init(unit: GameConfig.ItemDef) -> void:
@@ -73,8 +93,8 @@ func update(sim: BattleSim, unit: BattleFighter) -> void:
 		_cleric_update(sim, unit)
 
 
-## attacker hit the unit.
-func on_attacked(sim: BattleSim, unit: BattleFighter, attacker: BattleFighter) -> void:
+## attacker hit the unit with damage points.
+func on_attacked(sim: BattleSim, unit: BattleFighter, attacker: BattleFighter, _damage := 0) -> void:
 	if unit.dead:
 		return
 	match condition:
@@ -108,13 +128,23 @@ func on_target_dead(sim: BattleSim, unit: BattleFighter, tile: Vector2i) -> void
 	sim.set_target(unit, null)
 	if condition != Condition.AGGRESSIVE:
 		return
-	var enemy: BattleFighter = sim.nearest_enemy(unit, tile, AGGRO_RANGE)
+	var enemy: BattleFighter = sim.nearest_enemy(unit, tile, aggro_range)
 	sim.set_target(unit, enemy)
 	if enemy != null and state != State.FORCED_MOVE:
 		sim.attack(unit, enemy)
 
 
-func on_arrived() -> void:
+## A timed shot of the unit hit target.
+func on_shot_hit(_sim: BattleSim, _unit: BattleFighter, _target: BattleFighter) -> void:
+	pass
+
+
+## The unit walked onto a new tile.
+func on_enter_tile(_sim: BattleSim, _unit: BattleFighter) -> void:
+	pass
+
+
+func on_arrived(_sim: BattleSim, _unit: BattleFighter) -> void:
 	if state == State.FORCED_MOVE:
 		state = State.IDLE
 
@@ -122,7 +152,7 @@ func on_arrived() -> void:
 func _look_for_enemy(sim: BattleSim, unit: BattleFighter) -> void:
 	if unit.target != null or state == State.FORCED_MOVE:
 		return
-	var enemy: BattleFighter = sim.nearest_enemy(unit, unit.tile, AGGRO_RANGE)
+	var enemy: BattleFighter = sim.nearest_enemy(unit, unit.tile, aggro_range)
 	sim.set_target(unit, enemy)
 	if enemy != null:
 		sim.attack(unit, enemy)

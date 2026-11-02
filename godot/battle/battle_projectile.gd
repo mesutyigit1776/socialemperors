@@ -92,15 +92,32 @@ var definition: Dictionary  ## Of a stepped shot, see ARROW.
 var steps: float  ## A stepped shot moves (end - start) / steps in each frame.
 var first_step: float  ## The step at which a stepped shot starts.
 var arc: bool  ## A timed shot flies in an arc.
+var graphic_name := ""  ## The graphic of a shot of an ability, see BattleSim.shoot().
+var beam := false  ## A beam of an ability, see BattleAbility.beam.
+var on_land := Callable()  ## Runs when a shot of an ability lands, with the shot.
 
 
-## A shot from attacker to the current position of target.
-static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumberGenerator) -> BattleProjectile:
+## A shot from attacker to the current position of target. graphic: the
+## graphic of a timed shot of an ability, see BattleAbility.shot_graphic.
+static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumberGenerator, graphic := "") -> BattleProjectile:
 	var shot := BattleProjectile.new()
 	shot.attacker = attacker
 	shot.target = target
 	shot.damage = attacker.attack
-	var stepped: Variant = STEPPED_SHOTS.get(attacker.def.id)
+	if graphic == "" and attacker.ability != null:
+		graphic = attacker.ability.shot_graphic
+	shot.graphic_name = graphic
+	var stepped: Variant = STEPPED_SHOTS.get(attacker.def.id) if graphic == "" else null
+	if attacker.ability != null and attacker.ability.beam and graphic == attacker.ability.shot_graphic:
+		shot.kind = Kind.TIMED
+		shot.beam = true
+		shot.start = attacker.position
+		if attacker.graphic != null:
+			shot.start += attacker.graphic.shot_start(target.position - attacker.position, false)
+		shot.aim = target.position + (target.graphic.aim() if target.graphic != null else Vector2.ZERO)
+		shot.end = shot.aim
+		shot.frames_left = attacker.ability.beam_frames
+		return shot
 	shot.start = attacker.position
 	if attacker.graphic != null:
 		shot.start += attacker.graphic.shot_start(target.position - attacker.position, stepped != null)
@@ -127,6 +144,28 @@ static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumb
 	return shot
 
 
+## A timed shot of an ability from attacker to point, a map position, with
+## no target. It carries no damage; see BattleSim.shoot_at().
+static func fire_at(attacker: BattleFighter, point: Vector2, graphic: String) -> BattleProjectile:
+	var shot := BattleProjectile.new()
+	shot.attacker = attacker
+	shot.kind = Kind.TIMED
+	shot.damage = -1
+	shot.graphic_name = graphic
+	shot.start = attacker.position
+	if attacker.graphic != null:
+		shot.start += attacker.graphic.shot_start(point - attacker.position, false)
+	shot.aim = point
+	shot.end = point
+	var distance := roundf(shot.start.distance_to(shot.end))
+	var seconds := roundf(distance / TIMED_PIXELS_PER_SECOND * 100) / 100
+	shot.arc = distance >= ARC_DISTANCE
+	if shot.arc:
+		seconds *= ARC_TIME
+	shot.frames_left = maxi(roundi(seconds * FRAMES_PER_SECOND), 1)
+	return shot
+
+
 ## The point of target at which a stepped shot aims, see BattleGraphic.stepped_aim().
 static func stepped_aim(target: BattleFighter, vertical_offset: float) -> Vector2:
 	return target.position + (target.graphic.stepped_aim(vertical_offset) if target.graphic != null else Vector2.ZERO)
@@ -134,6 +173,8 @@ static func stepped_aim(target: BattleFighter, vertical_offset: float) -> Vector
 
 ## The graphic of the shot in <data>/fx.
 func graphic() -> String:
+	if graphic_name != "":
+		return graphic_name
 	return definition["graphic"] if kind == Kind.STEPPED else TIMED_GRAPHICS.get(attacker.def.id, DEFAULT_GRAPHIC)
 
 

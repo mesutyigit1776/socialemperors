@@ -7,9 +7,6 @@ extends Control
 
 signal started(stars: int)
 
-## The picture of the troll and civilisation islands is frame 4 of "images".
-const PICTURE_FRAME := 3
-const PICTURE := "TESORO.jpg"
 ## Frame 2 of a star shows it chosen.
 const STAR_ON := 1
 const STAR_OFF := 0
@@ -32,13 +29,14 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, rank: int, ma
 	_window = ui.make("PopupLoadingQuestMC")
 	add_child(_window)
 	_window.set_text("title", config.text("POPUP_STARTING_QUEST_TITLE"))
-	_window.set_text("desc1", config.text(island.description_text))
+	_window.set_text("desc1", config.text(island.description_text) if island.description_text != "" else "")
 	_window.set_text("difficultyText", config.text("POPUP_QUEST_ELIGE_DIFICULTAD"))
 	_window.set_part_visible("loadingText", false)
 	_window.set_part_visible("lockedPopup", false)
-	_window.clip("images").show_frame(PICTURE_FRAME)
+	# The picture of the island, see QuestIsland.PICTURES.
+	_window.clip("images").show_frame(island.picture)
 	var picture := TextureRect.new()
-	picture.texture = ui.image(PICTURE)
+	picture.texture = ui.image(QuestIsland.PICTURES[island.picture])
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# The client centres the pictures of its windows on their container.
 	if picture.texture != null:

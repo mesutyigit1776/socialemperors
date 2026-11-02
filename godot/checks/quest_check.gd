@@ -12,14 +12,20 @@ const TROLLS_2 := "100000007"  # 11 units, one of them Wallace (555), who joins 
 const VIKINGS := "100000021"  # the second civilisation island in the order
 const KAMIKAZES := "100000020"  # 40 kamikazes and 8 fire cannons join the player
 const ATLANTIS := "100000023"  # walls and decorations are neutral
-const ARCTIC := "100000002"  # a boss island, not in the port
-const GOD_1 := "100000090"  # always open, not in the port
+const ARCTIC := "100000002"  # the Yeti island: 4 keys, then the Giant Yeti; a win gives a unit 541
+const DESERT := "100000003"  # the Golem island: the altar becomes the Stone Golem
+const NEST_2 := "100000033"  # the second dragon island
+const HEROES := "100000018"  # 7 areas behind walls with doors
+const GOD_1 := "100000090"  # always open; the team needs 1 god or colossus
+const GOD_3 := "100000092"  # the team needs 5 gods or colossi
 const PHARAOHS := "100000046"  # needs level 40
 const SPEARMAN := 509
 const LIGHT_ARCHER := 516  # The starting village has 2.
 const WALLACE := 555
 const TREASURE := 82
 const SUMMONED_GOLEM := 630
+const HEAVY_KNIGHT := 541  # The reward of the Yeti island for a human player.
+const FIRE_GOD := 2075  # Elemental Fire God, a unit of the group "god".
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 const NEUTRAL := BattleFighter.Team.NEUTRAL
@@ -45,7 +51,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -57,13 +63,13 @@ func _check_island_list() -> bool:
 	var book := QuestBook.new(village, _config)
 	_check(book.islands()[0] == TROLLS_1 and book.is_open(TROLLS_1), "the first island of the order is open")
 	_check(not book.is_open(TROLLS_2) and book.refusal(TROLLS_2, NOW) == QuestBook.Refusal.LOCKED, "the second island is locked")
-	_check(book.is_open(GOD_1) and book.refusal(GOD_1, NOW) == QuestBook.Refusal.NOT_IN_PORT, "a god island is always open, but not in the port")
+	_check(book.is_open(GOD_1) and book.refusal(GOD_1, NOW) == QuestBook.Refusal.NONE, "a god island is always open")
 	_check(book.is_level_locked(PHARAOHS) and not book.is_level_locked(TROLLS_1), "the Pharaohs island needs level 40")
 	_check(book.refusal(TROLLS_1, NOW) == QuestBook.Refusal.NONE, "the first island can start with the army of the village")
 	_check(book.max_stars(TROLLS_1) == 1, "an island without a win allows 1 star")
 	village.end_quest(_result(TROLLS_1, 1, true))
 	_check(book.is_open(TROLLS_2) and book.max_stars(TROLLS_1) == 2, "a win opens the next island and allows one more star")
-	_check(not QuestIsland.is_in_port(ARCTIC) and QuestIsland.is_in_port(ATLANTIS), "the boss islands are not in the port; the civilisation islands are")
+	_check(book.islands().all(QuestIsland.is_in_port), "all islands of the list are in the port")
 	return true
 
 
@@ -276,6 +282,114 @@ func _check_summoned() -> bool:
 		lost.sim.step()
 		lost.update()
 	_check(lost.is_finished() and not lost.is_won() and not helper.dead, "the player loses with only a summoned golem left")
+	return true
+
+
+## Boss islands with keys: the last unit of a group opens its key, the keys
+## bring the boss, and the dead boss wins the island with its item reward.
+func _check_keys_and_boss() -> bool:
+	var quest := _quest(ARCTIC, {SPEARMAN: 5}, 0) as KeyQuest
+	quest.start(1)
+	var opened: Array[BattleFighter] = []
+	quest.collectable_opened.connect(func(item: BattleFighter) -> void: opened.append(item))
+	_check(quest.enemies_left() == KeyQuest.GROUPS and quest.bosses().size() == 1, "the Arctic island starts with 4 keys and the Giant Yeti")
+	for item in quest.sim.fighters.duplicate():
+		if item.team == ENEMY and item.is_unit() and not item in quest.bosses():
+			quest.sim.kill(item)
+	_check(opened.size() == KeyQuest.GROUPS and opened.all(quest.is_collectable), "the death of the last unit of each group opens its key")
+	var units_before := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == PLAYER and item.is_unit()).size()
+	for key in opened:
+		quest.collect(key)
+	var penguins := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == PLAYER and item.def.id == KeyQuest.PENGUIN).size()
+	_check(penguins == KeyQuest.GROUPS * KeyQuest.PENGUIN_OFFSETS.size() and quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == PLAYER and item.is_unit()).size() == units_before + penguins, "each key frees 3 penguins")
+	_check(quest.enemies_left() == 0 and quest.counter_texts().is_empty() and not quest.is_finished(), "with all keys the counter hides and the quest goes on")
+	quest.sim.kill(quest.bosses()[0])
+	for i in QuestBattle.END_DELAY_FRAMES:
+		quest.sim.step()
+		quest.update()
+	var result := quest.result()
+	_check(quest.is_won() and result["item_rewards"] == {HEAVY_KNIGHT: 1}, "the dead boss wins the island, and the result gives the reward unit")
+	return true
+
+
+## The keys of the Desert island turn the altar into the Stone Golem; with 3
+## stars a second golem comes, and the bosses have twice the life.
+func _check_golem_altar() -> bool:
+	var quest := _quest(DESERT, {SPEARMAN: 5}, 2) as KeyQuest
+	quest.start(3)
+	_check(quest.bosses().is_empty(), "the Golem is not on the map at the start")
+	for item in quest.sim.fighters.duplicate():
+		if item.team == ENEMY and item.is_unit():
+			quest.sim.kill(item)
+	for item in quest.sim.fighters.duplicate():
+		if quest.is_collectable(item):
+			quest.collect(item)
+	var bosses := quest.bosses()
+	_check(bosses.size() == 2 and bosses.all(func(boss: BattleFighter) -> bool: return boss.def.id == KeyQuest.GOLEM_BOSS and boss.max_health > boss.def.life), "with 3 stars the altar becomes two Stone Golems with more life")
+	return true
+
+
+## The second dragon island: the golden dragons open the path, and the eggs
+## take the life of the Deadly Dragon, which attacks cannot hurt.
+func _check_dragon_2() -> bool:
+	var quest := _quest(NEST_2, {SPEARMAN: 5}, 0) as Dragon2Quest
+	quest.start(1)
+	var deadly := quest.deadly_dragon()
+	_check(deadly != null and deadly.ability is DeadlyDragonAbility, "the Deadly Dragon is on the map")
+	var life := deadly.health
+	quest.sim.receive_attack(deadly, 500, null)
+	_check(deadly.health == life, "an attack does not hurt the Deadly Dragon")
+	var rocks := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.def.id == Dragon2Quest.ROCK and not item.dead).size()
+	for dragon in quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.def.id == Dragon2Quest.GOLDEN_DRAGON):
+		quest.sim.kill(dragon)
+	for i in Dragon2Quest.DELAY_FRAMES + 1:
+		quest.sim.step()
+	var rocks_after := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.def.id == Dragon2Quest.ROCK and not item.dead).size()
+	_check(rocks == 2 and rocks_after == 0, "the two golden dragons open the path")
+	var eggs := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.def.id == Dragon2Quest.EGG)
+	quest.sim.kill(eggs[0])
+	_check(deadly.health < life, "a destroyed egg takes life from the Deadly Dragon")
+	for egg in eggs:
+		if not egg.dead:
+			quest.sim.kill(egg)
+	for i in Dragon2Quest.DELAY_FRAMES + QuestBattle.END_DELAY_FRAMES + 1:
+		quest.sim.step()
+		quest.update()
+	_check(deadly.dead and quest.is_won(), "the last egg kills the Deadly Dragon and wins the island")
+	return true
+
+
+## The Heroes island: the door of an area opens when its last unit is dead.
+func _check_heroes_doors() -> bool:
+	var quest := _quest(HEROES, {SPEARMAN: 5}, 0)
+	quest.start(1)
+	var doors := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.def.subcat_functional == HeroesQuest.SUBCAT_DOOR and HeroesQuest.AREAS[1].has_point(item.tile))
+	_check(doors.size() == 1 and not doors[0].opened, "area 1 has a closed door")
+	for item in quest.sim.fighters.duplicate():
+		if item.team == ENEMY and item.is_unit() and HeroesQuest.AREAS[1].has_point(item.tile):
+			quest.sim.kill(item)
+	_check(doors[0].opened, "the door opens when the last unit of its area is dead")
+	_check(quest.enemies_left() > 0 and not quest.is_won(), "the island goes on while other areas have units")
+	return true
+
+
+## The team of an island with teams: units_limit and the groups of the island.
+func _check_team() -> bool:
+	var choices := QuestTeam.choices({SPEARMAN: 30, FIRE_GOD: 3}, _config)
+	var god_limit := _config.get_item(FIRE_GOD).units_limit
+	_check(choices[0][0] == FIRE_GOD and (god_limit == 0 or choices[0][1] <= god_limit), "the unit with the most life comes first, at most its limit")
+	_check(not QuestTeam.meets_groups(QuestIsland.find(GOD_1), {SPEARMAN: 20}, _config), "god island 1 refuses a team without a god")
+	_check(QuestTeam.meets_groups(QuestIsland.find(GOD_1), {SPEARMAN: 19, FIRE_GOD: 1}, _config), "god island 1 takes a team with one god")
+	_check(not QuestTeam.meets_groups(QuestIsland.find(GOD_3), {SPEARMAN: 19, FIRE_GOD: 1}, _config), "god island 3 needs 5 gods or colossi")
+	return true
+
+
+## Village.end_quest() puts the item rewards in the store.
+func _check_item_rewards() -> bool:
+	var village := _village()
+	var before := int(village.stored_items().get(HEAVY_KNIGHT, 0))
+	village.end_quest({"quest_id": ARCTIC, "difficulty": 1, "win": 1, "resources": {"g": 0, "x": 0}, "units": [], "item_rewards": {HEAVY_KNIGHT: 1}})
+	_check(int(village.stored_items().get(HEAVY_KNIGHT, 0)) == before + 1, "the reward unit goes to the store")
 	return true
 
 

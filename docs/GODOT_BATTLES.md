@@ -141,7 +141,7 @@ Changes from the original game:
 Not exact yet:
 
 - The client builds the screen for a stage 760 pixels wide. The port keeps the battle bar at the top centre and the Withdraw button at the bottom right. The client draws the counter of the enemies in its code, and its place on the screen is not clear from the code; the port shows it at the top right.
-- The units on the islands do not have their special abilities yet (stage 5), and walls have no doors (stage 1). In the scripted test, an army of 70 units lost on the Viking island; a win on a civilisation island is checked only headless.
+- In the scripted test, an army of 70 units lost on the Viking island; a win on a civilisation island is checked only headless. The special abilities of the units and the doors of walls came in stage 5.
 
 Also in this stage: the client puts the registration point of a building graphic half the width of the frame left of the position and the height of the frame above it. Stage 2 also moved it by the top-left corner of the frame, which put the shots of such buildings in the wrong place; `BattleGraphic` now follows the client. The land of a quest island keeps the place of the first frame of the land graphic for all frames, as the client does, so that the coasts meet.
 
@@ -257,6 +257,47 @@ Result of 3 runs of the client and 4 runs of the port (frames after the order):
 - The fights after the second and third orders take 10 to 15 % longer in the client. A probable cause is the path search of the client: when a search takes longer than a time budget in milliseconds (`getTimer`), it gives no path, and the unit cannot search again for 1 to 3 seconds of real time. Ruffle in WebAssembly is slower than Flash Player, so in this test more searches stop. The port has no time budget. Not confirmed.
 
 Difference found: the client runs the battle while the start window is open. On this island the High Elf stands next to the landing, so the army fights it while the player chooses the stars; after 30 seconds in the window, the elf is dead before the battle starts. The client shares the gold of the quest among the enemies only when the player starts, so this elf then gives no gold. The port starts the battle with the button. To do: decide whether the port follows the client here.
+
+### Stage 5 result
+
+All 28 islands of the island list are in the port. The "not in the port" sign shows on no island of the list. Survival (`100000035`, `100000036`), the tournament (`100000040`) and the collection islands (`100000051` to `100000055`) are not in the island list; they belong to stage 7.
+
+| File | Contents |
+|---|---|
+| `quest/quest_island.gd` | The data of the 28 islands: the kind (`Family`), start tiles, land, free units, item rewards, pictures of the start window, and the team rules. |
+| `quest/quest_battle.gd` | `QuestBattle`: the rules of `QuestBase` of the client, with hooks for each kind. `create()` chooses the subclass. |
+| `quest/kinds/troll_quest.gd`, `civilisation_quest.gd` | The 12 islands of stage 3. |
+| `quest/kinds/key_quest.gd` | The Yeti, Golem and Rockdriller islands: groups of units, keys, the boss, penguins on the Arctic island. |
+| `quest/kinds/dragon_quest.gd`, `dragon_2_quest.gd` | The two dragon islands: the egg, the rocks, the dragons, and the eggs that take the life of the Deadly Dragon. |
+| `quest/kinds/heroes_quest.gd` | The Heroes island: 7 areas with doors that open when their units are dead. |
+| `quest/kinds/hard_quest.gd` | The 7 hard islands and the 3 god islands. |
+| `quest/quest_team.gd`, `quest/team_window.gd` | The team of at most 20 units for hard islands 6 and 7 and the god islands, with the window of the client (`SelectionTeamWindowMC`). |
+| `battle/battle_ability.gd`, `battle/abilities/` | The delegates of the client: one ability object for each fighter, with the hooks of the delegates (`onAttack`, `onUpdate`, `onRecibirAtaque` and others). `AbilityTable` maps the item ids. `HeroAbility` has the special attacks that the client writes in `IsoUnit` itself (Valkyrie, Wallace, Thor, High Elf, Arthur, King and others). |
+| `battle/ai/` | The AI of the bosses: `BossAI`, `ThreatAI`, the Rockdriller, the Sanddriller and the dragon boss. |
+| `battle/magic_particles.gd` | The types of magic particles and the frame at which each one attacks. |
+
+The battle got the parts that the abilities use: forced animations with events at frames, pushes through the air, conversions, explosions, doors, magic particles, shots and beams with their own graphics, and the immunities of the units. `BattleView` draws the magic particles from `MagicParticleMC` of the client library `20131010_magicParticles.swf`, the flight of pushed units, beams, open doors and the size of units that the client draws bigger or smaller.
+
+The rules come from the client. Where the client has an error that the player can see, the port keeps it and the comment in the code tells it:
+
+- The Heroes island counts the death of a unit outside the areas (a copy for more stars, or a converted unit) in area 0, so the door of area 0 can open early.
+- Titan Hydros, Titan Lythos and Titan Stratos put their hurricanes, minions and tornados on the side of the player, also when the titan is an enemy. The cracks of the Mole swallow units on the enemy side, also when the mole is an enemy.
+- Titan Pyros does its three special attacks next to the target only once in a battle, because the client does not set its count back.
+
+Changes from the original game:
+
+- **Item rewards.** The client puts the reward units of the boss islands in the store itself, and sends them in `item_rewards`; the server of this project does not read this field. `Village.end_quest()` puts them in the store.
+- **Team window.** The client asks with Yes and No when the team has fewer than 20 units. The port shows the question in an alert; a second click on OK starts the quest. The port hides the formations of the tournaments in this window, because they do not change a quest.
+- **Collection items** that the player finds in a quest go to the village when the quest ends. The client sends them at once with `add_collectable`.
+
+Not in this stage:
+
+- The attacks that the player starts with the buttons of the portraits (limit attacks, smash, healing beams) belong to roadmap step 3.2 and battle stage 6. Enemy units do not use them in the client either.
+- The Snake (`SnakeDelegate`) is on no island; its eating attack is not in the port.
+- The minions of Titan Lythos have full size; the client draws them at 0.3 of their size.
+- The port does not draw the cracks of the Mole.
+
+Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. Not tested: a full play of each new island by hand, and a comparison of the new islands with the original game in Ruffle.
 
 ## Decisions of the owner
 

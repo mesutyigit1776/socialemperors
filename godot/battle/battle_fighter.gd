@@ -37,8 +37,12 @@ var incapacitated := false  ## Stunned or frozen: the unit does not walk or atta
 var stunned := false
 var frozen := false
 var poisoned := false
+var burning := false  ## See BattleSim.incinerate().
+var electrocuted := false  ## See BattleSim.electrocute().
+var converted := false  ## A monk converted the unit to the other side, see BattleSim.convert().
 var enlarged := false  ## The unit does 1.5 times the damage and cannot be stunned.
 var swallowed := false  ## The unit or building goes into a hole and dies soon.
+var opened := false  ## A door that is open, see BattleSim.open_door().
 
 # Units only.
 var ai: BattleAI
@@ -51,6 +55,14 @@ var next_point: Vector2  ## The point the unit moves toward in this frame.
 var previous_walk_point = null
 var animation := Pose.IDLE
 var special_index := 0  ## The special attack that comes next, see BattleAbility.
+## An animation (UnitSprite.Action) that an ability plays outside the cycle,
+## see BattleSim.play_special(); -1 when none plays.
+var forced_action := -1
+var forced_frames := 0  ## Frames of the forced animation that are left.
+var forced_events := {}  # Frame of the forced animation -> Callable.
+var forced_frame := 0  # Frames since the forced animation started.
+var forced_end := Callable()
+var in_air := false  ## The unit flies through the air after a push, see BattleSim.push_in_air().
 var special_frames := 0  ## Frames in the current part of the special cycle.
 var face_point: Vector2  ## The point that the unit looks at.
 var reposition_frames := 0  ## Frames until the unit can follow a walking target again.
@@ -73,6 +85,11 @@ func can_be_swallowed() -> bool:
 
 func footprint() -> Rect2i:
 	return Village.footprint(def, tile)
+
+
+## Others can attack the fighter, see BattleAbility.is_valid_target().
+func is_valid_target() -> bool:
+	return ability == null or ability.is_valid_target()
 
 
 func is_special() -> bool:

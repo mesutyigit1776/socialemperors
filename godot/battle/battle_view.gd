@@ -19,6 +19,11 @@ extends Node2D
 ## enlarged unit grows to twice its size in half a second, a stunned unit jumps
 ## and falls, and a swallowed item shrinks. While the player aims a spell, the
 ## items that it would mark glow, see show_marked().
+##
+## Abilities show the magic particles of the client (MagicParticleMC, one frame
+## for each type), units that fly through the air after a push, beams that go
+## from the shooter to the target, open doors and units that the client draws
+## bigger or smaller (BattleAbility.scale).
 
 const HEALTH_BAR_SIZE := Vector2(48, 6)
 const HEALTH_BAR_GAP := 5.0  ## Pixels between the top of the graphic and the bar.
@@ -46,6 +51,9 @@ const STUN_JUMP := 100.0  ## Pixels.
 const STUN_SECONDS := 0.5  ## Up, then down.
 const BOX_COLOR := Color(1, 1, 1, 0.1)
 const BOX_BORDER_COLOR := Color(1, 1, 1)
+const MAGIC_PARTICLES := "MagicParticleMC"
+const PUSH_HEIGHT := 60.0  ## Pixels: the top of the flight of a pushed unit.
+const DOOR_OPEN_FRAMES := 2  ## The client shows an open door 2 frames after the closed one.
 
 var _sim: BattleSim
 var _sprites: SpriteLibrary
@@ -70,6 +78,8 @@ var _sizes := {}  # BattleFighter (unit) -> its size now, 1 or more.
 var _stuns := {}  # BattleFighter (unit) -> seconds since its stun.
 var _marked: Array[BattleFighter] = []
 var _tints := {}  # Colour -> ShaderMaterial that adds the colour.
+var _pushes := {}  # BattleFighter (unit) -> [from, to, seconds since the push, seconds of the flight].
+var _opened: Array[BattleFighter] = []  # Doors that show open.
 
 
 ## A shot on the screen.
@@ -117,6 +127,9 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 	sim.shot_fired.connect(_on_shot_fired)
 	sim.shot_landed.connect(_on_shot_landed)
 	sim.state_changed.connect(_on_state_changed)
+	sim.particle_added.connect(_on_particle_added)
+	sim.pushed.connect(func(unit: BattleFighter, frames: int) -> void:
+		_pushes[unit] = [unit.position, IsoGrid.tile_to_map(unit.tile), 0.0, frames / float(BattleSim.FRAMES_PER_SECOND)])
 
 
 ## Shows the particles of spell, see BattleSpell.particle_shown.
@@ -220,13 +233,26 @@ func _show_unit(fighter: BattleFighter) -> void:
 			action = UnitSprite.Action.DYING
 		_:
 			action = UnitSprite.Action.IDLE
+	if fighter.forced_action >= 0 and not fighter.dead:
+		action = fighter.forced_action
 	node.show_action(action, _directions[fighter])
+	if _pushes.has(fighter):
+		var push: Array = _pushes[fighter]
+		var part: float = clampf(push[2] / push[3], 0, 1) if push[3] > 0 else 1.0
+		node.position = push[0].lerp(push[1], part) - Vector2(0, sin(part * PI) * PUSH_HEIGHT)
+		if not fighter.in_air:
+			_pushes.erase(fighter)
 
 
 ## The size of a unit follows its state; a stunned unit jumps and falls.
 func _show_size(fighter: BattleFighter, delta: float) -> void:
 	var node: UnitSprite = _nodes[fighter]
-	var target := 0.0 if fighter.swallowed else (ENLARGED_SIZE if fighter.enlarged else 1.0)
+	var normal := fighter.ability.scale if fighter.ability != null else 1.0
+	var target := 0.0 if fighter.swallowed else normal * (ENLARGED_SIZE if fighter.enlarged else 1.0)
+	if not _sizes.has(fighter):
+		_sizes[fighter] = normal
+	if _pushes.has(fighter):
+		_pushes[fighter][2] += delta
 	var size: float = move_toward(_sizes.get(fighter, 1.0), target, delta / RESIZE_SECONDS * maxf(ENLARGED_SIZE - 1, 1))
 	_sizes[fighter] = size
 	node.scale = Vector2(signf(node.scale.x) * size, size)
@@ -244,6 +270,13 @@ func _on_state_changed(fighter: BattleFighter) -> void:
 		_stuns[fighter] = 0.0
 	if not fighter.is_unit() and fighter.swallowed and _nodes.has(fighter):
 		create_tween().tween_property(_nodes[fighter], "scale", Vector2.ZERO, RESIZE_SECONDS)
+	if fighter.opened and not fighter in _opened and _nodes.has(fighter):
+		_opened.append(fighter)
+		_nodes[fighter].queue_free()
+		_nodes.erase(fighter)
+		var door := VillageView.place_sprite(_item_layer, _sprites, fighter.def, fighter.tile, fighter.frame + DOOR_OPEN_FRAMES)
+		if door != null:
+			_nodes[fighter] = door
 	_update_tint(fighter)
 
 
@@ -294,6 +327,7 @@ func _on_removed(fighter: BattleFighter) -> void:
 	_directions.erase(fighter)
 	_sizes.erase(fighter)
 	_stuns.erase(fighter)
+	_pushes.erase(fighter)
 	_marked.erase(fighter)
 	_selected.erase(fighter)
 	if _hovered == fighter:
@@ -353,11 +387,45 @@ func _show_shot(shot: BattleProjectile, flight: _Flight) -> void:
 		var point := _stepped_point(shot, step)
 		flight.node.position = point
 		flight.node.rotation = (point - _stepped_point(shot, step - 1)).angle() + PI / 2
+	elif shot.beam:
+		# A beam reaches the target at once: its graphic stretches over the way.
+		var way := shot.end - shot.start
+		flight.node.position = shot.start
+		flight.node.rotation = way.angle() + PI / 2
+		var length := _sprite_length(shot.graphic())
+		if length > 0:
+			flight.node.scale = Vector2(1, way.length() / length)
 	else:
 		var progress := clampf(float(_sim.frame - flight.fired) / flight.frames, 0, 1)
 		var place := _timed_place(shot, progress)
 		flight.node.position = shot.start + place[0]
 		flight.node.rotation = place[1]
+
+
+## The height of the first frame of an effect graphic, or 0.
+func _sprite_length(graphic: String) -> float:
+	var sprite := _effects.get_sprite(graphic)
+	return sprite.get_frame_size(0).y if sprite != null and sprite.frame_count() > 0 else 0.0
+
+
+## A magic particle of an ability: its clip plays once on the tile after delay frames.
+func _on_particle_added(type: int, tile: Vector2i, delay: int) -> void:
+	var sprite := _effects.get_sprite(MAGIC_PARTICLES)
+	if sprite == null or type < 1 or type > sprite.frame_count():
+		return
+	var show := func() -> void:
+		var particle := ClipSprite.new(sprite)
+		particle.position = IsoGrid.tile_to_map(tile)
+		particle.play(type - 1, false)
+		particle.finished.connect(particle.queue_free)
+		_above_layer.add_child(particle)
+		if sprite.get_frame_clip(type - 1) == null:
+			# A frame without a clip does not end by itself; the client fades such particles in 1 second.
+			get_tree().create_timer(1.0).timeout.connect(particle.queue_free)
+	if delay <= 0:
+		show.call()
+	else:
+		get_tree().create_timer(delay / float(BattleSim.FRAMES_PER_SECOND)).timeout.connect(show)
 
 
 ## The step of a stepped shot in a frame of the battle.

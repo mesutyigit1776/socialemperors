@@ -28,6 +28,14 @@ signal removed(fighter: BattleFighter)
 signal added(fighter: BattleFighter)  ## An item came on the map after the start, see add_item().
 ## A state of the fighter changed, for example BattleFighter.frozen.
 signal state_changed(fighter: BattleFighter)
+## A magic particle of the client (MagicParticle) appears on tile after delay
+## frames, see particle().
+signal particle_added(type: int, tile: Vector2i, delay: int)
+## An attack pushed the unit through the air to its new tile, see push_in_air().
+signal pushed(unit: BattleFighter, frames: int)
+## The unit changes to new_team, see convert(). The signal comes before the
+## change, as the client counts the unit as dead on its old side first.
+signal converted(unit: BattleFighter, new_team: BattleFighter.Team)
 
 ## A unit checks its attack every ATTACK_CHECK_FRAMES frames, and attacks when
 ## the frame is also a multiple of its attack interval.
@@ -86,9 +94,15 @@ const POISON_TICK_FRAMES := 90  ## Poison hurts every 3 seconds.
 const SWALLOW_FRAMES := 15  ## A swallowed item shrinks for 0.5 seconds, then dies.
 const SWALLOW_MAX_LIFE := 500
 const ENLARGED_ATTACK := 1.5
+const EXPLOSION_DAMAGE := 500
+const KAMIKAZES: Array[int] = [575]  ## The kamikazes that explode in a chain.
 
 var rng: RandomNumberGenerator
 var frame := 0
+## The level of the player. The client gives some bosses more life at higher levels, see BossAI.
+var player_level := 1
+## The configuration, for the units that abilities bring; can be null.
+var config: GameConfig
 var fighters: Array[BattleFighter] = []  ## In the order in which they act in each frame.
 var projectiles: Array[BattleProjectile] = []
 var _removed: Array[BattleFighter] = []  # Items that left the map; others can still target them.
@@ -131,9 +145,9 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 	item.speed = def.velocity
 	item.flying = def.flying
 	item.attack_delay = rng.randi_range(0, MAX_ATTACK_DELAY)
-	item.ability = BattleAbility.for_item(def.id)
+	item.ability = AbilityTable.create(def.id)
 	if item.is_unit():
-		item.ai = BattleAI.new(def)
+		item.ai = BattleAI.create(def)
 		item.origin = tile
 		item.next_point = item.position
 		if not _tiles.has(tile):
@@ -148,6 +162,10 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 	if def.subcat_functional == SUBCAT_TOWER:
 		_towers += 1
 	fighters.append(item)
+	if item.is_unit():
+		item.ai.on_added(self, item)
+	if item.ability != null:
+		item.ability.on_added(self, item)
 	added.emit(item)
 	return item
 
@@ -178,6 +196,14 @@ func step() -> void:
 				_remove(item)
 	_update_projectiles()
 	for item: BattleFighter in fighters.duplicate():
+		if item.dead:
+			if item.is_unit():
+				_update_unit(item)
+			continue
+		if item.forced_action >= 0:
+			_update_forced(item)
+		if item.ability != null and not item.dead:
+			item.ability.on_update(self, item)
 		if item.is_unit():
 			_update_unit(item)
 		elif not item.dead:
@@ -218,6 +244,16 @@ func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 				set_target(unit, null)
 		else:
 			order_walk(unit, stands[unit])
+
+
+## Opens a door in a wall: units can walk through it.
+func open_door(door: BattleFighter) -> void:
+	var area := door.footprint()
+	for x in range(area.position.x, area.end.x):
+		for y in range(area.position.y, area.end.y):
+			_blocked.erase(Vector2i(x, y))
+	door.opened = true
+	state_changed.emit(door)
 
 
 ## Takes an item off the map, for example a treasure that the player collects.
@@ -330,16 +366,21 @@ func is_wounded_siege(unit: BattleFighter) -> bool:
 	return unit.is_unit() and not unit.dead and unit.health < unit.max_life() and unit.def.subcat_functional == SUBCAT_SIEGE
 
 
-func heal(target: BattleFighter, amount: int) -> void:
+## healer: the fighter that heals, or null.
+func heal(target: BattleFighter, amount: int, healer: BattleFighter = null) -> void:
 	if target.dead:
 		return
 	target.health = mini(target.health + amount, target.max_life())
 	healed.emit(target, amount)
+	if healer != null and healer.ability != null:
+		healer.ability.on_healing_done(self, healer, amount)
 
 
 ## An attack of amount points on target. attacker can be null.
 func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter) -> void:
 	if amount == 0 or target.dead:
+		return
+	if target.ability != null and not target.ability.on_attacked(self, target, amount, attacker):
 		return
 	var points := float(amount)
 	if attacker != null and attacker.enlarged:
@@ -356,6 +397,8 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var damage := maxi(floori(points - target.defense + 0.5), 1)
 	target.health -= damage
 	hit.emit(target, attacker, damage, critical)
+	if attacker != null and attacker.ability != null:
+		attacker.ability.on_damage_done(self, attacker, damage)
 	if target.health <= 0:
 		target.health = 0
 		_kill(target, attacker)
@@ -363,7 +406,7 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	if attacker == null:
 		return
 	if target.is_unit():
-		target.ai.on_attacked(self, target, attacker)
+		target.ai.on_attacked(self, target, attacker, damage)
 	elif target.attack > 0 and (target.target == null or target.target.attack == 0):
 		set_target(target, attacker)
 	_call_for_help(target, attacker)
@@ -398,11 +441,11 @@ func items_near(tile: Vector2i, radius: int, count: int, team: BattleFighter.Tea
 	return found.slice(0, count)
 
 
-## Kills item without a killer, for example a unit that a spell swallowed.
-func kill(item: BattleFighter) -> void:
+## Kills item, for example a unit that a spell swallowed. killer can be null.
+func kill(item: BattleFighter, killer: BattleFighter = null) -> void:
 	if not item.dead:
 		item.health = 0
-		_kill(item, null)
+		_kill(item, killer)
 
 
 ## The unit cannot walk or attack for STUN_FRAMES. Bosses, enlarged units,
@@ -410,6 +453,8 @@ func kill(item: BattleFighter) -> void:
 ## or more population are not stunned.
 func stun(unit: BattleFighter, population_limit: int = STUN_POPULATION_LIMIT) -> void:
 	if not unit.is_unit() or unit.dead or unit.enlarged or unit.incapacitated or unit.def.subcat_functional == SUBCAT_BOSS or unit.def.population >= population_limit:
+		return
+	if unit.ability != null and unit.ability.immune_to_stun:
 		return
 	unit.incapacitated = true
 	unit.stunned = true
@@ -424,7 +469,7 @@ func stun(unit: BattleFighter, population_limit: int = STUN_POPULATION_LIMIT) ->
 ## client uses one state for stunned and frozen units: a stun that ends during a
 ## freeze also ends the freeze, and the same is true the other way round.
 func freeze(unit: BattleFighter, frames: int) -> void:
-	if not unit.is_unit() or unit.dead:
+	if not unit.is_unit() or unit.dead or (unit.ability != null and unit.ability.immune_to_freeze):
 		return
 	unit.walk_point = null
 	unit.path.clear()
@@ -437,6 +482,38 @@ func freeze(unit: BattleFighter, frames: int) -> void:
 		_end_incapacity(unit))
 
 
+## The unit is frozen for ticks * interval frames and takes damage points (an
+## attack of attacker) every interval frames (freeze of the client units).
+func freeze_with_damage(unit: BattleFighter, attacker: BattleFighter, damage: int, ticks: int, interval: int) -> void:
+	if not unit.is_unit() or unit.dead or unit.frozen or (unit.ability != null and unit.ability.immune_to_freeze):
+		return
+	freeze(unit, ticks * interval)
+	if damage > 0:
+		for i in ticks:
+			after(interval * (i + 1), func() -> void:
+				if not unit.dead:
+					receive_attack(unit, damage, attacker if attacker in fighters else null))
+
+
+## Electricity holds the unit for ticks * interval frames: it cannot act, and
+## takes damage points (an attack of attacker) every interval frames
+## (electrocute of the client). It keeps its target.
+func electrocute(unit: BattleFighter, attacker: BattleFighter, damage: int, ticks: int, interval: int) -> void:
+	if not unit.is_unit() or unit.dead or unit.electrocuted or (unit.ability != null and unit.ability.immune_to_electricity):
+		return
+	unit.electrocuted = true
+	unit.incapacitated = true
+	state_changed.emit(unit)
+	for i in ticks:
+		after(interval * (i + 1), func() -> void:
+			if damage > 0 and not unit.dead:
+				receive_attack(unit, damage, attacker if attacker in fighters else null)
+			if i == ticks - 1:
+				unit.electrocuted = false
+				unit.incapacitated = unit.frozen or unit.stunned or unit.in_air
+				state_changed.emit(unit))
+
+
 ## The unit loses damage points (an attack, see receive_attack()) every
 ## POISON_TICK_FRAMES, ticks times. At each tick it can pass the poison to the
 ## nearest units within 1 tile on the side that attacker attacks: up to
@@ -445,11 +522,70 @@ func freeze(unit: BattleFighter, frames: int) -> void:
 ## they get it later. Without ticks the client's timer does not stop: such a
 ## unit stays poisoned until it dies.
 func poison(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker: BattleFighter) -> void:
-	if not unit.is_unit() or unit.dead or unit.poisoned:
+	if not unit.is_unit() or unit.dead or unit.poisoned or (unit.ability != null and unit.ability.immune_to_poison):
 		return
 	unit.poisoned = true
 	state_changed.emit(unit)
 	_poison_tick(unit, damage, ticks, infects, attacker, ticks)
+
+
+## A kamikaze explodes (explode of the client): it takes EXPLOSION_DAMAGE,
+## and each item on the 5 x 5 tiles around it takes EXPLOSION_DAMAGE, whatever
+## its side. Other kamikazes there explode after up to half a second instead;
+## units not in the row or the column of the kamikaze fly 4 tiles away.
+func explode(unit: BattleFighter) -> void:
+	receive_attack(unit, EXPLOSION_DAMAGE, unit)
+	var done := {}
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var item: BattleFighter = _tiles.get(unit.tile + Vector2i(dx, dy))
+			if item == null or item.dead or done.has(item) or item == unit:
+				continue
+			done[item] = true
+			if item.def.id in KAMIKAZES:
+				after(rng.randi_range(0, FRAMES_PER_SECOND / 2), func() -> void:
+					if not item.dead:
+						explode(item))
+			elif item.is_unit():
+				if dx != 0 and dy != 0:
+					push_in_air(item, unit, 4)
+				receive_attack(item, EXPLOSION_DAMAGE, unit)
+			else:
+				receive_attack(item, EXPLOSION_DAMAGE, unit)
+
+
+## The unit joins team, as a monk converts it: it drops its target, and the
+## units that attack it drop it. It fights for its new side.
+func convert(unit: BattleFighter, team: BattleFighter.Team) -> void:
+	if unit.dead or unit.team == team:
+		return
+	converted.emit(unit, team)
+	set_target(unit, null)
+	unit.attacking = false
+	for other in unit.targeted_by.duplicate():
+		set_target(other, null)
+	unit.team = team
+	unit.converted = not unit.converted
+	unit.ai.state = BattleAI.State.IDLE
+	unit.ai.condition = BattleAI.Condition.AGGRESSIVE
+	state_changed.emit(unit)
+
+
+## The unit burns: it takes damage points (an attack of attacker) every
+## interval frames, ticks times (incinerate of the client). A burning unit
+## does not get the state again.
+func incinerate(unit: BattleFighter, attacker: BattleFighter, damage: int, ticks: int, interval: int) -> void:
+	if not unit.is_unit() or unit.dead or unit.burning or (unit.ability != null and unit.ability.immune_to_burn):
+		return
+	unit.burning = true
+	state_changed.emit(unit)
+	for i in ticks:
+		after(interval * (i + 1), func() -> void:
+			if not unit.dead:
+				receive_attack(unit, damage, attacker if attacker in fighters else null)
+			if i == ticks - 1:
+				unit.burning = false
+				state_changed.emit(unit))
 
 
 ## The unit does ENLARGED_ATTACK times its damage for the number of frames,
@@ -467,7 +603,7 @@ func enlarge(unit: BattleFighter, frames: int) -> void:
 ## The item shrinks into a hole and dies after SWALLOW_FRAMES, unless it is a
 ## unit with SWALLOW_MAX_LIFE or more life.
 func swallow(item: BattleFighter) -> void:
-	if item.dead or item.swallowed or not item.can_be_swallowed():
+	if item.dead or item.swallowed or not item.can_be_swallowed() or (item.ability != null and item.ability.immune_to_swallow):
 		return
 	item.swallowed = true
 	state_changed.emit(item)
@@ -517,6 +653,170 @@ func set_speed(unit: BattleFighter, speed: int) -> void:
 func set_attack_range(item: BattleFighter, tiles: int) -> void:
 	item.attack_range = tiles
 	state_changed.emit(item)
+
+
+## The unit flies through the air, away from source, and lands distance tiles
+## farther on the free tile nearest to that point (pushInAir of the client). It
+## cannot act for frames frames. Bosses, enlarged units, units that cannot act
+## and units whose ability protects them do not move.
+func push_in_air(unit: BattleFighter, source: BattleFighter, distance: int, frames := FRAMES_PER_SECOND) -> void:
+	if not unit.is_unit() or unit.dead or unit.enlarged or unit.incapacitated or unit.in_air or unit.def.subcat_functional == SUBCAT_BOSS:
+		return
+	if unit.ability != null and unit.ability.immune_to_push:
+		return
+	var direction := Vector2(unit.tile - source.tile)
+	direction = direction.normalized() if direction != Vector2.ZERO else Vector2(rng.randf(), rng.randf()).normalized()
+	var goal := Vector2i((Vector2(unit.tile) + direction * distance).round()).clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+	var landing: Variant = BattleFormation.nearest_free_tile(goal, IsoGrid.MAP_TILES, is_free)
+	if landing == null or _water.has(landing):
+		return
+	unit.incapacitated = true
+	unit.in_air = true
+	unit.walk_point = null
+	unit.path.clear()
+	unit.moving = false
+	if _tiles.get(unit.tile) == unit:
+		_tiles.erase(unit.tile)
+	unit.tile = landing
+	_tiles[landing] = unit
+	pushed.emit(unit, frames)
+	after(frames, func() -> void:
+		unit.in_air = false
+		unit.position = IsoGrid.tile_to_map(unit.tile)
+		unit.next_point = unit.position
+		unit.incapacitated = unit.frozen or unit.stunned
+		if not unit.dead:
+			unit.ai.on_arrived(self, unit)
+		state_changed.emit(unit))
+
+
+## A magic particle of the client on tile: after delay frames and then the
+## attack frame of its type, it attacks the item of the other side on the tile
+## with value points (MagicParticle). action, when given, replaces the attack:
+## it gets the attacker, the item on the tile (or null) and the value.
+func particle(attacker: BattleFighter, tile: Vector2i, type: int, value: int, delay: int, action := Callable(), hits_empty := false) -> void:
+	particle_added.emit(type, tile, delay)
+	var attack_frame: int = MagicParticles.attack_frame(type)
+	if attack_frame < 0:
+		return
+	after(delay + attack_frame, func() -> void:
+		var side := BattleFighter.Team.PLAYER if attacker == null or attacker.team == BattleFighter.Team.ENEMY else BattleFighter.Team.ENEMY
+		var targets := items_near(tile, 0, 1, side, true, func(item: BattleFighter) -> bool: return not item.dead and item.is_valid_target())
+		var target: BattleFighter = targets[0] if not targets.is_empty() else null
+		if target == null and not hits_empty:
+			return
+		if action.is_valid():
+			action.call(attacker, target, value)
+		elif target != null:
+			receive_attack(target, value, attacker if attacker == null or not attacker.dead or attacker in fighters else null))
+
+
+## The units of the other side within max_range tiles of unit are pushed
+## push_tiles away and take the attack of unit times multiplier
+## (doWhirlwind). A unit without a target takes the first of them as target.
+func whirlwind(unit: BattleFighter, multiplier := 0.45, push_tiles := 1, max_range := 3) -> void:
+	for enemy in items_near(unit.tile, max_range, 20, _opponent(unit.team), true, func(item: BattleFighter) -> bool: return item.is_unit() and not item.dead):
+		if enemy.dead:
+			continue
+		push_in_air(enemy, unit, push_tiles)
+		receive_attack(enemy, int(unit.attack * multiplier), unit)
+		if unit.target == null and not enemy.dead:
+			set_target(unit, enemy)
+
+
+## The fighter plays the animation action (UnitSprite.Action) for frames
+## frames. At frame n of the animation (from 1, as the frames of a Flash clip),
+## events[n] runs. At the end, on_end runs. While it plays, the ability is
+## busy, and with incapacitate the fighter cannot walk or attack.
+func play_special(fighter: BattleFighter, action: int, frames: int, events := {}, on_end := Callable(), incapacitate := false) -> void:
+	fighter.forced_action = action
+	fighter.forced_frames = frames
+	fighter.forced_frame = 0
+	fighter.forced_events = events
+	fighter.forced_end = on_end
+	fighter.walk_point = null
+	fighter.path.clear()
+	fighter.moving = false
+	if incapacitate:
+		fighter.incapacitated = true
+	if fighter.ability != null:
+		fighter.ability.busy = true
+	state_changed.emit(fighter)
+
+
+## Ends the special animation of the fighter at once, without its end action.
+func stop_special(fighter: BattleFighter) -> void:
+	if fighter.forced_action < 0:
+		return
+	fighter.forced_action = -1
+	fighter.forced_events = {}
+	fighter.forced_end = Callable()
+	fighter.incapacitated = fighter.frozen or fighter.stunned or fighter.in_air
+	if fighter.ability != null:
+		fighter.ability.busy = false
+	state_changed.emit(fighter)
+
+
+## The number of frames of the animation action (UnitSprite.Action) of the
+## graphic of the fighter, or fallback when the battle has no graphics.
+func animation_frames(fighter: BattleFighter, action: int, fallback: int) -> int:
+	if fighter.graphic == null:
+		return fallback
+	var frames := fighter.graphic.clip_frames(action)
+	return frames if frames > 0 else fallback
+
+
+## A unit that an ability brings on the free tile nearest to near, on team.
+## Summoned units do not count in quests.
+func spawn(def: GameConfig.ItemDef, near: Vector2i, team: BattleFighter.Team, summoned := true, rings := IsoGrid.MAP_TILES) -> BattleFighter:
+	if def == null:
+		return null
+	var tile: Variant = BattleFormation.nearest_free_tile(near, rings, is_free)
+	if tile == null:
+		return null
+	var unit := add_item(def, tile, team)
+	unit.summoned = summoned
+	return unit
+
+
+## A shot of shooter at target with its own graphic, which hurts target by
+## damage when it lands, or does nothing when damage is negative. on_land runs
+## when it lands. Returns the shot.
+func shoot(shooter: BattleFighter, target: BattleFighter, graphic: String, damage: int, on_land := Callable()) -> BattleProjectile:
+	var shot := BattleProjectile.fire(shooter, target, rng, graphic)
+	shot.damage = damage
+	shot.on_land = on_land
+	projectiles.append(shot)
+	shot_fired.emit(shot)
+	return shot
+
+
+## A shot of shooter with its own graphic that flies to tile and hurts
+## nobody; on_land runs when it lands, with the shot.
+func shoot_at(shooter: BattleFighter, tile: Vector2i, graphic: String, on_land: Callable) -> BattleProjectile:
+	var shot := BattleProjectile.fire_at(shooter, IsoGrid.tile_to_map(tile), graphic)
+	shot.on_land = on_land
+	projectiles.append(shot)
+	shot_fired.emit(shot)
+	return shot
+
+
+## The item of the configuration, or null when the battle has no configuration.
+func config_item(id: int) -> GameConfig.ItemDef:
+	return config.get_item(id) if config != null else null
+
+
+func _update_forced(fighter: BattleFighter) -> void:
+	fighter.forced_frame += 1
+	var event: Variant = fighter.forced_events.get(fighter.forced_frame)
+	if event != null:
+		event.call()
+	fighter.forced_frames -= 1
+	if fighter.forced_frames <= 0 and fighter.forced_action >= 0:
+		var on_end := fighter.forced_end
+		stop_special(fighter)
+		if on_end.is_valid() and not fighter.dead:
+			on_end.call()
 
 
 func _poison_tick(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker: BattleFighter, left: int) -> void:
@@ -610,14 +910,22 @@ func _update_attack(unit: BattleFighter) -> void:
 			_tiles[unit.tile] = unit
 		if unit.attack_interval <= 0 or (frame + unit.attack_delay) % unit.attack_interval != 0:
 			return
-		if unit.ability != null and not unit.ability.on_attack(self, unit):
+		if not target.is_valid_target():
+			return
+		if unit.ability != null and (unit.ability.busy or not unit.ability.on_attack(self, unit)):
 			return
 		if unit.is_special() and unit.animation != BattleFighter.Pose.ATTACKING:
 			return  # The special attacks of these units come with their abilities.
 		if unit.def.subcat_functional == SUBCAT_CLERIC:
 			return
-		if unit.attack_range > 1 and not unit.def.id in CLOSE_FIGHTERS:
-			_shoot(unit, target, BattleProjectile.STEPPED_SHOTS.has(unit.def.id))
+		if unit.attack_range > 1 and not unit.def.id in CLOSE_FIGHTERS and not (unit.ability != null and unit.ability.ranged_melee):
+			var delay := unit.ability.shot_delay if unit.ability != null else 0
+			if delay > 0:
+				after(delay, func() -> void:
+					if not unit.dead and unit.target == target and not target.dead:
+						_shoot(unit, target, BattleProjectile.STEPPED_SHOTS.has(unit.def.id)))
+			else:
+				_shoot(unit, target, BattleProjectile.STEPPED_SHOTS.has(unit.def.id))
 		else:
 			receive_attack(target, _attack_against(unit, target), unit)
 		return
@@ -649,7 +957,7 @@ func _update_walk(unit: BattleFighter) -> void:
 		else:
 			unit.walk_point = null
 			unit.moving = false
-			unit.ai.on_arrived()
+			unit.ai.on_arrived(self, unit)
 	if unit.position == unit.next_point:
 		return
 	unit.position = IsoGrid.step_toward(unit.position, unit.next_point, unit.speed)
@@ -660,6 +968,9 @@ func _update_walk(unit: BattleFighter) -> void:
 		if not _tiles.has(tile):
 			_tiles[tile] = unit
 		unit.tile = tile
+		unit.ai.on_enter_tile(self, unit)
+		if unit.ability != null:
+			unit.ability.on_enter_tile(self, unit)
 
 
 func _update_animation(unit: BattleFighter) -> void:
@@ -713,7 +1024,9 @@ func _update_building(building: BattleFighter) -> void:
 		return
 	if building.def.id == ICE_TOWER and not building.target.is_unit():
 		return
-	_shoot(building, building.target, BattleProjectile.STEPPED_SHOTS.has(building.def.id))
+	if building.ability != null and not building.ability.on_attack(self, building):
+		return
+	_shoot(building, building.target, BattleProjectile.STEPPED_SHOTS.has(building.def.id) and building.ability == null)
 
 
 ## stepped: the shot is one of BattleProjectile.STEPPED_SHOTS, which the client
@@ -733,13 +1046,21 @@ func _update_projectiles() -> void:
 			continue
 		projectiles.erase(shot)
 		shot_landed.emit(shot)
+		if shot.attacker.ability != null:
+			shot.attacker.ability.on_shot_landed(self, shot.attacker, shot)
+		if shot.on_land.is_valid():
+			shot.on_land.call(shot)
 		var target := shot.target
+		if shot.damage < 0:
+			continue  # A shot that only carries an effect, see shoot().
 		if shot.kind == BattleProjectile.Kind.STEPPED:
 			# The client uses the attack of the shooter when the shot lands.
 			if not target.dead and shot.attacker in fighters and shot.end.distance_to(BattleProjectile.stepped_aim(target, shot.definition["aim"])) <= BattleProjectile.HIT_RADIUS:
 				receive_attack(target, _attack_against(shot.attacker, target), shot.attacker)
 		elif _pixel_distance(shot.aim, target) <= BattleProjectile.HIT_RADIUS:
 			receive_attack(target, shot.damage, shot.attacker)
+			if shot.attacker.is_unit():
+				shot.attacker.ai.on_shot_hit(self, shot.attacker, target)
 
 
 func _attack_against(attacker: BattleFighter, target: BattleFighter) -> int:
@@ -751,6 +1072,11 @@ func _attack_against(attacker: BattleFighter, target: BattleFighter) -> int:
 func _kill(item: BattleFighter, killer: BattleFighter) -> void:
 	item.dead = true
 	item.attacking = false
+	item.forced_action = -1
+	if item.ability != null:
+		item.ability.on_died(self, item)
+	if killer != null and killer.ability != null:
+		killer.ability.on_killed(self, killer, item)
 	died.emit(item, killer)
 	if item.is_unit():
 		item.walk_point = null
@@ -766,6 +1092,8 @@ func _kill(item: BattleFighter, killer: BattleFighter) -> void:
 
 
 func _remove(item: BattleFighter) -> void:
+	if not item in fighters:
+		return
 	fighters.erase(item)
 	_removed.append(item)
 	set_target(item, null)

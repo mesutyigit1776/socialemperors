@@ -50,6 +50,16 @@ func shot_start(offset: Vector2, stepped: bool) -> Vector2:
 	return Vector2(0, -_sprite.get_frame_size(frame).y * (STEPPED_SHOT_HEIGHT if stepped else SHOT_HEIGHT))
 
 
+## The number of frames of the animation of action (UnitSprite.Action) looking
+## down, or 0 when the graphic does not have it.
+func clip_frames(action: int) -> int:
+	var frame := UnitSprite.frame_of(action, TARGET_DIRECTION)
+	if frame >= _sprite.frame_count():
+		return 0
+	var clip := _sprite.get_frame_clip(frame)
+	return clip.clip.frame_count() if clip != null and clip.clip != null else 1
+
+
 ## Where a stepped shot aims: vertical_offset is the part of the height above the bottom.
 func stepped_aim(vertical_offset: float) -> Vector2:
 	var rect := _body_rect()
