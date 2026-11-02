@@ -707,6 +707,17 @@ func push_in_air(unit: BattleFighter, source: BattleFighter, distance: int, fram
 		state_changed.emit(unit))
 
 
+## The unit flies half the way to source in one second, then flies tiles away
+## from it (absorbAndPush). Bosses, giants and units that cannot act stay.
+func absorb_and_push(unit: BattleFighter, source: BattleFighter, tiles: int) -> void:
+	if not unit.is_unit() or unit.dead or unit.incapacitated or unit.def.subcat_functional == SUBCAT_BOSS:
+		return
+	if unit.ability != null and (unit.ability.immune_to_push or unit.ability.giant):
+		return
+	push_in_air(unit, source, -maxi(distance(unit, source) / 2, 1))
+	after(FRAMES_PER_SECOND, func() -> void: push_in_air(unit, source, tiles))
+
+
 ## A magic particle of the client on tile: after delay frames and then the
 ## attack frame of its type, it attacks the item of the other side on the tile
 ## with value points (MagicParticle). action, when given, replaces the attack:

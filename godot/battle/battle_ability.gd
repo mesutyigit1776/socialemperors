@@ -28,6 +28,7 @@ var beam_frames := 15
 var scale := 1.0
 ## Effects that do not act on the fighter (canBePushedInAir and the others).
 var immune_to_push := false
+var giant := false  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
 var immune_to_freeze := false
 var immune_to_poison := false
 var immune_to_swallow := false

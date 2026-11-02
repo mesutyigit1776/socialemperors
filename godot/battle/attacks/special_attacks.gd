@@ -331,8 +331,9 @@ class ShootProjectiles extends Attack:
 	var range_tiles: int
 	var count := 3
 	var incapacitate := false
-	## The effect on each target when the shot has no graphic: the client
-	## shoots an empty shot at 400 pixels a frame with this blast.
+	## The client shoots an empty shot at 400 pixels a frame, or no shot: the
+	## damage comes at once, with the blast effect on each target.
+	var instant := false
 	var blast := ""
 	var _enemies_now: Array[BattleFighter] = []
 
@@ -356,6 +357,11 @@ class ShootProjectiles extends Attack:
 
 	func with_blast(graphic_name: String) -> ShootProjectiles:
 		blast = graphic_name
+		instant = true
+		return self
+
+	func with_instant() -> ShootProjectiles:
+		instant = true
 		return self
 
 	func execute() -> void:
@@ -370,9 +376,10 @@ class ShootProjectiles extends Attack:
 			var target := _enemies_now[i % _enemies_now.size()]
 			if target.dead:
 				continue
-			if graphic == "" and blast != "":
-				for item in _enemies_now:
-					sim.effect(blast, item.tile)
+			if instant:
+				if blast != "":
+					for item in _enemies_now:
+						sim.effect(blast, item.tile)
 				_hit_all()
 			else:
 				sim.shoot(unit, target, graphic, -1, func(_shot: BattleProjectile) -> void: _hit_all())

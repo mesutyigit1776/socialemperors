@@ -310,8 +310,8 @@ static func _mini_whirlwinds(sim: BattleSim, unit: BattleFighter) -> void:
 
 
 ## The whirlwind hit of the Extreme Wind Dragon: after each 5 units that take
-## half the attack and fly 5 tiles, the next unit flies 30 tiles and dies when
-## it lands (absorbAndPush).
+## half the attack and fly 5 tiles, the next unit is pulled in, flies 30
+## tiles and dies when it lands (absorbAndPush).
 class WindHit extends UnitDamage:
 	var amount: float
 	var _count := 0
@@ -326,8 +326,8 @@ class WindHit extends UnitDamage:
 	func apply(target: BattleFighter, _multiplier := 1.0) -> void:
 		if _count >= 5:
 			_count = 0
-			sim.push_in_air(target, attacker, 30)
-			sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+			sim.absorb_and_push(target, attacker, 30)
+			sim.after(2 * BattleSim.FRAMES_PER_SECOND, func() -> void:
 				if not target.dead:
 					sim.kill(target, _source()))
 			return

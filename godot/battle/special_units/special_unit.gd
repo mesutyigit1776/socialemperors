@@ -84,6 +84,27 @@ static func directional_hits(sim: BattleSim, unit: BattleFighter, length: int, r
 	return hits
 
 
+## A minion comes out of an egg that the unit throws 4 to 8 tiles in front
+## of it (spawnMinionFromEgg).
+static func egg_minion(sim: BattleSim, unit: BattleFighter, minion_id: int) -> void:
+	var step: Vector2i = BattleAbility.TILE_STEPS[BattleAbility.direction(unit)]
+	var tile := (unit.tile + step * sim.rng.randi_range(4, 8)).clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+	sim.shoot_at(unit, tile, "p.egg", func(_shot: BattleProjectile) -> void:
+		var minion := sim.spawn(sim.config_item(minion_id), tile, unit.team)
+		if minion != null:
+			unit.ability.add_minion(sim, minion))
+
+
+## The count nearest enemy units within range_tiles that can fly take damage
+## and fly push tiles (attackCircularPushInAir).
+static func circular_push(sim: BattleSim, unit: BattleFighter, range_tiles: int, count: int, damage: int, push := 3) -> void:
+	for enemy in sim.items_near(unit.tile, range_tiles, count, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+			return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_push)):
+		sim.receive_attack(enemy, damage, unit)
+		if not enemy.dead:
+			sim.push_in_air(enemy, unit, push)
+
+
 ## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
 static func thumb(item_id: int, name: String, number: int) -> String:
 	return "%d_%s_button_%d" % [item_id, name, number]
