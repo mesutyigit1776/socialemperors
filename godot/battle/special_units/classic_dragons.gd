@@ -228,7 +228,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			# A rain of heavy rocks: a unit that a rock hits falls into a hole
 			# and dies (one hole for each tile); a building takes the attack.
 			add(ability, 1, "Ultra Fireball", "2132_2", SpecialAttacks.Rain.new(sim, unit, 4, 2.5, SP5, MagicParticles.HEAVY_ROCK_RAIN,
-					_HoleHit.new(sim, unit)).with_multiplier(0.5).with_frames([25]), Callable(), "No target within range")
+					HoleHit.new(sim, unit)).with_multiplier(0.5).with_frames([25]), Callable(), "No target within range")
 			# The 5 nearest enemies within 5 tiles with less than 500 life turn
 			# around the dragon for 3 seconds and die.
 			add(ability, 2, "Hyper Whirlwind", "2132_3", SpecialAttacks.Frames.new(sim, unit, SP4, [30, 35, 40, 45], func() -> void:
@@ -601,7 +601,7 @@ class _StarHit extends UnitDamage:
 
 ## A heavy rock of the Three-Headed Elemental Dragon: a unit falls into a
 ## hole and dies, once for each tile; a building takes the attack.
-class _HoleHit extends UnitDamage:
+class HoleHit extends UnitDamage:
 	var _holes: Array[Vector2i] = []
 
 	func apply(target: BattleFighter, _multiplier := 1.0) -> void:

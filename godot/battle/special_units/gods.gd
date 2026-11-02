@@ -13,6 +13,8 @@ const UNITS := {
 	2075: "red",
 	2085: "water",
 	2079: "forest",
+	2148: "earth",
+	2113: "evil",
 }
 const NO_TARGET_TEXT := "No target within range"
 const GOD_MINIONS := "God Minions"
@@ -192,30 +194,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 		"water":
 			add(ability, 0, "Mega Slash", "2085_1", SpecialAttacks.Frames.new(sim, unit, SP2, [23], func() -> void: _directional_smash(sim, unit)),
 					has_target(), NO_TARGET_TEXT)
-			# Up to 3 enemies with at most 500 life within 2 tiles are poked
-			# on the trident and die.
-			var poke_targets := func() -> Array[BattleFighter]:
-				var found: Array[BattleFighter] = []
-				for item in sim.items_near(unit.tile, 2, 15, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool:
-						return other.is_unit() and not other.dead and other.max_life() <= 500):
-					if found.size() < 3:
-						found.append(item)
-				return found
-			add(ability, 1, "Ultra Fireball", "2085_2", func(_s: BattleSim, _f: BattleFighter) -> void:
-				var prey: Array[BattleFighter] = poke_targets.call()
-				var events := {}
-				for i in prey.size():
-					var target: BattleFighter = prey[i]
-					events[24 + 8 * i] = func() -> void:
-						if not target.dead:
-							target.incapacitated = true
-							target.swallowed = true
-							sim.state_changed.emit(target)
-				sim.play_special(unit, SP3, maxi(sim.animation_frames(unit, SP3, 40), 41), events, func() -> void:
-					for target in prey:
-						if not target.dead:
-							sim.kill(target, unit), true),
-					func(_s: BattleSim, _f: BattleFighter) -> bool: return not poke_targets.call().is_empty(), NO_TARGET_TEXT)
+			_poke_button(sim, unit, ability, 1, "2085_2", SP3)
 			add(ability, 2, "Hyper Whirlwind", "2085_3", SpecialAttacks.Frames.new(sim, unit, SP1, [16], func() -> void:
 				circular_push(sim, unit, unit.attack_range, 10, int(atk / 2), 6), 12))
 			_god_minions_on(sim, unit, ability, "2085_4", SP5, 30, 2084)
@@ -233,6 +212,86 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				circular_push(sim, unit, unit.attack_range, 5, int(atk / 4), 6), 12))
 			_god_minions_on(sim, unit, ability, "4_2079", SP4, 35, 2078)
 			limit_healing(ability, beams(SP5, [25], 50, LIMIT_GREEN_BEAM))
+		"earth":
+			_poke_button(sim, unit, ability, 0, "2148_1", SP4)
+			add(ability, 1, "Ultra Fireball", "2148_2", SpecialAttacks.Rain.new(sim, unit, 6, 3, SP2, MagicParticles.HEAVY_ROCKS, null)
+					.with_multiplier(1.2).with_frames([20]), Callable(), NO_TARGET_TEXT)
+			# A whirlwind (item 2154) for 12 seconds.
+			add(ability, 2, "Hyper Whirlwind", "2148_3", SpecialAttacks.Frames.new(sim, unit, SP3, [25], func() -> void:
+				var whirl := sim.spawn(sim.config_item(2154), unit.tile, unit.team)
+				if whirl != null:
+					sim.after(12 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if not whirl.dead and whirl in sim.fighters:
+							sim.remove_item(whirl))))
+			_god_minions_on(sim, unit, ability, "2148_4", SP1, 30, 2149)
+			# Of the 10 nearest enemies within 8 tiles, every second one falls
+			# into a hole and dies when it has at most 500 life (at most 6),
+			# else it takes 500 points and flies 10 tiles. The other holes
+			# open on random tiles.
+			limit_special(ability, SP5, [60], func(battle: BattleSim, god: BattleFighter) -> void:
+				var holes: Array[Vector2i] = []
+				var swallowed := 0
+				var enemies := battle.items_near(god.tile, 8, 10, BattleAbility.enemy_side(god), true, func(item: BattleFighter) -> bool:
+					return item.is_unit() and not item.dead)
+				for i in enemies.size():
+					var enemy: BattleFighter = enemies[i]
+					if i % 2 == 0:
+						if enemy.tile in holes or swallowed > 5:
+							continue
+						if enemy.max_life() <= 500:
+							swallowed += 1
+							holes.append(enemy.tile)
+							ClassicDragons.HoleHit.new(battle, god).apply(enemy)
+						else:
+							battle.receive_attack(enemy, 500, god)
+							battle.push_in_air(enemy, god, 10)
+					else:
+						var reach := god.attack_range
+						var tile := (god.tile + Vector2i(battle.rng.randi_range(-reach, reach), battle.rng.randi_range(-reach, reach))).clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+						if not tile in holes:
+							holes.append(tile)
+							battle.particle(god, tile, MagicParticles.ROCK_HOLE, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true))
+		"evil":
+			# The first unit of the directional attack flies 18 tiles and dies
+			# when it has at most 1000 life, else it flies 15 tiles and takes
+			# 1000 points; the others take half the attack and fly 5 tiles.
+			add(ability, 0, "Mega Slash", "evil_god_1", SpecialAttacks.Frames.new(sim, unit, SP1, [36], func() -> void:
+				var first := true
+				for enemy in directional_hits(sim, unit, 12, 5):
+					if enemy.dead or enemy.in_air:
+						continue
+					var target := enemy
+					if first:
+						first = false
+						var weak := target.max_life() <= 1000
+						sim.push_in_air(target, unit, 18 if weak else 15)
+						sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+							if not target.dead:
+								if weak:
+									sim.kill(target, unit)
+								else:
+									sim.receive_attack(target, 1000, unit))
+					else:
+						sim.receive_attack(target, int(atk / 2), unit)
+						if not target.dead:
+							sim.push_in_air(target, unit, 5)), has_target_in_range(5), NO_TARGET_TEXT, COOLDOWN + 1)
+			add(ability, 1, "Ultra Fireball", "evil_god_2", SpecialAttacks.Frames.new(sim, unit, SP2, [37], func() -> void:
+				for enemy in sim.items_near(unit.tile, 8, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_poison)):
+					sim.receive_attack(enemy, int(atk / 2), unit)
+					sim.poison(enemy, 25, 5, 0, unit)), Callable(), NO_TARGET_TEXT, COOLDOWN + 1)
+			add(ability, 2, "Hyper Whirlwind", "evil_god_3", SpecialAttacks.Frames.new(sim, unit, SP3, [12], func() -> void:
+				circular_push(sim, unit, 6, 15, int(atk / 2), 5), 10), Callable(), "", COOLDOWN + 1)
+			_god_minions_on(sim, unit, ability, "evil_god_4", SP4, 17, 2115)
+			ability.buttons[3].cooldown_seconds = COOLDOWN + 1
+			# The 10 nearest enemies within 7 tiles take the attack, fly 8
+			# tiles and are dizzy for 6 seconds, 8 times.
+			limit_special(ability, SP5, [25, 30, 35, 40, 45, 50, 55, 60], func(battle: BattleSim, god: BattleFighter) -> void:
+				var hit := Damages.Sequenced.new(battle, god).add(Damages.PushInAir.new(battle, god, god.attack, 8)).add(Damages.Dizzy.new(battle, god, 0, 6, 1))
+				for enemy in battle.items_near(god.tile, 7, 10, BattleAbility.enemy_side(god), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					if hit.can_apply(enemy):
+						hit.apply(enemy))
 
 ## The target of the unit is within its range (hasStormTarget).
 static func _target_in_range() -> Callable:
@@ -332,3 +391,31 @@ static func _god_minions_on(sim: BattleSim, unit: BattleFighter, ability: Battle
 	add(ability, 3, GOD_MINIONS, picture, SpecialAttacks.Frames.new(sim, unit, animation, [frame], func() -> void:
 		unit.ability.spawn_minions(sim, unit, minion_id, 3)),
 		func(_s: BattleSim, fighter: BattleFighter) -> bool: return fighter.ability.minions_alive + 3 <= 6, "6 " + MINIONS_MAX)
+
+
+## The trident of the water and earth gods: up to 3 enemies with at most
+## 500 life within 2 tiles are poked at frames 24, 32 and 40 and die at the
+## end of the animation.
+static func _poke_button(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, id: int, picture: String, animation: int) -> void:
+	var targets := func() -> Array[BattleFighter]:
+		var found: Array[BattleFighter] = []
+		for item in sim.items_near(unit.tile, 2, 15, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool:
+				return other.is_unit() and not other.dead and other.max_life() <= 500):
+			if found.size() < 3:
+				found.append(item)
+		return found
+	add(ability, id, "Ultra Fireball", picture, func(_s: BattleSim, _f: BattleFighter) -> void:
+		var prey: Array[BattleFighter] = targets.call()
+		var events := {}
+		for i in prey.size():
+			var target: BattleFighter = prey[i]
+			events[24 + 8 * i] = func() -> void:
+				if not target.dead:
+					target.incapacitated = true
+					target.swallowed = true
+					sim.state_changed.emit(target)
+		sim.play_special(unit, animation, maxi(sim.animation_frames(unit, animation, 40), 41), events, func() -> void:
+			for target in prey:
+				if not target.dead:
+					sim.kill(target, unit), true),
+		func(_s: BattleSim, _f: BattleFighter) -> bool: return not targets.call().is_empty(), NO_TARGET_TEXT)
