@@ -178,9 +178,10 @@ class Rain extends Attack:
 
 	func execute() -> void:
 		super()
-		_play_till_end(animation, frames, _rain)
+		_play_till_end(animation, frames, start)
 
-	func _rain() -> void:
+	## The rain itself, without the animation.
+	func start() -> void:
 		var centre := unit.tile
 		if unit.target != null and sim.distance(unit, unit.target) <= unit.attack_range:
 			centre = unit.target.tile
@@ -758,7 +759,7 @@ class PowerDown extends Attack:
 		_play_till_end(animation, frames, _weaken)
 
 	func _weaken() -> void:
-		var enemies := _enemies(unit.tile, range_tiles, 100)
+		var enemies := _enemies(unit.tile, range_tiles, 100, filter)
 		for enemy in enemies:
 			enemy.attack = WEAK_ATTACK
 			if damage != null:

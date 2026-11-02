@@ -14,6 +14,8 @@ static func _families() -> Array:
 		ExtremeDragons,
 		BahamutDragons,
 		Dragons,
+		Gods,
+		Colossi,
 	]
 
 

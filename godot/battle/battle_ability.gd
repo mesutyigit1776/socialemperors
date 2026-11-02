@@ -28,7 +28,10 @@ var beam_frames := 15
 var scale := 1.0
 ## Effects that do not act on the fighter (canBePushedInAir and the others).
 var immune_to_push := false
-var giant := false  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
+var giant := false
+## Seconds of cast and cooldown time that go in each second (coolDownMult):
+## 2 while the units of a combo are on the map, see SpecialUnit.combo().
+var cooldown_speed := 1  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
 var immune_to_freeze := false
 var immune_to_poison := false
 var immune_to_swallow := false
@@ -149,7 +152,7 @@ func use_button(sim: BattleSim, fighter: BattleFighter, id: int) -> bool:
 func tick_buttons(sim: BattleSim, fighter: BattleFighter) -> void:
 	match button_state:
 		ButtonState.CASTING:
-			button_seconds -= 1
+			button_seconds -= cooldown_speed
 			if button_seconds <= 0:
 				var button := active_button
 				button_state = ButtonState.COOLDOWN
@@ -158,7 +161,7 @@ func tick_buttons(sim: BattleSim, fighter: BattleFighter) -> void:
 					limit = 0
 				button.action.call(sim, fighter)
 		ButtonState.COOLDOWN:
-			button_seconds -= 1
+			button_seconds -= cooldown_speed
 			if button_seconds <= 0:
 				active_button = null
 				button_state = ButtonState.IDLE

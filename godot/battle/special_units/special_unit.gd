@@ -137,6 +137,32 @@ static func limit_healing(ability: BattleAbility, beams: LimitAttacks.Beams) -> 
 		LimitAttacks.healing_beams(sim, fighter, beams), Callable(), "", 0)
 
 
+## The limit button that makes the unit fly for 10 seconds (onFlyingMode):
+## it can then pass over walls and water.
+static func limit_flying(ability: BattleAbility) -> void:
+	ability.has_limit = true
+	add(ability, BattleAbility.LIMIT_BUTTON, "", "", func(sim: BattleSim, fighter: BattleFighter) -> void:
+		fighter.flying = true
+		sim.state_changed.emit(fighter)
+		sim.after(10 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+			fighter.flying = fighter.def.flying
+			sim.state_changed.emit(fighter)), Callable(), "", 0)
+
+
+## A combo (initCombo): while units with all of ids are on the map, the cast
+## and cooldown times of the unit go twice as fast (reduceCooldown). The
+## client checks every 500 ms; it does not check the side of the units.
+static func combo(sim: BattleSim, unit: BattleFighter, ids: Array) -> void:
+	var check := func(again: Callable) -> void:
+		if unit.dead:
+			return
+		var present := ids.all(func(id: int) -> bool:
+			return sim.fighters.any(func(item: BattleFighter) -> bool: return item.def.id == id and not item.dead))
+		unit.ability.cooldown_speed = 2 if present else 1
+		sim.after(15, again.bind(again))
+	sim.after(15, check.bind(check))
+
+
 ## The limit button with a special attack of the unit (initSpecialUnitAttack).
 static func limit_special(ability: BattleAbility, action: int, frames: Array[int], attack: Callable) -> void:
 	ability.has_limit = true
