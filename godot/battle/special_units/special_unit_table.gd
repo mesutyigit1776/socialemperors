@@ -9,6 +9,9 @@ static func _families() -> Array:
 	return [
 		AncientDragons,
 		EpicDragons,
+		SavageDragons,
+		ArmorDragons,
+		ExtremeDragons,
 	]
 
 

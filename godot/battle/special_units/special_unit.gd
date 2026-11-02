@@ -59,6 +59,31 @@ static func add_minions(ability: BattleAbility, id: int, name: String, thumb: St
 	add(ability, id, name, thumb, attack, attack.can_use(), "%d %s" % [attack.max_minions, MINIONS_MAX])
 
 
+## The enemy units that the directional attack of the client hits
+## (doDirectionalAttack): on the tile of the unit and on length tiles in front
+## of it, the units within radius of each tile, at most 10 for each tile. A
+## unit can be in the list more than once. The list stops after max_hits + 1
+## units when max_hits is not -1. The client has only four directions here,
+## and for the down direction it uses the next tile length times.
+static func directional_hits(sim: BattleSim, unit: BattleFighter, length: int, radius := 4, max_hits := -1) -> Array[BattleFighter]:
+	var step := Vector2i.ZERO
+	match BattleAbility.direction(unit):
+		1, 2: step = Vector2i(0, -1)
+		3, 4, 5: step = Vector2i(1, 0)
+		6: step = Vector2i(-1, 0)
+	var points: Array[Vector2i] = [unit.tile]
+	for i in range(1, length + 1):
+		points.append(unit.tile + (Vector2i(0, 1) if step == Vector2i.ZERO else step * i))
+	var hits: Array[BattleFighter] = []
+	for point in points:
+		for enemy in sim.items_near(point, radius, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+				return item.is_unit() and not item.dead):
+			hits.append(enemy)
+			if max_hits != -1 and hits.size() > max_hits:
+				return hits
+	return hits
+
+
 ## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
 static func thumb(item_id: int, name: String, number: int) -> String:
 	return "%d_%s_button_%d" % [item_id, name, number]

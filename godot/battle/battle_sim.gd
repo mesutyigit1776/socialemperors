@@ -31,6 +31,8 @@ signal state_changed(fighter: BattleFighter)
 ## A magic particle of the client (MagicParticle) appears on tile after delay
 ## frames, see particle().
 signal particle_added(type: int, tile: Vector2i, delay: int)
+## An effect graphic of <data>/fx plays once on tile, see effect().
+signal effect_played(graphic: String, tile: Vector2i)
 ## An attack pushed the unit through the air to its new tile, see push_in_air().
 signal pushed(unit: BattleFighter, frames: int)
 ## The unit changes to new_team, see convert(). The signal comes before the
@@ -826,6 +828,11 @@ func shoot_beam(shooter: BattleFighter, target: BattleFighter, tile: Vector2i, g
 	projectiles.append(shot)
 	shot_fired.emit(shot)
 	return shot
+
+
+## Plays the effect graphic once on tile. Only the view uses it.
+func effect(graphic: String, tile: Vector2i) -> void:
+	effect_played.emit(graphic, tile)
 
 
 ## The item of the configuration, or null when the battle has no configuration.

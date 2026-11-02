@@ -209,11 +209,11 @@ class Rain extends Attack:
 			damage.apply(target)
 
 
-## Damage around the unit every 1.5 seconds for duration seconds, after
+## Damage around the unit every 1.5 seconds (or interval_ms) for duration seconds, after
 ## delay frames, during an animation (WhirlwindSpecialAttack); with an end
 ## damage on the units within 10 tiles.
 class Whirlwind extends Attack:
-	const INTERVAL_MS := 1500
+	var interval_ms := 1500
 	var animation: int
 	var duration: int
 	var delay_frames: int
@@ -235,10 +235,14 @@ class Whirlwind extends Attack:
 		end_damage = hurt
 		return self
 
+	func with_interval(milliseconds: int) -> Whirlwind:
+		interval_ms = milliseconds
+		return self
+
 	func execute() -> void:
 		super()
-		var interval := roundi(INTERVAL_MS / 1000.0 * FPS)
-		var times := duration * 1000 / INTERVAL_MS
+		var interval := roundi(interval_ms / 1000.0 * FPS)
+		var times := duration * 1000 / interval_ms
 		var total := delay_frames + interval * times
 		sim.play_special(unit, animation, total, {}, Callable(), false)
 		for i in times:
@@ -327,6 +331,9 @@ class ShootProjectiles extends Attack:
 	var range_tiles: int
 	var count := 3
 	var incapacitate := false
+	## The effect on each target when the shot has no graphic: the client
+	## shoots an empty shot at 400 pixels a frame with this blast.
+	var blast := ""
 	var _enemies_now: Array[BattleFighter] = []
 
 	func _init(battle: BattleSim, owner: BattleFighter, anim: int, frame_list: Array, hurt: UnitDamage, shot_graphic := "", _points := 1, burst := 1, stop_unit := false) -> void:
@@ -347,6 +354,10 @@ class ShootProjectiles extends Attack:
 		range_tiles = tiles
 		return self
 
+	func with_blast(graphic_name: String) -> ShootProjectiles:
+		blast = graphic_name
+		return self
+
 	func execute() -> void:
 		super()
 		_enemies_now = _enemies(unit.tile, range_tiles, count)
@@ -359,10 +370,17 @@ class ShootProjectiles extends Attack:
 			var target := _enemies_now[i % _enemies_now.size()]
 			if target.dead:
 				continue
-			sim.shoot(unit, target, graphic, -1, func(_shot: BattleProjectile) -> void:
-				var alive: Array[BattleFighter] = []
-				alive.assign(_enemies_now.filter(func(item: BattleFighter) -> bool: return not item.dead))
-				_damage_all(damage, alive, count, 1.0))
+			if graphic == "" and blast != "":
+				for item in _enemies_now:
+					sim.effect(blast, item.tile)
+				_hit_all()
+			else:
+				sim.shoot(unit, target, graphic, -1, func(_shot: BattleProjectile) -> void: _hit_all())
+
+	func _hit_all() -> void:
+		var alive: Array[BattleFighter] = []
+		alive.assign(_enemies_now.filter(func(item: BattleFighter) -> bool: return not item.dead))
+		_damage_all(damage, alive, count, 1.0)
 
 
 ## Summoned units come next to the unit (SpawnMinionSpecialAttack); the button
@@ -457,7 +475,7 @@ class Eat extends Attack:
 
 	func _prey() -> Array[BattleFighter]:
 		return _enemies(unit.tile, distance, points, func(item: BattleFighter) -> bool:
-			return not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS)
+			return not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS and (not filter.is_valid() or filter.call(item)))
 
 	func _grab() -> void:
 		for prey in _prey():
@@ -979,6 +997,32 @@ class Stealth extends Attack:
 	func _end() -> void:
 		unit.damage_factor = _factor
 		super()
+
+
+## An action of the unit at frames of an animation, for the attacks that the
+## client writes in the unit class itself: once until the end of the
+## animation (setForcedAnimAndCheckFramesTillEnd), or in a loop for seconds
+## (setForcedAnimAndCheckFrames) when seconds is above 0.
+class Frames extends Attack:
+	var animation: int
+	var frames: Array
+	var seconds: float
+	var action: Callable
+	var incapacitate := true
+
+	func _init(battle: BattleSim, owner: BattleFighter, anim: int, frame_list: Array, frame_action: Callable, duration := 0.0) -> void:
+		super(battle, owner)
+		animation = anim
+		frames = frame_list
+		action = frame_action
+		seconds = duration
+
+	func execute() -> void:
+		super()
+		if seconds > 0:
+			_play_for(seconds, animation, frames, action, incapacitate)
+		else:
+			_play_till_end(animation, frames, action, incapacitate)
 
 
 static func area_points(number: int, radius: int) -> Array[Vector2i]:
