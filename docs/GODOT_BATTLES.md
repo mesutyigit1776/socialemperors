@@ -228,7 +228,35 @@ Step 4e added the gift of the client at level 15 and checked the whole stage by 
 
 - Headless checks with a fixed seed for the rules.
 - Server replays of `end_quest` and the other commands, as for the village.
-- The same quest in the original client (Ruffle) and in the port. The results cannot be equal, because both use random numbers, but the course of the battle must be similar: the same targets, about the same duration and losses.
+- The same quest in the original client (Ruffle) and in the port. The results cannot be equal, because both use random numbers, but the course of the battle must be similar: the same targets, about the same duration and losses. See the next section.
+
+## Comparison with the original client
+
+The first comparison (step 2.3 of `docs/NATIVE_PORT.md`) played troll island 1 (quest `100000006`, 1 star) in the original client and in the port, with the same village (level 50, 24 units: 12 spearmen, 10 light archers, 2 light knights) and the same orders.
+
+Method:
+
+- Client: `tools/ruffle_quest.js` runs the client `SocialEmpires1.4.07sec_fixed.swf` with the Ruffle build in `templates/js/ruffle/`, in headless Chromium, against the Python server. It clicks the orders on the screen. The client runs its battle in ENTER_FRAME, and Ruffle drops frames when the software rendering is slow; so the script gives Ruffle a clock that moves one frame per animation callback and counts the callbacks. The results are in game frames (30 per second), as in the port. The script records the frames at which the gold and experience counters change, which is when an enemy dies.
+- Port: `godot/checks/quest_compare.gd` plays the same plan headless and prints each death with its frame.
+- The plan: no orders until the army stands still, then select all and attack the Battle Troll (59, 44), then the War Troll (44, 39), then the Big Troll (30, 36), then collect the chest. Between the orders the army stands still in both games, so the time between the orders does not change the result.
+
+Result of 3 runs of the client and 4 runs of the port (frames after the order):
+
+| Event | Client | Port |
+|---|---|---|
+| Battle Troll dies | 193 to 219 | 178 to 202 |
+| Boar Rider (comes to help) dies | 257 to 275 | 246 to 275 |
+| War Troll dies | 399 to 460 | 353 to 423 |
+| First Big Troll dies | 331 to 369 | 285 to 318 |
+| Second Big Troll dies | 374 to 458 | 332 to 429 |
+| Own units dead | 4 to 5 | 3 to 7 |
+| Units lost after the quest | 1 to 2 | 1 to 2 |
+| Gold, experience | 2247, 22 | 2247, 22 |
+
+- The targets are the same in every run: the High Elf at the landing, the Battle Troll, the Boar Rider, which comes to help it, the War Troll, and the two Big Trolls. In both games the light knights die to the War Troll and the Big Trolls. The gold, the experience, the win and the format of `end_quest` are the same.
+- The fights after the second and third orders take 10 to 15 % longer in the client. A probable cause is the path search of the client: when a search takes longer than a time budget in milliseconds (`getTimer`), it gives no path, and the unit cannot search again for 1 to 3 seconds of real time. Ruffle in WebAssembly is slower than Flash Player, so in this test more searches stop. The port has no time budget. Not confirmed.
+
+Difference found: the client runs the battle while the start window is open. On this island the High Elf stands next to the landing, so the army fights it while the player chooses the stars; after 30 seconds in the window, the elf is dead before the battle starts. The client shares the gold of the quest among the enemies only when the player starts, so this elf then gives no gold. The port starts the battle with the button. To do: decide whether the port follows the client here.
 
 ## Decisions of the owner
 

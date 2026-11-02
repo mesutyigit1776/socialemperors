@@ -114,6 +114,8 @@ godot --headless --path godot --script res://checks/spell_check.gd -- --data <da
 
 The exit code is the number of failed checks. Run the village check after you change the village rules or the save code, the battle check after you change the battle rules or the path search, the quest check after you change the quests, and the spell check after you change the spells.
 
+`checks/quest_compare.gd` is not a check: it plays a quest with a plan of orders and prints the course of the battle, for the comparison with the original client, which `tools/ruffle_quest.js` plays in Ruffle. `docs/GODOT_BATTLES.md` ("Comparison with the original client") has the method.
+
 ## Layout
 
 | Path | Contents |
