@@ -139,6 +139,46 @@ static func _take_stats(unit: BattleFighter, def: GameConfig.ItemDef) -> void:
 	unit.speed = def.velocity
 
 
+## The last free tile on the line of length tiles in front of the unit, in
+## the four directions of the client, before an obstacle; null when the next
+## tile is not free (getDirectionalTile).
+static func directional_tile(sim: BattleSim, unit: BattleFighter, length: int) -> Variant:
+	var step := Vector2i(0, 1)
+	match BattleAbility.direction(unit):
+		1, 2: step = Vector2i(0, -1)
+		3, 4, 5: step = Vector2i(1, 0)
+		6: step = Vector2i(-1, 0)
+	var last: Variant = null
+	for i in range(1, length + 1):
+		var tile := unit.tile + step * i
+		if not Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).has_point(tile) or not sim.is_free(tile):
+			break
+		last = tile
+	return last
+
+
+## The unit walks to goal at speed (pixels a frame); on_tile runs on each new
+## tile, on_arrive when it is there or stops. It has its own speed again then.
+static func fly_to(sim: BattleSim, unit: BattleFighter, goal: Vector2i, speed: int, on_tile: Callable, on_arrive := Callable()) -> void:
+	var own := unit.speed
+	unit.speed = speed
+	sim.order_walk(unit, goal)
+	var last := [unit.tile]
+	var watch := func(again: Callable) -> void:
+		if unit.dead:
+			return
+		if unit.tile != last[0]:
+			last[0] = unit.tile
+			on_tile.call()
+		if unit.tile == goal or not unit.moving:
+			unit.speed = own
+			if on_arrive.is_valid():
+				on_arrive.call()
+			return
+		sim.after(1, again.bind(again))
+	sim.after(1, watch.bind(watch))
+
+
 ## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
 static func thumb(item_id: int, name: String, number: int) -> String:
 	return "%d_%s_button_%d" % [item_id, name, number]

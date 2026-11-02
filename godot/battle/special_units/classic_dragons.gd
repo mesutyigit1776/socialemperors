@@ -17,8 +17,10 @@ const UNITS := {
 	2132: "three_head_elemental", 2134: "three_head_elemental",
 	2069: "golden_dynasty", 2071: "golden_dynasty",
 	736: "double_head_2", 838: "double_head_2",
+	888: "egyptian", 889: "egyptian",
+	2140: "four_wing", 2142: "four_wing",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142]
 const GOLD_PER_STATUE := 10
 const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
@@ -309,6 +311,72 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 								sim.push_in_air(item, unit, 2)), Callable(), "", COOLDOWN_OLD)
 			if rider:
 				limit_lightning(ability, beams(SP5, [17], 50, LIMIT_RED_BEAM))
+		"egyptian":
+			add(ability, 0, "Shoot Balls", "btn_bolas", SpecialAttacks.Frames.new(sim, unit, SP2, [22, 26, 30, 34], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					sim.shoot(unit, target, "p.egyptianBall", unit.attack), 6), Callable(), "", COOLDOWN_OLD)
+			# When the target has at most 500 life, the 2 nearest enemy units in
+			# range die.
+			add(ability, 1, "Breath From Hell", "btn_tufillo_chungo", SpecialAttacks.Frames.new(sim, unit, SP3, [18], func() -> void:
+				for enemy in sim.items_near(unit.tile, unit.attack_range, 2, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					sim.particle(unit, enemy.tile, MagicParticles.SOUL, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+					sim.kill(enemy, unit)), func(_s: BattleSim, fighter: BattleFighter) -> bool:
+						var target := fighter.target
+						return target != null and not target.dead and target.is_unit() and target.def.life <= 500 and sim.distance(fighter, target) <= fighter.attack_range,
+					"No targets in range", COOLDOWN_OLD)
+			add(ability, 2, "Whirlwind", "btn_giro", SpecialAttacks.Frames.new(sim, unit, SP1, [22, 26, 30, 34], func() -> void:
+				for enemy in sim.items_near(unit.tile, 2, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and not item.incapacitated and (item.ability == null or not item.ability.immune_to_push)):
+					sim.receive_attack(enemy, int(atk / 2), unit)
+					sim.push_in_air(enemy, unit, 2), 10), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Spawn Minions", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 890),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_lightning(ability, beams(SP1, [16], 50, LIMIT_RED_BEAM))
+		"four_wing":
+			# The dragon flies at 3 times its speed to the tile in front of it
+			# and back; on each tile a green flame burns the units within 3
+			# tiles (once each): they take the attack, burn and fly 2 tiles.
+			add(ability, 0, "", "2140_1", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var origin := unit.tile
+				var goal: Variant = directional_tile(sim, unit, unit.attack_range * 2)
+				if goal == null:
+					return
+				var burnt: Array[BattleFighter] = []
+				var flame := func() -> void:
+					sim.particle(unit, unit.tile, MagicParticles.GREEN_FLAME, 5, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+					for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+							return item.is_unit() and not item.dead and not item in burnt):
+						burnt.append(enemy)
+						sim.receive_attack(enemy, unit.attack, unit)
+						if not enemy.dead:
+							sim.incinerate(enemy, unit, 25, 5, BattleSim.FRAMES_PER_SECOND)
+							sim.push_in_air(enemy, unit, 2)
+				sim.play_special(unit, SP1, 10 * BattleSim.FRAMES_PER_SECOND, {}, Callable(), false)
+				fly_to(sim, unit, goal, unit.speed * 3, flame, func() -> void:
+					fly_to(sim, unit, origin, unit.speed * 3, flame, func() -> void: sim.stop_special(unit))),
+					func(_s: BattleSim, _f: BattleFighter) -> bool: return directional_tile(sim, unit, unit.attack_range * 2) != null,
+					"You are too close to a building, wall or tree")
+			add(ability, 1, "", "2140_2", SpecialAttacks.Frames.new(sim, unit, SP2, [40], func() -> void:
+				var whirl := sim.spawn(sim.config_item(2147), unit.tile, unit.team)
+				if whirl != null:
+					sim.after(11 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if not whirl.dead and whirl in sim.fighters:
+							sim.remove_item(whirl))))
+			add(ability, 2, "", "2140_3", SpecialAttacks.Rain.new(sim, unit, 6, 3, SP3, MagicParticles.ACID_RAIN, _AcidHit.new(sim, unit))
+					.with_multiplier(0).with_frames([25]))
+			add(ability, 3, "", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void:
+				egg_minion(sim, unit, 2141)
+				sim.after(6, func() -> void: egg_minion(sim, unit, 2141)),
+					func(_s: BattleSim, fighter: BattleFighter) -> bool: return fighter.ability.minions_alive + 2 <= 4, "4 " + MINIONS_MAX)
+			if rider:
+				var frames: Array[int] = []
+				for frame in range(35, 116, 5):
+					frames.append(frame)
+				limit_special(ability, SP5, frames, func(battle: BattleSim, dragon: BattleFighter) -> void:
+					circular_push(battle, dragon, 7, 10, int(dragon.attack * 1.5), 12))
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
@@ -341,3 +409,13 @@ class _HoleHit extends UnitDamage:
 
 	func can_apply(target: BattleFighter) -> bool:
 		return target != null and not target.dead
+
+
+## An acid drop of the Four-Wing Dragon: 1.2 times the attack and poison.
+class _AcidHit extends UnitDamage:
+	func can_apply(target: BattleFighter) -> bool:
+		return super(target) and (target.ability == null or not target.ability.immune_to_poison)
+
+	func apply(target: BattleFighter, _multiplier := 1.0) -> void:
+		sim.receive_attack(target, int(attacker.def.attack * 1.2), _source())
+		sim.poison(target, 25, 5, 0, attacker)

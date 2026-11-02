@@ -177,7 +177,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				limit_healing(ability, beams(SP1, [17], 50, LIMIT_GREEN_BEAM))
 		"red":
 			add(ability, 0, "Flies", "redbaha_fuego", func(_s: BattleSim, _f: BattleFighter) -> void: _fly(sim, unit),
-					func(_s: BattleSim, _f: BattleFighter) -> bool: return _fly_tile(sim, unit) != null,
+					func(_s: BattleSim, _f: BattleFighter) -> bool: return directional_tile(sim, unit, unit.attack_range * 2) != null,
 					"You are too close to a building, wall or tree", COOLDOWN_OLD)
 			add(ability, 1, "Wing attack", "redbaha_bola", SpecialAttacks.Frames.new(sim, unit, SP3, [28], func() -> void:
 				var target := unit.target
@@ -246,50 +246,18 @@ static func _absorb_and_kill(sim: BattleSim, unit: BattleFighter, enemy: BattleF
 			sim.kill(enemy, unit))
 
 
-## The tile at twice the attack range in front of the Red Bahamut, in the
-## four directions of the client, or the last free tile before an obstacle;
-## null when the next tile is not free (getDirectionalTile).
-static func _fly_tile(sim: BattleSim, unit: BattleFighter) -> Variant:
-	var step := Vector2i(0, 1)
-	match BattleAbility.direction(unit):
-		1, 2: step = Vector2i(0, -1)
-		3, 4, 5: step = Vector2i(1, 0)
-		6: step = Vector2i(-1, 0)
-	var last: Variant = null
-	for i in range(1, unit.attack_range * 2 + 1):
-		var tile := unit.tile + step * i
-		if not Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).has_point(tile) or not sim.is_free(tile):
-			break
-		last = tile
-	return last
-
-
 ## The Red Bahamut flies fast to the tile in front of it. On each tile, a fire
 ## comes up and the units within 3 tiles take its attack, burn and fly 2 tiles.
 static func _fly(sim: BattleSim, unit: BattleFighter) -> void:
-	var goal: Variant = _fly_tile(sim, unit)
+	var goal: Variant = directional_tile(sim, unit, unit.attack_range * 2)
 	if goal == null:
 		return
-	var speed := unit.speed
-	unit.speed = 114
 	sim.play_special(unit, SP2, 10 * BattleSim.FRAMES_PER_SECOND, {}, Callable(), false)
-	sim.order_walk(unit, goal)
-	var last := [unit.tile]
-	var watch := func(again: Callable) -> void:
-		if unit.dead:
-			return
-		if unit.tile != last[0]:
-			last[0] = unit.tile
-			sim.particle(unit, unit.tile, MagicParticles.FIRE_RED, 5, 0)
-			for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
-					return item.is_unit() and not item.dead):
-				sim.receive_attack(enemy, unit.attack, unit)
-				if not enemy.dead:
-					sim.incinerate(enemy, unit, 5, 3, 1)
-					sim.push_in_air(enemy, unit, 2)
-		if unit.tile == goal or not unit.moving:
-			unit.speed = speed
-			sim.stop_special(unit)
-			return
-		sim.after(1, again.bind(again))
-	sim.after(1, watch.bind(watch))
+	fly_to(sim, unit, goal, 114, func() -> void:
+		sim.particle(unit, unit.tile, MagicParticles.FIRE_RED, 5, 0)
+		for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+				return item.is_unit() and not item.dead):
+			sim.receive_attack(enemy, unit.attack, unit)
+			if not enemy.dead:
+				sim.incinerate(enemy, unit, 5, 3, 1)
+				sim.push_in_air(enemy, unit, 2), func() -> void: sim.stop_special(unit))
