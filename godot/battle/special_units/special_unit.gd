@@ -11,6 +11,16 @@ const LIMIT_RED_BEAM := "p.electricityRedBeam"  ## BeamDefinition.ELECTRICITY_BE
 const LIMIT_GREEN_BEAM := "p.healingBeamGreen"  ## BeamDefinition.HEALING_BEAM_GREEN
 const NO_TARGET := "NO_VALID_TARGET_IN_RANGE"  ## Text key of the client.
 const MINIONS_MAX := "MINIONS_MAX"
+## The special animations (ANIMATION_ATTACKING_SPECIAL1 to 9 of the client).
+const SP1 := UnitSprite.Action.SPECIAL
+const SP2 := SP1 + 1
+const SP3 := SP1 + 2
+const SP4 := SP1 + 3
+const SP5 := SP1 + 4
+const SP6 := SP1 + 5
+const SP7 := SP1 + 6
+const SP8 := SP1 + 7
+const SP9 := SP1 + 8
 
 
 ## Adds button id with the name, the picture and the action, an Attack of
@@ -31,6 +41,27 @@ static func has_target() -> Callable:
 static func has_target_in_range(tiles: int) -> Callable:
 	return func(sim: BattleSim, fighter: BattleFighter) -> bool:
 		return fighter.target != null and not fighter.target.dead and fighter.target.is_unit() and sim.distance(fighter, fighter.target) <= tiles
+
+
+## A target unit with a maximum life from low to high, nearer than tiles
+## (the attack range when tiles is -1) (hasTargetWithLife).
+static func has_target_life(low: int, high: int, tiles := -1) -> Callable:
+	return func(sim: BattleSim, fighter: BattleFighter) -> bool:
+		var target := fighter.target
+		var limit := fighter.attack_range if tiles < 0 else tiles
+		return target != null and not target.dead and target.is_unit() and sim.distance(fighter, target) < limit \
+				and target.max_life() >= low and target.max_life() <= high
+
+
+## A button that summons minions while fewer than the maximum of the attack
+## are alive (checkMaxMinions; the attack sets the maximum of the unit).
+static func add_minions(ability: BattleAbility, id: int, name: String, thumb: String, attack: SpecialAttacks.SpawnMinion) -> void:
+	add(ability, id, name, thumb, attack, attack.can_use(), "%d %s" % [attack.max_minions, MINIONS_MAX])
+
+
+## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
+static func thumb(item_id: int, name: String, number: int) -> String:
+	return "%d_%s_button_%d" % [item_id, name, number]
 
 
 ## A button that works while fewer than maximum minions are alive (checkMaxMinions).

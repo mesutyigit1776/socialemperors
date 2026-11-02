@@ -106,7 +106,8 @@ func _on_pressed(id: int) -> void:
 	elif _unit.ability.button_state != BattleAbility.ButtonState.IDLE and id != BattleAbility.LIMIT_BUTTON:
 		_say(_config.text("AUX_NO_ESTA_LISTO"), Color.RED)
 	else:
-		_say(button.cant_text, Color.RED)
+		# The text can hold text keys of the client, as "4 MINIONS_MAX".
+		_say(" ".join(Array(button.cant_text.split(" ")).map(_config.text)), Color.RED)
 
 
 func _say(text: String, colour: Color) -> void:

@@ -1,18 +1,30 @@
 class_name SpecialUnitTable
 extends RefCounted
 ## The special units of the port by item id, like CreateIsoElement of the
-## client, which makes an IsoSpecialUnit subclass for these ids. See SpecialUnit.
+## client, which makes an IsoSpecialUnit subclass for these ids. Each family
+## script has a constant UNITS (item id -> kind) and a static
+## make(sim, fighter, ability, kind). See SpecialUnit.
 
-const SCRIPTS := {
-}
+static func _families() -> Array:
+	return [
+		AncientDragons,
+		EpicDragons,
+	]
+
+
+static func _family(item_id: int) -> Variant:
+	for family: Variant in _families():
+		if family.UNITS.has(item_id):
+			return family
+	return null
 
 
 static func has(item_id: int) -> bool:
-	return SCRIPTS.has(item_id)
+	return _family(item_id) != null
 
 
 ## Adds the portrait buttons of the fighter to its ability.
 static func make(sim: BattleSim, fighter: BattleFighter, ability: BattleAbility) -> void:
-	var script: Variant = SCRIPTS.get(fighter.def.id)
-	if script != null:
-		script.make(sim, fighter, ability)
+	var family: Variant = _family(fighter.def.id)
+	if family != null:
+		family.make(sim, fighter, ability, family.UNITS[fighter.def.id])

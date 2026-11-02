@@ -83,6 +83,17 @@ const SKULL_EXPLOSION := 77
 const SEAL_HEALTH := 78
 const FIRE_PIT := 80
 const SPIKES_RAIN := 83
+const RAIN_PRIEST_GLADIATOR := 63
+const GLADIATOR_NET := 65
+const ROCKS_RAIN := 84
+const DIAMONDS_RAIN := 85
+const FIREBALL_RAIN := 86
+const MOON_SEAL := 87
+const THUNDER_L := 88
+const ROCKS := 89
+const ICE_SHARD := 90
+const PLATINUM_SWORD := 91
+const PURPLE_RAY := 92
 
 ## Type -> the frame at which the particle attacks; -1: it never attacks.
 ## Other types attack at DEFAULT_ATTACK_FRAME.

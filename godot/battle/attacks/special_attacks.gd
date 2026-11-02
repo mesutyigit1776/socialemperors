@@ -135,7 +135,7 @@ class Area extends Attack:
 	func _on_frame() -> void:
 		if unit.dead:
 			return
-		var targets := _enemies(unit.tile, range_tiles, count)
+		var targets := _enemies(unit.tile, range_tiles, count, filter)
 		_damage_all(damage, targets, count)
 
 
@@ -205,7 +205,7 @@ class Rain extends Attack:
 		return null
 
 	func _on_hit(_attacker: BattleFighter, target: BattleFighter, _value: int) -> void:
-		if target != null and target.is_unit() and damage.can_apply(target):
+		if damage != null and target != null and target.is_unit() and damage.can_apply(target):
 			damage.apply(target)
 
 
@@ -799,6 +799,7 @@ class Ghosts extends Attack:
 	var radius: int
 	var seconds: int
 	var make_attack: Callable  ## (sim, ghost) -> Attack
+	var _attacks: Array[Attack] = []  # Kept until the end: nothing else holds them.
 
 	func _init(battle: BattleSim, owner: BattleFighter, unit_id: int, ghosts: int, area_radius: int, duration: int, attack_maker: Callable) -> void:
 		super(battle, owner)
@@ -819,12 +820,15 @@ class Ghosts extends Attack:
 			ghosts.append(ghost)
 			sim.after(roundi(0.6 * FPS), func() -> void:
 				if not ghost.dead:
-					make_attack.call(sim, ghost).execute())
+					var attack: Attack = make_attack.call(sim, ghost)
+					_attacks.append(attack)
+					attack.execute())
 		unit.incapacitated = true
 		sim.after(seconds * FPS, func() -> void:
 			for ghost in ghosts:
 				if not ghost.dead:
 					sim.kill(ghost, unit)
+			_attacks.clear()
 			unit.incapacitated = unit.frozen or unit.stunned or unit.in_air
 			_end())
 
@@ -941,6 +945,42 @@ class WhirlHole extends Attack:
 
 
 ## number points on a circle of radius tiles (computeAreaPoints of the client).
+## The unit takes no damage for seconds and shoots its own shot at one of
+## the count nearest enemy units within range_tiles at the frames of the
+## animation (StealthSpecialAttack with the Enel Epic Dragon). The client
+## also makes the unit and its beam half transparent.
+class Stealth extends Attack:
+	var animation: int
+	var frames: Array
+	var seconds: int
+	var range_tiles: int
+	var count: int
+	var _factor := 1.0
+
+	func _init(battle: BattleSim, owner: BattleFighter, anim: int, frame_list: Array, duration: int, area_range: int, units: int) -> void:
+		super(battle, owner)
+		animation = anim
+		frames = frame_list
+		seconds = duration
+		range_tiles = area_range
+		count = units
+
+	func execute() -> void:
+		super()
+		_factor = unit.damage_factor
+		unit.damage_factor = 0.0
+		_play_for(seconds, animation, frames, _shoot)
+
+	func _shoot() -> void:
+		var enemies := _enemies(unit.tile, range_tiles, count)
+		if not unit.dead and enemies.size() > 0:
+			sim.shoot(unit, enemies[sim.rng.randi_range(0, enemies.size() - 1)], "", unit.attack)
+
+	func _end() -> void:
+		unit.damage_factor = _factor
+		super()
+
+
 static func area_points(number: int, radius: int) -> Array[Vector2i]:
 	var points: Array[Vector2i] = []
 	for i in number:
