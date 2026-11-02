@@ -1,8 +1,9 @@
 //! The class FlashArt that Godot uses: one SWF file of the user, whose frames
 //! it draws on request. Frames can also be drawn ahead on other threads.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Condvar, Mutex};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, Weak};
 
 use godot::classes::image::Format;
 use godot::classes::{Image, ProjectSettings};
@@ -18,16 +19,41 @@ unsafe impl ExtensionLibrary for FlashArtExtension {}
 /// Threads that draw frames ahead for all FlashArt objects.
 const WORKERS: usize = 3;
 
-type Key = (u16, usize);
+/// The frames that all FlashArt objects drew ahead and that the game did not
+/// take yet can use this much memory. Above it, the frames that were drawn
+/// first are removed; render() draws such a frame again when the game asks for it.
+const AHEAD_LIMIT: usize = 128 << 20;
+
+/// Character id, frame, and the bits of the scale (f32::to_bits).
+type Key = (u16, usize, u32);
+
+/// A frame that was drawn ahead: the pixels (see draw), the size, and its number in the order of all frames drawn ahead.
+struct Drawn {
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+    number: u64,
+}
 
 /// Frames that wait to be drawn ahead, and the frames that are ready.
 #[derive(Default)]
 struct Ahead {
     queue: Vec<Key>,
     queued: HashSet<Key>,
-    ready: HashMap<Key, (Vec<u8>, u32, u32)>,
+    ready: HashMap<Key, Drawn>,
     stopped: bool,
 }
+
+/// The frames drawn ahead by all FlashArt objects, first drawn first, and the
+/// bytes of those that are still ready. An entry whose frame was taken stays
+/// until it comes to the front. Lock order: ORDER before Shared::ahead, never the opposite.
+struct Order {
+    list: VecDeque<(Weak<Shared>, Key, u64)>,
+    bytes: usize,
+}
+
+static ORDER: Mutex<Order> = Mutex::new(Order { list: VecDeque::new(), bytes: 0 });
+static NUMBER: AtomicU64 = AtomicU64::new(0);
 
 struct Shared {
     art: Art,
@@ -130,18 +156,33 @@ impl FlashArt {
         }
     }
 
-    /// Draws frame (from 0) of a character on an image of the part of its
-    /// canvas that the frame covers (see frame_area), or returns the image
-    /// that the threads drew ahead. Null when the frame draws nothing.
+    /// Draws frame (from 0) of a character at a scale on an image of the
+    /// part of its canvas that the frame covers (see frame_area), or returns
+    /// the image that the threads drew ahead. The image has the size of the
+    /// area times the scale, rounded up. Null when the frame draws nothing.
     #[func]
-    fn render(&self, id: i64, frame: i64) -> Option<Gd<Image>> {
-        let key = (id as u16, frame.max(0) as usize);
-        let ready = self.shared.ahead.lock().unwrap().ready.remove(&key);
-        let (pixels, width, height) = match ready {
+    fn render(&self, id: i64, frame: i64, scale: f32) -> Option<Gd<Image>> {
+        let key = key(id, frame, scale);
+        let drawn = match take(&self.shared, key) {
             Some(drawn) => drawn,
             None => draw(&self.shared.art, key)?,
         };
-        Image::create_from_data(width as i32, height as i32, false, Format::RGBA8, &PackedByteArray::from(pixels))
+        image(drawn)
+    }
+
+    /// The image of a frame that the threads drew ahead at this scale, or
+    /// null when it is not ready. It does not wait and does not draw.
+    #[func]
+    fn take_ahead(&self, id: i64, frame: i64, scale: f32) -> Option<Gd<Image>> {
+        image(take(&self.shared, key(id, frame, scale))?)
+    }
+
+    /// True while a frame at this scale waits to be drawn ahead, is drawn, or is ready to take.
+    #[func]
+    fn is_ahead(&self, id: i64, frame: i64, scale: f32) -> bool {
+        let key = key(id, frame, scale);
+        let ahead = self.shared.ahead.lock().unwrap();
+        ahead.queued.contains(&key) || ahead.ready.contains_key(&key)
     }
 
     /// Draws the state (0 up, 1 over, 2 down) of a button on an image of its
@@ -161,10 +202,11 @@ impl FlashArt {
         PackedByteArray::from(self.shared.art.font_ttf(id as u16).unwrap_or_default())
     }
 
-    /// Starts to draw these frames of a character on other threads, so that
-    /// render() later only takes them.
+    /// Starts to draw these frames of a character at a scale on other threads,
+    /// so that render() later only takes them. The frames that wait at
+    /// another scale are not drawn: the game uses one scale at a time.
     #[func]
-    fn draw_ahead(&mut self, id: i64, frames: PackedInt32Array) {
+    fn draw_ahead(&mut self, id: i64, frames: PackedInt32Array, scale: f32) {
         if !self.workers {
             self.workers = true;
             for _ in 0..WORKERS {
@@ -173,8 +215,13 @@ impl FlashArt {
             }
         }
         let mut ahead = self.shared.ahead.lock().unwrap();
+        let bits = scale.to_bits();
+        if ahead.queue.iter().any(|k| k.2 != bits) {
+            let Ahead { queue, queued, .. } = &mut *ahead;
+            queue.retain(|k| k.2 == bits || !queued.remove(k));
+        }
         for frame in frames.as_slice() {
-            let key = (id as u16, (*frame).max(0) as usize);
+            let key = key(id, *frame as i64, scale);
             if !ahead.ready.contains_key(&key) && ahead.queued.insert(key) {
                 ahead.queue.push(key);
             }
@@ -188,8 +235,65 @@ impl FlashArt {
 
 impl Drop for FlashArt {
     fn drop(&mut self) {
-        self.shared.ahead.lock().unwrap().stopped = true;
+        let ready = {
+            let mut ahead = self.shared.ahead.lock().unwrap();
+            ahead.stopped = true;
+            std::mem::take(&mut ahead.ready)
+        };
         self.shared.wake.notify_all();
+        ORDER.lock().unwrap().bytes -= ready.values().map(|d| d.pixels.len()).sum::<usize>();
+    }
+}
+
+fn key(id: i64, frame: i64, scale: f32) -> Key {
+    (id as u16, frame.max(0) as usize, scale.to_bits())
+}
+
+/// Removes a frame from the frames drawn ahead.
+fn take(shared: &Shared, key: Key) -> Option<Drawn> {
+    let drawn = shared.ahead.lock().unwrap().ready.remove(&key)?;
+    ORDER.lock().unwrap().bytes -= drawn.pixels.len();
+    Some(drawn)
+}
+
+fn image(drawn: Drawn) -> Option<Gd<Image>> {
+    Image::create_from_data(drawn.width as i32, drawn.height as i32, false, Format::RGBA8, &PackedByteArray::from(drawn.pixels))
+}
+
+/// Adds a frame that a thread drew ahead, and removes the frames drawn first
+/// while all frames drawn ahead use more than AHEAD_LIMIT.
+fn keep(shared: &Arc<Shared>, key: Key, mut drawn: Drawn) {
+    drawn.number = NUMBER.fetch_add(1, Ordering::Relaxed);
+    let (number, bytes) = (drawn.number, drawn.pixels.len());
+    let mut order = ORDER.lock().unwrap();
+    {
+        let mut ahead = shared.ahead.lock().unwrap();
+        ahead.queued.remove(&key);
+        // FlashArt::drop counted the ready frames already.
+        if ahead.stopped {
+            return;
+        }
+        ahead.ready.insert(key, drawn);
+    }
+    order.list.push_back((Arc::downgrade(shared), key, number));
+    order.bytes += bytes;
+    while let Some((art, key, number)) = order.list.front().cloned() {
+        let mut removed = None;
+        let live = art.upgrade().is_some_and(|art| {
+            let mut ahead = art.ahead.lock().unwrap();
+            let live = ahead.ready.get(&key).is_some_and(|d| d.number == number);
+            if live && order.bytes > AHEAD_LIMIT {
+                removed = ahead.ready.remove(&key);
+            }
+            live
+        });
+        if live && removed.is_none() {
+            break;
+        }
+        order.list.pop_front();
+        if let Some(d) = removed {
+            order.bytes -= d.pixels.len();
+        }
     }
 }
 
@@ -207,22 +311,22 @@ fn work(shared: Arc<Shared>) {
                 ahead = shared.wake.wait(ahead).unwrap();
             }
         };
-        let pixels = draw(&shared.art, key);
-        let mut ahead = shared.ahead.lock().unwrap();
-        ahead.queued.remove(&key);
-        if let Some(pixels) = pixels {
-            ahead.ready.insert(key, pixels);
+        match draw(&shared.art, key) {
+            Some(drawn) => keep(&shared, key, drawn),
+            None => {
+                shared.ahead.lock().unwrap().queued.remove(&key);
+            }
         }
     }
 }
 
-/// The pixels of the area of a frame, not premultiplied, as Godot images
-/// keep them, and the size of the area.
-fn draw(art: &Art, (id, frame): Key) -> Option<(Vec<u8>, u32, u32)> {
+/// The pixels of the area of a frame at the scale, not premultiplied, as
+/// Godot images keep them.
+fn draw(art: &Art, (id, frame, scale): Key) -> Option<Drawn> {
     let canvas = art.canvas(id)?;
     let area = art.frame_area(id, frame, canvas)?;
-    let pixmap = art.render_area(id, frame, canvas, area, 1.0)?;
-    Some((straight(pixmap.take()), area.2, area.3))
+    let pixmap = art.render_area(id, frame, canvas, area, f32::from_bits(scale))?;
+    Some(Drawn { width: pixmap.width(), height: pixmap.height(), pixels: straight(pixmap.take()), number: 0 })
 }
 
 /// Premultiplied pixels made straight, as Godot images keep them.

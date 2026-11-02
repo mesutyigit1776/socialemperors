@@ -12,6 +12,7 @@ const BUTTON_STATES := {"up": 0, "over": 1, "down": 2}
 
 var _dir: String
 var _art: FlashArt
+var _frame_cache: FrameCache
 var _frames: Dictionary = {}  # Sprite id -> SpriteLibrary.Frames.
 var _button_images: Dictionary = {}  # [button id, state] -> Texture2D, or null.
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
@@ -23,7 +24,8 @@ var _fonts: Dictionary = {}  # Font id -> Font.
 
 ## Returns null and reports an error when <data_dir>/<folder>/layout.json is
 ## missing or not valid. The folder "ui/cast" has the banner of a cast spell.
-static func load_from(data_dir: String, folder := "ui") -> UiLibrary:
+## frames: keeps the frames of the sprites.
+static func load_from(data_dir: String, frames: FrameCache, folder := "ui") -> UiLibrary:
 	var path := data_dir.path_join(folder).path_join("layout.json")
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not (data is Dictionary and data.get("symbols") is Dictionary and data.get("clips") is Dictionary):
@@ -31,6 +33,7 @@ static func load_from(data_dir: String, folder := "ui") -> UiLibrary:
 		return null
 	var library := UiLibrary.new()
 	library._dir = data_dir.path_join(folder)
+	library._frame_cache = frames
 	for name: String in data["symbols"]:
 		library._symbols[name] = int(data["symbols"][name])
 	for key: String in data["clips"]:
@@ -130,7 +133,7 @@ func font(font_id: Variant) -> Font:
 
 func _clip_frames(sprite_id: int) -> SpriteLibrary.Frames:
 	if not _frames.has(sprite_id):
-		_frames[sprite_id] = SpriteLibrary.Frames.new(_art, sprite_id, _art.frame_count(sprite_id))
+		_frames[sprite_id] = SpriteLibrary.Frames.new(_art, sprite_id, _art.frame_count(sprite_id), _frame_cache, false)
 	return _frames[sprite_id]
 
 

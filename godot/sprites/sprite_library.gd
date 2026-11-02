@@ -5,62 +5,63 @@ extends RefCounted
 ## copy of the SWF file of the graphic and meta.json, see importer/import_assets.py.
 ##
 ## The port draws the frames from the SWF file while it runs, with the
-## extension FlashArt (flash_art/). A frame is drawn when it is first shown
-## and then kept.
+## extension FlashArt (flash_art/), at the zoom of the camera. A frame is
+## drawn when it is first shown; a FrameCache keeps it.
 
 ## The copy of the SWF file in the folder of a graphic.
 const GRAPHIC_FILE := "graphic.swf"
 
 
-## The frames of one character of a SWF file, drawn when they are first asked for.
+## The frames of one character of a SWF file, drawn when they are first asked
+## for. A FrameCache keeps them; it can remove them and draw them again.
 class Frames:
+	var origin: Vector2  ## Top-left of each frame image relative to the registration point.
 	var _art: FlashArt
 	var _id: int
-	var _textures: Array[Texture2D] = []
-	var _drawn: Array[bool] = []
-	var _ahead := false
-	var origin: Vector2  ## Top-left of each frame image relative to the registration point.
+	var _cache: FrameCache
+	var _on_map: bool
 	var _size: Vector2  # The size of the canvas, which each frame image has.
+	var _entries: Array[FrameCache.Entry] = []
+	var _empty: Array[bool] = []  # Frames that draw nothing.
 
-	func _init(art: FlashArt, id: int, count: int) -> void:
+	## on_map: the frames are drawn at the scale of the map (see FrameCache).
+	func _init(art: FlashArt, id: int, count: int, cache: FrameCache, on_map: bool) -> void:
 		_art = art
 		_id = id
-		_textures.resize(count)
-		_drawn.resize(count)
+		_cache = cache
+		_on_map = on_map
+		_entries.resize(count)
+		_empty.resize(count)
 		var canvas := art.canvas(id)
 		origin = canvas.position
 		_size = canvas.size
 
 	func count() -> int:
-		return _textures.size()
+		return _entries.size()
 
 	## frame is 0-based. Null when the frame draws nothing.
 	func get_frame(frame: int) -> Texture2D:
-		frame = clampi(frame, 0, _textures.size() - 1)
-		if not _drawn[frame]:
-			_drawn[frame] = true
-			var image := _art.render(_id, frame)
-			if image != null:
-				# The image covers only the part of the canvas that the frame
-				# draws on; the margin keeps the size of the canvas.
-				var area := _art.frame_area(_id, frame)
-				var atlas := AtlasTexture.new()
-				atlas.atlas = ImageTexture.create_from_image(image)
-				atlas.region = Rect2(Vector2.ZERO, area.size)
-				atlas.margin = Rect2(area.position, _size - Vector2(area.size))
-				_textures[frame] = atlas
-		return _textures[frame]
+		frame = clampi(frame, 0, _entries.size() - 1)
+		var entry := _entries[frame]
+		if entry != null and not entry.removed:
+			_cache.use(entry)
+			return entry.texture
+		if _empty[frame]:
+			return null
+		entry = _cache.draw(_art, _id, frame, _on_map, _size)
+		_entries[frame] = entry
+		_empty[frame] = entry == null
+		return entry.texture if entry != null else null
 
-	## Starts to draw all frames on other threads, for an animation that starts to play.
+	## Starts to draw the frames that the cache does not have on other
+	## threads, for an animation that starts to play.
 	func draw_ahead() -> void:
-		if _ahead:
-			return
-		_ahead = true
 		var frames := PackedInt32Array()
-		for frame in _textures.size():
-			if not _drawn[frame]:
+		for frame in _entries.size():
+			if not _empty[frame] and (_entries[frame] == null or _entries[frame].removed):
 				frames.append(frame)
-		_art.draw_ahead(_id, frames)
+		if not frames.is_empty():
+			_art.draw_ahead(_id, frames, _cache.scale_of(_on_map))
 
 
 class ItemSprite:
@@ -131,12 +132,14 @@ class FrameClip:
 
 
 var _sprites_dir: String
+var _frames: FrameCache
 var _cache: Dictionary = {}  # img_name -> ItemSprite, or null when the graphic is missing
 
 
 ## folder: "sprites" for the items, "fx" for the shots and effects.
-func _init(data_dir: String, folder := "sprites") -> void:
+func _init(data_dir: String, frames: FrameCache, folder := "sprites") -> void:
 	_sprites_dir = data_dir.path_join(folder)
+	_frames = frames
 
 
 ## Returns null when the graphic was not imported. Reports each missing graphic once.
@@ -158,7 +161,7 @@ func _load(img_name: String) -> ItemSprite:
 		push_warning("Graphic '%s' has no symbol in its SWF file. Import the files again." % img_name)
 		return null
 	var sprite := ItemSprite.new()
-	sprite.frames = Frames.new(art, id, art.frame_count(id))
+	sprite.frames = Frames.new(art, id, art.frame_count(id), _frames, true)
 	sprite.origin = sprite.frames.origin
 	for rect: Rect2 in art.frame_rects(id):
 		sprite.frame_sizes.append(rect.size)
@@ -172,7 +175,7 @@ func _load(img_name: String) -> ItemSprite:
 				continue
 			var clip_id: int = entry[0]
 			if not clips.has(clip_id):
-				clips[clip_id] = Clip.new(Frames.new(art, clip_id, art.frame_count(clip_id)))
+				clips[clip_id] = Clip.new(Frames.new(art, clip_id, art.frame_count(clip_id), _frames, true))
 			var frame_clip := FrameClip.new()
 			frame_clip.clip = clips[clip_id]
 			frame_clip.transform = entry[1]

@@ -41,6 +41,7 @@ var _spell_layer := CanvasLayer.new()
 var _spell_book: SpellBook
 var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
 var _quest_screen: QuestScreen
+var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 
 
 func _ready() -> void:
@@ -49,6 +50,7 @@ func _ready() -> void:
 	if data_dir.is_empty():
 		data_dir = "user://imported"
 	_data_dir = data_dir
+	add_child(_frames)
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
@@ -57,10 +59,10 @@ func _ready() -> void:
 	if _village == null:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	elif _options.has("battle"):
-		_sprites = SpriteLibrary.new(data_dir)
-		_start_battle(_options["battle"], SpriteLibrary.new(data_dir, "fx"))
+		_sprites = SpriteLibrary.new(data_dir, _frames)
+		_start_battle(_options["battle"], SpriteLibrary.new(data_dir, _frames, "fx"))
 	else:
-		_sprites = SpriteLibrary.new(data_dir)
+		_sprites = SpriteLibrary.new(data_dir, _frames)
 		_view = VillageView.new()
 		add_child(_view)
 		_view.show_village(_village, _config, _sprites)
@@ -239,16 +241,16 @@ func _show_village(shown: bool) -> void:
 ## when the import does not have them.
 func _load_quest_graphics() -> bool:
 	if _ui == null:
-		_ui = UiLibrary.load_from(_data_dir)
+		_ui = UiLibrary.load_from(_data_dir, _frames)
 	if _cast_ui == null and _ui != null:
-		_cast_ui = UiLibrary.load_from(_data_dir, "ui/cast")
+		_cast_ui = UiLibrary.load_from(_data_dir, _frames, "ui/cast")
 	var graphics: Variant = BattleSpell.read_graphics(_data_dir.path_join("spells.json")) if _spell_graphics.is_empty() else _spell_graphics
 	if _ui == null or _cast_ui == null or graphics == null:
 		_hud.show_message("The quests and the spells need the windows of the client. Import the game files again; see godot/README.md.")
 		return false
 	_spell_graphics = graphics
 	if _effects == null:
-		_effects = SpriteLibrary.new(_data_dir, "fx")
+		_effects = SpriteLibrary.new(_data_dir, _frames, "fx")
 	return true
 
 
