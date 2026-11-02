@@ -25,8 +25,11 @@ const UNITS := {
 	777: "crystal", 841: "crystal",
 	798: "rubies", 844: "rubies",
 	785: "furious_bull", 842: "furious_bull",
+	708: "golden", 835: "golden",
+	695: "light", 834: "light",
+	723: "black", 837: "black",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845, 2026, 841, 844, 842]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845, 2026, 841, 844, 842, 835, 834, 837]
 const GOLD_PER_STATUE := 10
 const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
@@ -297,24 +300,8 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 						sim.receive_attack(enemy, int(atk / 2.2), unit)
 						if unit.target == null and not enemy.dead:
 							sim.set_target(unit, enemy)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
-			# For 12 seconds the dragon turns and walks slowly with a range of
-			# 1; each second the items on the 5 x 5 tiles around it take half
-			# the attack, and units fly 2 tiles.
-			add(ability, 1, "Torbelliiiino murtal", "botonTorbellino", func(_s: BattleSim, _f: BattleFighter) -> void:
-				unit.speed = 15
-				unit.attack_range = 1
-				for second in range(1, 13):
-					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
-						if unit.dead:
-							return
-						if second == 12:
-							unit.speed = unit.def.velocity
-							unit.attack_range = unit.def.attack_range
-							return
-						for item in sim.items_near(unit.tile, 2, 25, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool: return not other.dead):
-							sim.receive_attack(item, int(atk / 2), unit)
-							if item.is_unit() and not item.dead:
-								sim.push_in_air(item, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 1, "Torbelliiiino murtal", "botonTorbellino", func(_s: BattleSim, _f: BattleFighter) -> void: _torning(sim, unit, 12),
+					Callable(), "", COOLDOWN_OLD)
 			if rider:
 				limit_lightning(ability, beams(SP5, [17], 50, LIMIT_RED_BEAM))
 		"egyptian":
@@ -536,6 +523,72 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					below_minions(3), "3 draggies max", COOLDOWN_OLD)
 			if rider:
 				limit_smash(ability, SP4, [29], 2, 6, 5)
+		"golden":
+			add(ability, 0, "Dragoncito Aliado", "botonGreenDraggis", SpecialAttacks.Frames.new(sim, unit, SP1, [16], func() -> void: egg_minion(sim, unit, 710)),
+					below_minions(3), "", COOLDOWN_OLD)
+			add(ability, 1, "Ataque Giratorio", "botonGoldenDragonTorn", func(_s: BattleSim, _f: BattleFighter) -> void: _torning(sim, unit, 8),
+					Callable(), "", COOLDOWN_OLD)
+			# For 13 seconds the dragon is twice as big and fast, a giant, and
+			# has 15 more attack.
+			add(ability, 2, "Dragon Colosal", "botonGoldenDragonGiant", SpecialAttacks.Frames.new(sim, unit, SP2, [1], func() -> void:
+				var own := unit.ability
+				own.scale = 2.0
+				own.giant = true
+				unit.speed = unit.def.velocity * 2
+				unit.attack = unit.def.attack + 15
+				sim.state_changed.emit(unit)
+				sim.after(13 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					own.scale = 1.0
+					own.giant = false
+					unit.speed = unit.def.velocity
+					unit.attack = unit.def.attack
+					sim.state_changed.emit(unit))), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Carga Aerea", "botonGoldenDragonAssQuake", SpecialAttacks.Frames.new(sim, unit, SP5, [15], func() -> void:
+				for enemy in sim.items_near(unit.tile, 1, 4, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead):
+					sim.receive_attack(enemy, int(atk * 1.5), unit)
+					if enemy.is_unit() and not enemy.dead:
+						sim.push_in_air(enemy, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			if rider:
+				limit_healing(ability, beams(SP3, [23], 50, LIMIT_GREEN_BEAM))
+		"light":
+			add(ability, 0, "Light Storm", "botonLightStorm", _light_storm(sim, unit, SP3, "p.lightBall"), Callable(), "", COOLDOWN_OLD)
+			add(ability, 1, "Ground Quake", "botonAssQuake", SpecialAttacks.Frames.new(sim, unit, SP2, [15], func() -> void:
+				for enemy in sim.items_near(unit.tile, unit.attack_range, 4, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead):
+					sim.receive_attack(enemy, int(atk / 2), unit)
+					if enemy.is_unit() and not enemy.dead:
+						sim.push_in_air(enemy, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			# 6 times every 500 ms, a sixth of a quarter of its life.
+			add(ability, 2, "Draconic Healing", "botonDraconicHealing", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, 6 * 15, {}, Callable(), true)
+				for i in 6:
+					sim.after(15 * (i + 1), func() -> void:
+						if not unit.dead:
+							sim.heal(unit, int(unit.def.life * 0.25 / 6), unit)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Green Draggy's", "botonGreenDraggis", SpecialAttacks.Frames.new(sim, unit, SP5, [13], func() -> void: egg_minion(sim, unit, 698)),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_smash(ability, SP6, [29], 2, 6, 5)
+		"black":
+			add(ability, 0, "Light Storm", "boton_ball_fire_multiple", _light_storm(sim, unit, SP2, "p.fireBall_02"), Callable(), "", COOLDOWN_OLD)
+			# A red explosion near the dragon hits 5 times, every 16 frames,
+			# the items on the 5 x 5 tiles around the dragon: 1.5 times the
+			# attack; units burn and fly 4 tiles. The client shows the graphic
+			# of the Force Shield spell in red; the port shows a mega explosion.
+			add(ability, 1, "Ground Quake", "boton_fire_explosion", SpecialAttacks.Frames.new(sim, unit, SP3, [16], func() -> void:
+				sim.particle(unit, unit.tile + Vector2i(2, 2), MagicParticles.MEGA_EXPLOSION, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+				for time in 5:
+					sim.after(16 * time, func() -> void:
+						if unit.dead:
+							return
+						for item in sim.items_near(unit.tile, 2, 25, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool: return not other.dead):
+							sim.receive_attack(item, int(atk * 1.5), unit)
+							if item.is_unit() and not item.dead:
+								sim.incinerate(item, unit, int(atk * 0.2), 5, BattleSim.FRAMES_PER_SECOND)
+								sim.push_in_air(item, unit, 4))), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "Green Draggy's", "botonGreenDraggis", SpecialAttacks.Frames.new(sim, unit, SP1, [13], func() -> void: egg_minion(sim, unit, 725)),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_lightning(ability, beams(UnitSprite.Action.ATTACKING, [13], 50, LIMIT_RED_BEAM))
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
@@ -613,3 +666,34 @@ static func _crack(sim: BattleSim, unit: BattleFighter, tile: Vector2i) -> void:
 				return item.is_unit() and not item.dead):
 			if burn.can_apply(enemy):
 				burn.apply(enemy), true)
+
+
+## The turning attack of the Golden Dragon and the Epic 2-Head Dragon: for
+## ticks seconds the dragon turns and walks slowly with a range of 1; each
+## second the items on the 5 x 5 tiles around it take half the attack, and
+## units fly 2 tiles.
+static func _torning(sim: BattleSim, unit: BattleFighter, ticks: int) -> void:
+	unit.speed = 15
+	unit.attack_range = 1
+	for second in range(1, ticks + 1):
+		sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
+			if unit.dead:
+				return
+			if second == ticks:
+				unit.speed = unit.def.velocity
+				unit.attack_range = unit.def.attack_range
+				return
+			for item in sim.items_near(unit.tile, 2, 25, BattleAbility.enemy_side(unit), true, func(other: BattleFighter) -> bool: return not other.dead):
+				sim.receive_attack(item, unit.attack / 2, unit)
+				if item.is_unit() and not item.dead:
+					sim.push_in_air(item, unit, 2))
+
+
+## The light storm of the Light and Black dragons: for 10 seconds, balls of
+## graphic at the target in range, with an explosion where they hit.
+static func _light_storm(sim: BattleSim, unit: BattleFighter, animation: int, graphic: String) -> SpecialAttacks.Frames:
+	return SpecialAttacks.Frames.new(sim, unit, animation, [12, 16, 20, 24, 28], func() -> void:
+		var target := unit.target
+		if target != null and not target.dead and sim.distance(unit, target) <= unit.attack_range:
+			sim.shoot(unit, target, graphic, unit.attack, func(_shot: BattleProjectile) -> void:
+				sim.particle(unit, target.tile, MagicParticles.BALL_EXPLOSION, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)), 10)
