@@ -15,6 +15,7 @@ const UNITS := {
 	2079: "forest",
 	2148: "earth",
 	2113: "evil",
+	2089: "soul",
 }
 const NO_TARGET_TEXT := "No target within range"
 const GOD_MINIONS := "God Minions"
@@ -292,6 +293,62 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 						return item.is_unit() and not item.dead):
 					if hit.can_apply(enemy):
 						hit.apply(enemy))
+		"soul":
+			# A sonic boom at a target within 12 tiles: the 5 nearest enemies
+			# within 5 tiles of it take a quarter of the attack and fly 5
+			# tiles; a target with at most 500 life flies 12 tiles and dies,
+			# another takes twice the attack (more against a weaker element)
+			# and flies 10 tiles.
+			add(ability, 0, "Mega Slash", "2089_1", SpecialAttacks.Frames.new(sim, unit, SP1, [41], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or sim.distance(unit, target) > 12:
+					return
+				sim.shoot(unit, target, "p.deathSonicBoom", -1, func(_shot: BattleProjectile) -> void:
+					if target.dead:
+						return
+					for enemy in _pushable(sim, unit, target.tile, 5, 5):
+						sim.receive_attack(enemy, int(atk / 4), unit)
+						if not enemy.dead:
+							sim.push_in_air(enemy, unit, 5)
+					if not target.is_unit() or target.dead:
+						return
+					if target.max_life() <= 500:
+						sim.push_in_air(target, unit, 12)
+						sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void:
+							if not target.dead:
+								sim.kill(target, unit))
+					else:
+						var damage := atk * 2
+						if BattleSim.ELEMENT_BEATS.get(unit.def.subcat_functional) == target.def.subcat_functional:
+							damage *= BattleSim.ELEMENT_MULTIPLIER
+						sim.receive_attack(target, int(damage), unit)
+						if not target.dead:
+							sim.push_in_air(target, unit, 10))), has_target_in_range(12), NO_TARGET_TEXT)
+			# Up to 7 enemies within 7 tiles take half the attack, freeze for
+			# 5 seconds and then fight for the player for 15 seconds.
+			var converted: Array[BattleFighter] = []
+			add(ability, 1, "Ultra Fireball", "2089_2", SpecialAttacks.Frames.new(sim, unit, SP2, [25], func() -> void:
+				converted.assign(converted.filter(func(item: BattleFighter) -> bool: return not item.dead and item.team == unit.team))
+				var free := 7 - converted.size()
+				if free <= 0:
+					return
+				for enemy in sim.items_near(unit.tile, 7, free, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS \
+								and (item.ability == null or not item.ability.immune_to_conversion)):
+					var target := enemy
+					sim.receive_attack(target, int(atk / 2), unit)
+					if target.dead:
+						return
+					Damages.Freeze.new(sim, unit, 0, 5, 5).apply(target)
+					sim.after(5 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if not target.dead:
+							converted.append(target)
+							Damages.ConvertToAlly.new(sim, unit, 15).apply(target))), Callable(), NO_TARGET_TEXT)
+			add(ability, 2, "Hyper Whirlwind", "2089_3", SpecialAttacks.Frames.new(sim, unit, SP3, [12], func() -> void:
+				circular_push(sim, unit, 8, 10, int(atk / 2), 6), 10))
+			_god_minions_on(sim, unit, ability, "2089_4", SP4, 9, 2091)
+			limit_special(ability, SP5, [65], func(battle: BattleSim, god: BattleFighter) -> void:
+				circular_push(battle, god, 10, 20, god.attack * 3, 15))
 
 ## The target of the unit is within its range (hasStormTarget).
 static func _target_in_range() -> Callable:
