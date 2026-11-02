@@ -19,8 +19,10 @@ const UNITS := {
 	736: "double_head_2", 838: "double_head_2",
 	888: "egyptian", 889: "egyptian",
 	2140: "four_wing", 2142: "four_wing",
+	2129: "hell", 2131: "hell",
+	826: "necro", 845: "necro",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845]
 const GOLD_PER_STATUE := 10
 const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
@@ -377,6 +379,46 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					frames.append(frame)
 				limit_special(ability, SP5, frames, func(battle: BattleSim, dragon: BattleFighter) -> void:
 					circular_push(battle, dragon, 7, 10, int(dragon.attack * 1.5), 12))
+		"hell":
+			add(ability, 0, "Energy Balls", "2129_1", SpecialAttacks.Frames.new(sim, unit, SP1, [30, 35, 40], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					sim.shoot(unit, target, "p.largeFireball", unit.attack), 5), has_target(), "No target within range")
+			add(ability, 1, "Hell Invocation", "2129_2", SpecialAttacks.Frames.new(sim, unit, SP2, [65], func() -> void: _hell_cracks(sim, unit)),
+					has_target(), "No target within range")
+			add(ability, 2, "Hell Whirlwind", "2129_3", SpecialAttacks.Frames.new(sim, unit, SP3, [45, 50], func() -> void:
+				var burn := Damages.Sequenced.new(sim, unit).add(Damages.PushInAir.new(sim, unit, atk / 2, 5)).add(Damages.Incinerate.new(sim, unit, 20, 5, 1000))
+				for enemy in sim.items_near(unit.tile, 5, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					if burn.can_apply(enemy):
+						burn.apply(enemy), 10))
+			add(ability, 3, "Minions", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 2130),
+					below_minions(3), "3 " + MINIONS_MAX)
+			if rider:
+				limit_lightning(ability, beams(SP4, [16], 50, LIMIT_RED_BEAM))
+		"necro":
+			# The target must be nearer than the attack range (canAttack).
+			var near := func(_s: BattleSim, fighter: BattleFighter) -> bool:
+				return fighter.target != null and sim.distance(fighter, fighter.target) < fighter.attack_range
+			var shoot := func(graphic: String) -> void:
+				var target := unit.target
+				if target != null and not target.dead and sim.distance(unit, target) <= unit.attack_range + 2:
+					sim.shoot(unit, target, graphic, unit.attack)
+			add(ability, 0, "Shoot Beam", "boton_necro_bola", SpecialAttacks.Frames.new(sim, unit, SP2, [16, 20, 24, 28, 32, 36], func() -> void:
+				shoot.call("p.necroFireball"), 6), near, "No target", COOLDOWN_OLD)
+			add(ability, 1, "Smash Attack", "boton_necro_tornado", SpecialAttacks.Frames.new(sim, unit, SP3, [16, 24, 32], func() -> void:
+				shoot.call("p.necroTornado"), 6), near, "No target", COOLDOWN_OLD)
+			# For 10 seconds, each second, the units within 3 tiles take 1.5
+			# times the attack and fly 4 tiles.
+			add(ability, 2, "Spawn Octospuss", "boton_necro_giro", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP1, 10 * BattleSim.FRAMES_PER_SECOND, {}, Callable(), false)
+				for second in range(1, 10):
+					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void: circular_push(sim, unit, 3, 20, int(atk * 1.5), 4)),
+					Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Spawn Octospuss", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 820),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_smash(ability, SP4, [29], 2, 6, 5)
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
@@ -419,3 +461,38 @@ class _AcidHit extends UnitDamage:
 	func apply(target: BattleFighter, _multiplier := 1.0) -> void:
 		sim.receive_attack(target, int(attacker.def.attack * 1.2), _source())
 		sim.poison(target, 25, 5, 0, attacker)
+
+
+## Hell cracks of the Hell Dragon: one under the target, then of its 5
+## nearest units in range every second one gets a crack, and the other
+## cracks open on random tiles within 1 second. Each crack (at its frame 11)
+## hits the 5 nearest enemies within 5 tiles: the attack, a push of 5 tiles,
+## then fire.
+static func _hell_cracks(sim: BattleSim, unit: BattleFighter) -> void:
+	var target := unit.target
+	var centre := unit.tile
+	var crack := func(tile: Vector2i) -> void: _crack(sim, unit, tile)
+	if target != null and not target.dead and target.is_unit():
+		centre = target.tile
+		crack.call(centre)
+	var enemies := sim.items_near(centre, unit.attack_range, 5, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead)
+	for i in range(1, 6):
+		var enemy: BattleFighter = enemies[i - 1] if i - 1 < enemies.size() else null
+		if i % 2 == 0 and enemy != null:
+			crack.call(enemy.tile)
+		else:
+			var reach := unit.attack_range
+			var tile := (centre + Vector2i(sim.rng.randi_range(-reach, reach), sim.rng.randi_range(-reach, reach))).clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+			sim.after(roundi(sim.rng.randf() * BattleSim.FRAMES_PER_SECOND), func() -> void: crack.call(tile))
+
+
+static func _crack(sim: BattleSim, unit: BattleFighter, tile: Vector2i) -> void:
+	sim.particle(unit, tile, MagicParticles.HELL_INVOCATION, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void:
+		if unit.dead:
+			return
+		var burn := Damages.Sequenced.new(sim, unit).add(Damages.PushInAir.new(sim, unit, unit.attack, 5)).add(Damages.Incinerate.new(sim, unit, 20, 5, 1000))
+		for enemy in sim.items_near(tile, 5, 5, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+				return item.is_unit() and not item.dead):
+			if burn.can_apply(enemy):
+				burn.apply(enemy), true)
