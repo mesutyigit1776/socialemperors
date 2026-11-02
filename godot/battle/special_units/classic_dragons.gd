@@ -23,8 +23,10 @@ const UNITS := {
 	826: "necro", 845: "necro",
 	2023: "frost_fire", 2026: "frost_fire",
 	777: "crystal", 841: "crystal",
+	798: "rubies", 844: "rubies",
+	785: "furious_bull", 842: "furious_bull",
 }
-const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845, 2026, 841]
+const RIDERS: Array[int] = [2038, 851, 2050, 2065, 2041, 2015, 2018, 2058, 2045, 2134, 2071, 838, 889, 2142, 2131, 845, 2026, 841, 844, 842]
 const GOLD_PER_STATUE := 10
 const MAX_STATUES := 10
 const COOLDOWN_OLD := 25
@@ -485,6 +487,55 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					sim.push_in_air(enemy, unit, 3), 7), Callable(), "", COOLDOWN_OLD)
 			if rider:
 				limit_healing(ability, beams(SP2, [16], 50, LIMIT_GREEN_BEAM))
+		"rubies":
+			ability.giant = true
+			add(ability, 0, "Crystal Light Balls", "boton_rubies_balls", SpecialAttacks.Frames.new(sim, unit, SP1, [16, 20, 24, 28, 32, 36, 40], func() -> void:
+				var target := unit.target
+				if target != null and not target.dead:
+					sim.shoot(unit, target, "p.fireBall_02", unit.attack)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 1, "Crystalizer Ray", "boton_rubies_laser", SpecialAttacks.Frames.new(sim, unit, SP2, [13], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or sim.distance(unit, target) > unit.attack_range:
+					sim.stop_special(unit)
+					return
+				sim.shoot_beam(unit, target, target.tile, "p.rubiesLaser", BattleSim.FRAMES_PER_SECOND, int(atk * 2))
+				if target.is_unit():
+					sim.particle(unit, target.tile, MagicParticles.FREEZE_UNITS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+					sim.freeze(target, 120)), Callable(), "", COOLDOWN_OLD)
+			# 50 loops: the 2 nearest enemies within 4 tiles take half the
+			# attack and fly 3 tiles.
+			add(ability, 2, "Surrounding Multi-Ray", "boton_rubies_beam", SpecialAttacks.Frames.new(sim, unit, SP4, [18], func() -> void:
+				circular_push(sim, unit, 4, 2, int(atk * 0.5), 3), 50.0 * sim.animation_frames(unit, SP4, 30) / BattleSim.FRAMES_PER_SECOND),
+					Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Spawn Draggies", "botonGreenDraggis", SpecialAttacks.Frames.new(sim, unit, SP3, [14], func() -> void: egg_minion(sim, unit, 813)),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_lightning(ability, LimitAttacks.Beams.new(SP3, [15], 100, 50, LIMIT_RED_BEAM, 0.25, true))
+		"furious_bull":
+			# For 6 seconds, energy balls at the nearest enemy within 11 tiles.
+			add(ability, 0, "Fire Balls", "botonbolas_785", SpecialAttacks.Frames.new(sim, unit, SP2, [15, 22], func() -> void:
+				var near := sim.items_near(unit.tile, 11, 1, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead)
+				if not near.is_empty():
+					sim.shoot(unit, near[0], "p.energyBallBullDragon", unit.attack), 6), Callable(), "", COOLDOWN_OLD)
+			# The enemies in range take 1.5 times the attack, fly 4 tiles and
+			# are electrocuted.
+			add(ability, 1, "Electricity", "botonrayos_785", SpecialAttacks.Frames.new(sim, unit, SP1, [25], func() -> void:
+				for enemy in sim.items_near(unit.tile, unit.def.attack_range, 20, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					sim.receive_attack(enemy, int(atk * 1.5), unit)
+					sim.push_in_air(enemy, unit, 4)
+					sim.electrocute(enemy, unit, 0, 5, 45), 4), Callable(), "", COOLDOWN_OLD)
+			# For 10 seconds, each second, the units within 3 tiles take 1.5
+			# times the attack and fly 4 tiles.
+			add(ability, 2, "Spin Attack", "botonremolino_785", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP3, 10 * BattleSim.FRAMES_PER_SECOND, {}, Callable(), false)
+				for second in range(1, 10):
+					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void: circular_push(sim, unit, 3, 20, int(atk * 1.5), 4)),
+					Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Spawn Minions", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: egg_minion(sim, unit, 784),
+					below_minions(3), "3 draggies max", COOLDOWN_OLD)
+			if rider:
+				limit_smash(ability, SP4, [29], 2, 6, 5)
 
 ## A falling star of the Star Dragon hits a unit: half the attack, and 5
 ## seconds of dizziness when the unit is not dizzy yet.
