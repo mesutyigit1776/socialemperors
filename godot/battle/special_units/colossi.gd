@@ -1,6 +1,7 @@
 class_name Colossi
 extends SpecialUnit
-## The colossi and the Antimatter Golem. They have no limit button.
+## The colossi and the Antimatter Golem. The elemental colossi have a limit
+## button and some a combo with the god and the goddess of their element.
 
 const UNITS := {
 	2235: "genesis_ice",
@@ -9,6 +10,7 @@ const UNITS := {
 	2162: "genesis_wind",
 	2152: "genesis_earth",
 	2098: "antimatter_golem", 2111: "antimatter_golem",
+	2094: "heaven",
 }
 
 
@@ -69,3 +71,27 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_poison)):
 					sim.receive_attack(enemy, int(atk), unit)
 					sim.poison(enemy, 5, 5, 0, unit)), Callable(), "No target within range")
+		"heaven":
+			add(ability, 0, "Mega Slash", "2094_1", SpecialAttacks.Frames.new(sim, unit, SP1, [15], func() -> void: sim.heal(unit, 500, unit)),
+					Callable(), "No target within range")
+			# The units of the directional attack take the attack, fly 7 tiles
+			# and freeze for 5 seconds.
+			add(ability, 1, "Ultra Fireball", "2094_2", SpecialAttacks.Frames.new(sim, unit, SP2, [31], func() -> void:
+				var hit := Damages.Sequenced.new(sim, unit).add(Damages.PushInAir.new(sim, unit, atk, 7)).add(Damages.Freeze.new(sim, unit, 0, 5, 5))
+				for enemy in directional_hits(sim, unit, 12, 6):
+					if hit.can_apply(enemy):
+						hit.apply(enemy)), has_target(), "No target within range")
+			add(ability, 2, "Hyper Whirlwind", "2094_3", SpecialAttacks.Frames.new(sim, unit, SP4, [10, 15, 20, 25, 30, 34, 40], func() -> void:
+				circular_push(sim, unit, 5, 10, int(atk / 2), 6), 12))
+			_colossus_minions(sim, unit, ability, "2094_4", SP3, 33, 2092)
+			limit_special(ability, SP5, [72], func(battle: BattleSim, colossus: BattleFighter) -> void:
+				circular_push(battle, colossus, 8, 15, int(colossus.attack * 1.5), 12))
+			combo(sim, unit, [2350, 2093])
+
+
+## The minion button of the elemental colossi: 3 minions at frame of
+## animation while at most 3 are alive.
+static func _colossus_minions(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, picture: String, animation: int, frame: int, minion_id: int) -> void:
+	add(ability, 3, "God Minions", picture, SpecialAttacks.Frames.new(sim, unit, animation, [frame], func() -> void:
+		unit.ability.spawn_minions(sim, unit, minion_id, 3)),
+		func(_s: BattleSim, fighter: BattleFighter) -> bool: return fighter.ability.minions_alive + 3 <= 6, "6 " + MINIONS_MAX)

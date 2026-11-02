@@ -16,6 +16,7 @@ const UNITS := {
 	2148: "earth",
 	2113: "evil",
 	2089: "soul",
+	2093: "heaven",
 }
 const NO_TARGET_TEXT := "No target within range"
 const GOD_MINIONS := "God Minions"
@@ -349,6 +350,32 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			_god_minions_on(sim, unit, ability, "2089_4", SP4, 9, 2091)
 			limit_special(ability, SP5, [65], func(battle: BattleSim, god: BattleFighter) -> void:
 				circular_push(battle, god, 10, 20, god.attack * 3, 15))
+		"heaven":
+			add(ability, 0, "Autoheal Invocation", "4god", SpecialAttacks.Frames.new(sim, unit, SP1, [20], func() -> void: sim.heal(unit, 800, unit)),
+					Callable(), "", COOLDOWN + 1)
+			add(ability, 1, "Energy Explosion", "2god", SpecialAttacks.Frames.new(sim, unit, SP2, [82], func() -> void:
+				circular_push(sim, unit, 6, 15, int(atk * 1.5), 10)), Callable(), "", COOLDOWN + 1)
+			# A lightning whirlwind (item 2298) for 15 seconds, one at a time.
+			var whirls: Array[BattleFighter] = []
+			add(ability, 2, "Lightning Whilrwind", "1god", SpecialAttacks.Frames.new(sim, unit, SP3, [20], func() -> void:
+				var whirl := sim.spawn(sim.config_item(2298), unit.tile, unit.team)
+				if whirl == null:
+					return
+				whirls.append(whirl)
+				sim.after(15 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					whirls.erase(whirl)
+					if not whirl.dead and whirl in sim.fighters:
+						sim.remove_item(whirl))),
+					func(_s: BattleSim, _f: BattleFighter) -> bool: return whirls.filter(func(item: BattleFighter) -> bool: return not item.dead).is_empty(),
+					"1 whirlwind max", COOLDOWN + 1)
+			add(ability, 3, "Unleash Miniors", "3god", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, sim.animation_frames(unit, SP4, 30), {}, func() -> void:
+					unit.ability.spawn_minions(sim, unit, 2092, 3), true),
+					func(_s: BattleSim, fighter: BattleFighter) -> bool: return fighter.ability.minions_alive + 3 <= 6, "6 minions max", COOLDOWN + 1)
+			# A rain of rays; each hit takes twice the attack and flies 4 tiles.
+			var rays := SpecialAttacks.Rain.new(sim, unit, 4, 2.5, SP5, MagicParticles.RAY, Damages.PushInAir.new(sim, unit, atk * 2, 4)).with_multiplier(0.5)
+			limit_special(ability, SP5, [22], func(_battle: BattleSim, _god: BattleFighter) -> void: rays.start())
+			combo(sim, unit, [2350, 2094])
 
 ## The target of the unit is within its range (hasStormTarget).
 static func _target_in_range() -> Callable:
