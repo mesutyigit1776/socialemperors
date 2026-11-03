@@ -15,6 +15,8 @@ const UNITS := {
 	781: "hefesto",
 	660: "leonidas",
 	786: "manticora",
+	654: "greater_demon",
+	615: "mummy", 669: "mummy",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -43,6 +45,15 @@ const SPARTAN := 663
 const SPARTAN_STEPS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 const SPARTAN_SECONDS := 20
 const SHIELD_WALL_SECONDS := 10
+const DEMON := 659
+const DEMON_STEPS: Array[Vector2i] = [Vector2i(1, 1), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+const DEMON_SECONDS := 20
+const SCARAB := 616
+const SCARABS := 8
+const SCARAB_SECONDS := 10
+const MUMMY_TORNADO := 617
+const MUMMY_TORNADO_SECONDS := 20
+const GIANT_MUMMY_SECONDS := 10
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -338,6 +349,86 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					events[start + 27] = func() -> void: _manticora_ball(sim, unit)
 					start += loop
 				sim.play_special(unit, SP2, total, events, Callable(), true), Callable(), "", COOLDOWN_OLD)
+		"greater_demon":
+			# 5 demons (item 659) come beside the Greater Demon for 20 seconds.
+			add(ability, 0, "Dark Ritual", "botonDarkRitual", SpecialAttacks.Frames.new(sim, unit, SP1, [16], func() -> void:
+				var demons: Array[BattleFighter] = []
+				for step in DEMON_STEPS:
+					var demon := sim.spawn(sim.config_item(DEMON), unit.tile + step, unit.team)
+					if demon == null:
+						continue
+					sim.particle(unit, demon.tile, MagicParticles.FIRE_RED, 10, 0)
+					if demon.ability != null:
+						demon.ability.scale = 0.75
+					var target := unit.target if unit.target != null and not unit.target.dead else sim.nearest_enemy(demon, unit.tile, 10)
+					if target != null:
+						sim.set_target(demon, target)
+					demons.append(demon)
+				sim.after(DEMON_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					for demon in demons:
+						if demon in sim.fighters:
+							sim.remove_item(demon))).with_incapacitate(false), Callable(), "", COOLDOWN_OLD)
+			# Three earthquakes, one each second, stun the enemy units within 10
+			# tiles.
+			add(ability, 1, "Earthquake", "botonEarthquake", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var quakes := {}
+				for second in 3:
+					quakes[second * BattleSim.FRAMES_PER_SECOND + 1] = func() -> void: _demon_earthquake(sim, unit)
+				sim.play_special(unit, SP2, 3 * BattleSim.FRAMES_PER_SECOND, quakes), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "Fire Rain", "botonFireRain", func(_s: BattleSim, _f: BattleFighter) -> void:
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.FIRE_METEOR, 30, 4, 1.5)
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.FIRE_METEOR, 30, 4, 1.5)
+				sim.play_special(unit, SP4, sim.animation_frames(unit, SP4, 30), {}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			# The enemy units within 10 tiles cannot act for 120 frames.
+			add(ability, 3, "Evil Imps", "botonEvilImps", SpecialAttacks.Frames.new(sim, unit, SP3, [16], func() -> void:
+				for x in range(-10, 11):
+					for y in range(-10, 11):
+						if x == 0 and y == 0:
+							continue
+						var target := tile_target(sim, unit, unit.tile + Vector2i(x, y))
+						if target != null and target.is_unit():
+							show_particle(sim, unit, target.tile, MagicParticles.FREEZE_UNITS)
+							sim.freeze(target, 120)), Callable(), "", COOLDOWN_OLD)
+		"mummy":
+			# 8 scarabs (item 616) for 10 seconds.
+			add(ability, 0, sim.config.text("UNIT_MOMIA_ESCARABAJOS") if sim.config != null else "", "attackScarabs", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var scarabs: Array[BattleFighter] = []
+				for i in SCARABS:
+					var scarab := sim.spawn(sim.config_item(SCARAB), unit.tile, unit.team)
+					if scarab == null:
+						continue
+					if unit.target != null and not unit.target.dead:
+						sim.set_target(scarab, unit.target)
+					scarabs.append(scarab)
+				sim.after(SCARAB_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					for scarab in scarabs:
+						if scarab in sim.fighters:
+							sim.remove_item(scarab)), Callable(), "", COOLDOWN_OLD)
+			# A tornado (item 617) for 20 seconds.
+			add(ability, 1, sim.config.text("UNIT_MOMIA_TORNADO") if sim.config != null else "", "attackTornado", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var tornado := sim.spawn(sim.config_item(MUMMY_TORNADO), unit.tile, unit.team)
+				if tornado != null:
+					sim.after(MUMMY_TORNADO_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if tornado in sim.fighters:
+							sim.remove_item(tornado)), Callable(), "", COOLDOWN_OLD)
+			# Burning oil on the 10 x 10 tiles around the Mummy: the enemy units
+			# there burn, 5 points a second for 5 seconds (the oil tower values).
+			add(ability, 2, sim.config.text("UNIT_MOMIA_ACEITE") if sim.config != null else "", "attackOil", func(_s: BattleSim, _f: BattleFighter) -> void:
+				_mummy_oil(sim, unit), Callable(), "AUX_FUERA_DE_RANGO", COOLDOWN_OLD)
+			# For 10 seconds the Mummy is 3 times as big; each second the 5
+			# nearest enemy units within 2 tiles with a population below 8 fly
+			# 5 tiles and take 1.5 times its attack.
+			add(ability, 3, sim.config.text("UNIT_MOMIA_GIGANTE") if sim.config != null else "", "attackGiantMummy", func(_s: BattleSim, _f: BattleFighter) -> void:
+				unit.ability.scale = 3.0
+				for second in range(1, GIANT_MUMMY_SECONDS + 1):
+					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if unit.dead:
+							return
+						for enemy in sim.items_near(unit.tile, 2, 5, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+								return item.is_unit() and not item.dead and item.def.population < 8):
+							sim.push_in_air(enemy, unit, 5)
+							sim.receive_attack(enemy, int(unit.def.attack * 1.5), unit))
+				sim.after(GIANT_MUMMY_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void: unit.ability.scale = 1.0), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -451,6 +542,29 @@ static func _hefesto_hammer(sim: BattleSim, unit: BattleFighter, frame: int) -> 
 		sim.receive_attack(target, int(unit.attack * 0.75), unit)
 		if target.is_unit() and not target.dead:
 			sim.push_in_air(target, unit, 3)
+
+
+static func _mummy_oil(sim: BattleSim, unit: BattleFighter) -> void:
+	for x in range(-5, 5):
+		for y in range(-5, 5):
+			sim.particle(unit, unit.tile + Vector2i(x, y), MagicParticles.FIRE_RED, 5, 0, func(_a: BattleFighter, target: BattleFighter, _v: int) -> void:
+				if target != null and target.is_unit() and not target.dead:
+					sim.incinerate(target, unit, 5, 5, BattleSim.FRAMES_PER_SECOND))
+
+
+## One earthquake of the Greater Demon: the enemy unit on each tile within 10
+## tiles is stunned unless it has a population of 30 or more. The client
+## reads the tiles column by column and stops at the first building, because
+## it treats each target as a unit and fails there.
+static func _demon_earthquake(sim: BattleSim, unit: BattleFighter) -> void:
+	for x in range(-10, 11):
+		for y in range(-10, 11):
+			var target := tile_target(sim, unit, unit.tile + Vector2i(x, y))
+			if target == null:
+				continue
+			if not target.is_unit():
+				return
+			sim.stun(target, 30)
 
 
 ## The 10 nearest enemy items within the range of the Manticora, not on its tile.
