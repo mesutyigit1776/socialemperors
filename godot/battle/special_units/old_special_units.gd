@@ -17,6 +17,9 @@ const UNITS := {
 	786: "manticora",
 	654: "greater_demon",
 	615: "mummy", 669: "mummy",
+	623: "neptune",
+	766: "punk", 840: "punk",
+	694: "samurai",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -54,6 +57,14 @@ const SCARAB_SECONDS := 10
 const MUMMY_TORNADO := 617
 const MUMMY_TORNADO_SECONDS := 20
 const GIANT_MUMMY_SECONDS := 10
+const NEPTUNE_OCTOPUSES := 8
+const NEPTUNE_OCTOPUS_SECONDS := 10
+const HURRICANE := 625
+const HURRICANE_SECONDS := 20
+const GIANT_NEPTUNE_SECONDS := 10
+const HEAVY_DRAGGY := 768
+const HEAVY_DRAGGIES := 3
+const PUNK_RIDER := 840
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -145,7 +156,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				sim.cast_unit_spell(SACRED_RAIN, _ent_spell_tile(sim, unit)), Callable(), "", COOLDOWN_OLD)
 			add(ability, 1, "Stone Rain", "botonStoneRain", func(_s: BattleSim, _f: BattleFighter) -> void:
 				sim.cast_unit_spell(HAIL, _ent_spell_tile(sim, unit)), Callable(), "", COOLDOWN_OLD)
-			add(ability, 2, "Protecting roots", "botonRaices", func(_s: BattleSim, _f: BattleFighter) -> void: _roots_wave(sim, unit),
+			add(ability, 2, "Protecting roots", "botonRaices", func(_s: BattleSim, _f: BattleFighter) -> void: _wave(sim, unit, MagicParticles.ROOT, 1),
 					Callable(), "", COOLDOWN_OLD)
 			# The Ent grows for 20 seconds and 16 spirits of the woods (item
 			# 636) come near it. Growing does not change the
@@ -429,6 +440,77 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 							sim.push_in_air(enemy, unit, 5)
 							sim.receive_attack(enemy, int(unit.def.attack * 1.5), unit))
 				sim.after(GIANT_MUMMY_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void: unit.ability.scale = 1.0), Callable(), "", COOLDOWN_OLD)
+		"neptune":
+			# 8 octopuses (item 624) for 10 seconds.
+			add(ability, 0, sim.config.text("UNIT_NEPTUNO_PULPO") if sim.config != null else "", "botonPulpo", func(_s: BattleSim, _f: BattleFighter) -> void:
+				_summon_for(sim, unit, OCTOPUS, NEPTUNE_OCTOPUSES, NEPTUNE_OCTOPUS_SECONDS), Callable(), "", COOLDOWN_OLD)
+			# A hurricane (item 625) for 20 seconds.
+			add(ability, 1, sim.config.text("UNIT_NEPTUNO_HURACAN") if sim.config != null else "", "botonTornado", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var hurricane := sim.spawn(sim.config_item(HURRICANE), unit.tile, unit.team)
+				if hurricane != null:
+					sim.after(HURRICANE_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if hurricane in sim.fighters:
+							sim.remove_item(hurricane)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, sim.config.text("UNIT_NEPTUNO_OLAS") if sim.config != null else "", "botonOlas", func(_s: BattleSim, _f: BattleFighter) -> void:
+				_wave(sim, unit, MagicParticles.WATER, 5), Callable(), "", COOLDOWN_OLD)
+			# For 10 seconds Neptune is 1.8 times as big; each second lightning
+			# hits the 3 nearest enemy units within 2 tiles: they fly 3 tiles
+			# and take 1.5 times his attack.
+			add(ability, 3, sim.config.text("UNIT_NEPTUNO_GIGANTE") if sim.config != null else "", "botonNeptuno", func(_s: BattleSim, _f: BattleFighter) -> void:
+				unit.ability.scale = 1.8
+				for second in range(1, GIANT_NEPTUNE_SECONDS + 1):
+					sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						if unit.dead:
+							return
+						for enemy in sim.items_near(unit.tile, 2, 3, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+								return item.is_unit() and not item.dead):
+							sim.particle(unit, enemy.tile, MagicParticles.LIGHTNING, 1, 0)
+							sim.push_in_air(enemy, unit, 3)
+							sim.receive_attack(enemy, int(unit.def.attack * 1.5), unit))
+				sim.after(GIANT_NEPTUNE_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void: unit.ability.scale = 1.0), Callable(), "", COOLDOWN_OLD)
+		"punk":
+			# Six energy balls at the target, one from each hand in turn.
+			add(ability, 0, "botonLightStorm", "botonLightStorm", SpecialAttacks.Frames.new(sim, unit, SP2, [16, 20, 24, 28, 32, 36], func() -> void:
+				if unit.target != null and not unit.target.dead:
+					sim.shoot(unit, unit.target, "p.punkEnergyBall", unit.attack)), Callable(), "", COOLDOWN_OLD)
+			# An egg 4 to 8 tiles in front of the dragon brings a Heavy Draggy
+			# (item 768), while fewer than 3 are alive. The client also starts
+			# the cooldown when 3 are alive and no egg comes.
+			add(ability, 1, "botonGreenDraggis", "botonGreenDraggis", func(_s: BattleSim, _f: BattleFighter) -> void: _punk_egg(sim, unit),
+					Callable(), "", COOLDOWN_OLD)
+			# The enemy units within 3 tiles fly 3 tiles.
+			add(ability, 2, "botonBushidoWhirlwind", "botonBushidoWhirlwind", SpecialAttacks.Frames.new(sim, unit, SP1, [14], func() -> void:
+				for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					sim.push_in_air(enemy, unit, 3)), Callable(), "", COOLDOWN_OLD)
+			if unit.def.id == PUNK_RIDER:
+				limit_smash(ability, SP3, [29], 2, 6, 5)
+		"samurai":
+			add(ability, 0, "Ronin's attack", "botonRoninsAttack", SpecialAttacks.Frames.new(sim, unit, SP1, [10], func() -> void:
+				for enemy in sim.items_near(unit.tile, 2, 15, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and _facing(unit, item)):
+					sim.push_in_air(enemy, unit, 4)
+					sim.receive_attack(enemy, int(unit.def.attack * 1.7), unit)).with_incapacitate(false), Callable(), "", COOLDOWN_OLD)
+			# Every 300 ms, 4 times, the enemies within 2 tiles take the attack.
+			# The client treats each of them as a unit and stops at the first
+			# building.
+			add(ability, 1, "Samurai Rage", "botonSamuraiRage", SpecialAttacks.Frames.new(sim, unit, SP2, [6], func() -> void: _samurai_rage(sim, unit)),
+					Callable(), "", COOLDOWN_OLD)
+			# At frame 41 and then once a second, 10 times in all.
+			var spin := {}
+			for i in 10:
+				spin[41 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: samurai_whirlwind(sim, unit, 3)
+			add(ability, 2, "Bushido Whirlwind", "botonBushidoWhirlwind", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP3, 41 + 9 * BattleSim.FRAMES_PER_SECOND + 1, spin, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			# The enemies within 4 tiles that are not bosses cannot act for 4
+			# seconds. The client stops at the first building.
+			add(ability, 3, "Samurai Nightmare", "botonSamuraiNightmare", SpecialAttacks.Frames.new(sim, unit, SP4, [14], func() -> void:
+				for enemy in sim.items_near(unit.tile, 4, 50, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return not item.dead and item.def.subcat_functional != BattleSim.SUBCAT_BOSS):
+					if not enemy.is_unit():
+						return
+					show_particle(sim, unit, enemy.tile, MagicParticles.FREEZE_UNITS)
+					sim.freeze(enemy, 120)).with_incapacitate(false), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -476,21 +558,69 @@ static func _ent_spell_tile(sim: BattleSim, unit: BattleFighter) -> Vector2i:
 	return unit.tile + Vector2i(half, half)
 
 
-## Roots grow every 500 ms on each tile of a square around the Ent that gets
-## one tile larger each time, 6 times (the first square is empty). The enemy
-## unit on a tile takes the attack of the Ent and flies 1 tile.
-static func _roots_wave(sim: BattleSim, unit: BattleFighter) -> void:
+## A wave of particles of type (roots of the Ent, water of Neptune) every
+## 500 ms on each tile of a square around the unit that gets one tile larger
+## each time, 6 times (the first square is empty). The enemy unit on a tile
+## takes the attack of the unit and flies push tiles.
+static func _wave(sim: BattleSim, unit: BattleFighter, type: int, push: int) -> void:
 	for dist in 6:
 		sim.after(dist * BattleSim.FRAMES_PER_SECOND / 2 + 15, func() -> void:
 			for y in range(-dist, dist + 1):
 				for x in range(-dist, dist + 1):
 					if x == 0 and y == 0:
 						continue
-					sim.particle(unit, unit.tile + Vector2i(x, y), MagicParticles.ROOT, 0, 0, func(_a: BattleFighter, target: BattleFighter, _v: int) -> void:
+					sim.particle(unit, unit.tile + Vector2i(x, y), type, 0, 0, func(_a: BattleFighter, target: BattleFighter, _v: int) -> void:
 						if target == null or not target.is_unit() or target.dead:
 							return
-						sim.push_in_air(target, unit, 1)
+						sim.push_in_air(target, unit, push)
 						sim.receive_attack(target, unit.def.attack, unit if unit in sim.fighters else null)))
+
+
+static func _punk_egg(sim: BattleSim, unit: BattleFighter) -> void:
+	if unit.ability.minions_alive < HEAVY_DRAGGIES:
+		sim.play_special(unit, UnitSprite.Action.ATTACKING, 13, {13: func() -> void: egg_minion(sim, unit, HEAVY_DRAGGY)})
+
+
+static func _samurai_rage(sim: BattleSim, unit: BattleFighter) -> void:
+	var enemies := sim.items_near(unit.tile, 2, 20, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead)
+	for tick in range(1, 5):
+		sim.after(roundi(tick * 0.3 * BattleSim.FRAMES_PER_SECOND), func() -> void:
+			for enemy in enemies:
+				if not enemy.is_unit():
+					return
+				if not enemy.dead:
+					sim.receive_attack(enemy, unit.attack, unit if unit in sim.fighters else null))
+
+
+## Up to count units of item_id come near the unit for seconds and attack its target.
+static func _summon_for(sim: BattleSim, unit: BattleFighter, item_id: int, count: int, seconds: int) -> void:
+	var summoned: Array[BattleFighter] = []
+	for i in count:
+		var helper := sim.spawn(sim.config_item(item_id), unit.tile, unit.team)
+		if helper == null:
+			continue
+		if unit.target != null and not unit.target.dead:
+			sim.set_target(helper, unit.target)
+		summoned.append(helper)
+	sim.after(seconds * BattleSim.FRAMES_PER_SECOND, func() -> void:
+		for helper in summoned:
+			if helper in sim.fighters:
+				sim.remove_item(helper))
+
+
+## The enemy units within 2 tiles of the Samurai that are on the side it
+## faces (Ronin's attack of the client).
+static func _facing(unit: BattleFighter, other: BattleFighter) -> bool:
+	var offset := other.tile - unit.tile
+	match BattleAbility.direction(unit):
+		4: return offset.x >= 0 and offset.y >= 0
+		8: return offset.x <= 0 and offset.y >= 0
+		6: return offset.x <= 0 and offset.y <= 0
+		2: return offset.x >= 0 and offset.y <= 0
+		5: return offset.y > 0
+		1: return offset.y < 0
+		7: return offset.x < 0
+		_: return offset.x > 0
 
 
 ## Poseidon throws napalm at the nearest enemy within 11 tiles at frame 22,

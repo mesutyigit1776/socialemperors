@@ -106,6 +106,7 @@ const SCRIPTS := {
 	2081: preload("res://battle/abilities/soul_eater_ability.gd"),  # Fire Soul Eater
 	742: preload("res://battle/abilities/spider_ability.gd"),  # Tiger Spider
 	766: preload("res://battle/abilities/punk_ability.gd"),  # Heavy Dragon
+	840: preload("res://battle/abilities/punk_ability.gd"),  # Heavy Dragon rider
 	764: preload("res://battle/abilities/shot_ability.gd"),  # Rodas Colossus
 	813: preload("res://battle/abilities/shot_ability.gd"),  # Rubies Draggy
 	798: preload("res://battle/abilities/beam_ability.gd"),  # Rubies Dragon
