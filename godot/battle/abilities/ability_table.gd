@@ -478,6 +478,18 @@ const SCRIPTS := {
 	2108: preload("res://battle/abilities/warrior_units_ability.gd"),  # Demolisher
 	885: preload("res://battle/abilities/shot_ability.gd"),  # Turkish Horseman
 	2120: preload("res://battle/abilities/death_warrior_ability.gd"),  # Death Warrior II (DeathWarriorDelegate)
+	# Necro soldiers (step 3.2).
+	809: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Archer
+	794: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Paladin
+	812: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Gryphon Knight
+	799: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Horseman
+	802: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Fork Soldier
+	815: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Big Sword
+	801: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Harvester
+	821: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Ghost
+	810: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Priest
+	827: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Scorpion
+	830: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Dragon King
 }
 
 
