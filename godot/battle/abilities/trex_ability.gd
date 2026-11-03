@@ -17,7 +17,8 @@ const TAIL_LENGTH := 3
 const BURN_END_FRAME := 45
 const EAT_END_FRAME := 69
 const TURN_FRAMES := 16
-const TREX := 713
+## The units of TRexDelegate, with only the second and the third special attack.
+const TREX_ITEMS: Array[int] = [713, 737, 2139]
 
 ## The special attacks of the cycle, in order.
 var _specials: Array[String] = ["burn", "eat", "tail"]
@@ -33,7 +34,7 @@ func _init() -> void:
 
 
 func configure(item_id: int) -> void:
-	if item_id == TREX:
+	if item_id in TREX_ITEMS:
 		_specials = ["eat", "tail"]
 		special_intervals = [105, 105]
 		special_durations = [70, 38]

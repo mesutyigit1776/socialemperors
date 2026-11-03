@@ -904,7 +904,12 @@ func effect(graphic: String, tile: Vector2i) -> void:
 func cast_unit_spell(spell_id: int, tile: Vector2i) -> void:
 	var spell := unit_spell(spell_id)
 	if spell != null:
-		spell.cast(self, tile, config.spell_level(spell_uses.get(spell_id, 0)))
+		spell.cast(self, tile, unit_spell_level(spell_id))
+
+
+## The level of spell_id for the units that cast it: the level of the casts of the player.
+func unit_spell_level(spell_id: int) -> int:
+	return config.spell_level(spell_uses.get(spell_id, 0)) if config != null else 1
 
 
 ## A new copy of spell_id for a unit, or null when the port does not have it.

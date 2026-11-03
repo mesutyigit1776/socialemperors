@@ -437,6 +437,21 @@ const SCRIPTS := {
 	770: preload("res://battle/abilities/big_units_ability.gd"),  # Mammoth
 	776: preload("res://battle/abilities/big_units_ability.gd"),  # Nuclear Godzilla
 	861: preload("res://battle/abilities/big_units_ability.gd"),  # Sphinx
+	# Units with a cycle of special attacks (step 3.2).
+	721: preload("res://battle/abilities/cycle_units_ability.gd"),  # Amazon
+	724: preload("res://battle/abilities/cycle_units_ability.gd"),  # Archangel II
+	759: preload("res://battle/abilities/cycle_units_ability.gd"),  # Valkyrie II
+	735: preload("res://battle/abilities/cycle_units_ability.gd"),  # Werewolf
+	662: preload("res://battle/abilities/cycle_units_ability.gd"),  # Winged Knight
+	700: preload("res://battle/abilities/cycle_units_ability.gd"),  # Gryphon
+	706: preload("res://battle/abilities/cycle_units_ability.gd"),  # White Mage
+	712: preload("res://battle/abilities/cycle_units_ability.gd"),  # Black Mage
+	727: preload("res://battle/abilities/cycle_units_ability.gd"),  # Water Wizard
+	707: preload("res://battle/abilities/cycle_units_ability.gd"),  # Big Zombie
+	738: preload("res://battle/abilities/cycle_units_ability.gd"),  # Big Zombie II
+	740: preload("res://battle/abilities/cycle_units_ability.gd"),  # Evil Black Dragon
+	737: preload("res://battle/abilities/trex_ability.gd"),  # T-Rex (TRexDelegate)
+	2139: preload("res://battle/abilities/trex_ability.gd"),  # T-Rex (TRexDelegate)
 }
 
 

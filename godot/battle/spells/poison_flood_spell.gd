@@ -10,9 +10,14 @@ const DELAY := 10
 
 
 func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
-	var side := area(level)
+	poison_at(sim, tile, area(level), level, BattleFighter.Team.ENEMY)
+
+
+## Poisons the units of team within side tiles of tile, with the numbers of
+## level. The Big Zombie uses it with a side of 2 (preloadSpell of the client).
+func poison_at(sim: BattleSim, tile: Vector2i, side: int, level: int, team: BattleFighter.Team) -> void:
 	_particle(sim, tile, DELAY, _attack_frame, func() -> void:
-		var found := sim.items_near(tile, side, side * side, BattleFighter.Team.ENEMY, true, func(item: BattleFighter) -> bool:
+		var found := sim.items_near(tile, side, side * side, team, true, func(item: BattleFighter) -> bool:
 			return item.is_unit() and not item.dead and item.def.subcat_functional != BattleSim.SUBCAT_BOSS)
 		for i in range(found.size() - 1, -1, -1):
 			sim.poison(found[i], DAMAGE[level - 1], TICKS[level - 1], INFECTS[level - 1], null), {"scale": 3.0, "frames": -1, "depth": "above"})
