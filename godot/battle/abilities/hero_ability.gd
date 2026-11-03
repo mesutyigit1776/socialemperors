@@ -94,7 +94,7 @@ func _special(sim: BattleSim, fighter: BattleFighter) -> void:
 				sim.heal(unit, fighter.attack, fighter)
 				sim.particle(fighter, unit.tile, MagicParticles.STARS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass)
 		"wallace":
-			_wallace_aura(sim, fighter)
+			wallace_aura(sim, fighter)
 		"thor":
 			for dy in range(-2, 3):
 				for dx in range(-2, 3):
@@ -148,19 +148,20 @@ func _stream(sim: BattleSim, fighter: BattleFighter, type: int, count: int) -> v
 
 
 ## The own units of AURA_SUBCATS within range tiles.
-func _aura_units(sim: BattleSim, fighter: BattleFighter, range_tiles: int) -> Array[BattleFighter]:
+static func _aura_units(sim: BattleSim, fighter: BattleFighter, range_tiles: int) -> Array[BattleFighter]:
 	return sim.items_near(fighter.tile, range_tiles, 20, fighter.team, true, func(item: BattleFighter) -> bool:
 		return item.is_unit() and not item.dead and item.def.subcat_functional in AURA_SUBCATS)
 
 
 ## Up to 10 own units within 2 tiles attack 10 frames faster (at most every
-## 10 frames) for 140 frames (MAGIC_TYPE_AURA_WALLACE).
-func _wallace_aura(sim: BattleSim, fighter: BattleFighter) -> void:
+## 10 frames) for frames frames (MAGIC_TYPE_AURA_WALLACE; the Archangel aura
+## is the same for 220 frames).
+static func wallace_aura(sim: BattleSim, fighter: BattleFighter, frames := WALLACE_AURA_FRAMES) -> void:
 	var units := _aura_units(sim, fighter, 2).slice(0, 10)
 	for unit in units:
 		if unit != fighter:
 			unit.attack_interval = maxi(10, unit.def.attack_interval - 10)
-	sim.after(WALLACE_AURA_FRAMES, func() -> void:
+	sim.after(frames, func() -> void:
 		for unit in units:
 			if not unit.dead:
 				unit.attack_interval = unit.def.attack_interval)

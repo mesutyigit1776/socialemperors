@@ -179,6 +179,11 @@ static func fly_to(sim: BattleSim, unit: BattleFighter, goal: Vector2i, speed: i
 	sim.after(1, watch.bind(watch))
 
 
+## Shows a magic particle of type on tile that attacks nobody.
+static func show_particle(sim: BattleSim, unit: BattleFighter, tile: Vector2i, type: int) -> void:
+	sim.particle(unit, tile, type, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass)
+
+
 ## The picture name of button number (from 1) of a unit: "<id>_<name>_button_<number>".
 static func thumb(item_id: int, name: String, number: int) -> String:
 	return "%d_%s_button_%d" % [item_id, name, number]

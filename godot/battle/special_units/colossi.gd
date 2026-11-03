@@ -241,10 +241,10 @@ static func _killer_roots(sim: BattleSim, unit: BattleFighter) -> void:
 			var tile := (unit.tile + Vector2i(sim.rng.randi_range(-reach, reach), sim.rng.randi_range(-reach, reach))) \
 					.clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
 			sim.after(roundi(sim.rng.randf() * BattleSim.FRAMES_PER_SECOND) + 1, func() -> void:
-				sim.particle(unit, tile, MagicParticles.KILLER_ROOTS, 0, 0))
+				show_particle(sim, unit, tile, MagicParticles.KILLER_ROOTS))
 			continue
 		held.append(prey)
-		sim.particle(unit, prey.tile, MagicParticles.KILLER_ROOTS, 0, 0)
+		show_particle(sim, unit, prey.tile, MagicParticles.KILLER_ROOTS)
 		prey.incapacitated = true
 		prey.swallowed = true
 		sim.state_changed.emit(prey)
@@ -305,7 +305,7 @@ static func _ancient_sword(sim: BattleSim, unit: BattleFighter) -> void:
 			return
 		unit.incapacitated = unit.frozen or unit.stunned or unit.in_air
 		sim.state_changed.emit(unit))
-	sim.particle(unit, unit.tile + Vector2i(2, 2), MagicParticles.FIRE_EXPLOSION, 0, 0)
+	show_particle(sim, unit, unit.tile + Vector2i(2, 2), MagicParticles.FIRE_EXPLOSION)
 	sim.after(16, func() -> void:
 		if unit.dead:
 			return
