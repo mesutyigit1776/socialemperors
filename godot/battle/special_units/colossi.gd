@@ -178,7 +178,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			# The storm hits at frame 24, then once a second, 10 times in all.
 			var storm := {}
 			for i in 10:
-				storm[24 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: _colossus_storm(sim, unit)
+				storm[24 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: samurai_whirlwind(sim, unit, 3)
 			add(ability, 2, "Colossus Storm", "botonColossusStorm", func(_s: BattleSim, _f: BattleFighter) -> void:
 				sim.play_special(unit, SP4, 24 + 9 * BattleSim.FRAMES_PER_SECOND + 1, storm, Callable(), true), Callable(), "", COOLDOWN_OLD)
 			add(ability, 3, "Ancient's Sword", "botonAncientSword", SpecialAttacks.Frames.new(sim, unit, SP3, [10], func() -> void: _ancient_sword(sim, unit)),
@@ -280,17 +280,6 @@ static func _colossus_rage(sim: BattleSim, unit: BattleFighter) -> void:
 			continue
 		sim.push_in_air(enemy, unit, 2)
 		sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void: sim.electrocute(enemy, unit, 10, 2, BattleSim.FRAMES_PER_SECOND))
-
-
-## The 20 nearest enemy units within 2 tiles take the attack / 2.2 and fly 3
-## tiles. The colossus takes the first of them as its target when it has none.
-static func _colossus_storm(sim: BattleSim, unit: BattleFighter) -> void:
-	for enemy in sim.items_near(unit.tile, 2, 20, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
-			return item.is_unit() and not item.dead):
-		sim.push_in_air(enemy, unit, 3)
-		sim.receive_attack(enemy, int(unit.attack / 2.2), unit)
-		if unit.target == null and not enemy.dead:
-			sim.set_target(unit, enemy)
 
 
 ## The colossus cannot act for 2.5 seconds. On each tile within 2 tiles of it,

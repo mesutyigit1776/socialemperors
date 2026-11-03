@@ -897,14 +897,20 @@ func effect(graphic: String, tile: Vector2i) -> void:
 ## A unit casts spell_id on tile with its own copy of the spell, at the level
 ## that the casts of the player give (MagicSpell.spellLevel of the client).
 func cast_unit_spell(spell_id: int, tile: Vector2i) -> void:
+	var spell := unit_spell(spell_id)
+	if spell != null:
+		spell.cast(self, tile, config.spell_level(spell_uses.get(spell_id, 0)))
+
+
+## A new copy of spell_id for a unit, or null when the port does not have it.
+func unit_spell(spell_id: int) -> BattleSpell:
 	var def := config.get_spell(spell_id) if config != null else null
 	if def == null:
-		return
+		return null
 	var spell := BattleSpell.create(def, config, spell_graphics.get(def.img_name, {}))
-	if spell == null:
-		return
-	spell_created.emit(spell)
-	spell.cast(self, tile, config.spell_level(spell_uses.get(spell_id, 0)))
+	if spell != null:
+		spell_created.emit(spell)
+	return spell
 
 
 ## The item of the configuration, or null when the battle has no configuration.

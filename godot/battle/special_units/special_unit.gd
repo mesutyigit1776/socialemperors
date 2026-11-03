@@ -179,6 +179,18 @@ static func fly_to(sim: BattleSim, unit: BattleFighter, goal: Vector2i, speed: i
 	sim.after(1, watch.bind(watch))
 
 
+## The 20 nearest enemy units within 2 tiles, not on the tile of the unit,
+## fly push tiles and take the attack / 2.2. The unit takes the first of them
+## as its target when it has none (samuraiWhirlwind of the client).
+static func samurai_whirlwind(sim: BattleSim, unit: BattleFighter, push: int) -> void:
+	for enemy in sim.items_near(unit.tile, 2, 20, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+			return item.is_unit() and not item.dead):
+		sim.push_in_air(enemy, unit, push)
+		sim.receive_attack(enemy, int(unit.attack / 2.2), unit)
+		if unit.target == null and not enemy.dead:
+			sim.set_target(unit, enemy)
+
+
 ## Shows a magic particle of type on tile that attacks nobody.
 static func show_particle(sim: BattleSim, unit: BattleFighter, tile: Vector2i, type: int) -> void:
 	sim.particle(unit, tile, type, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass)

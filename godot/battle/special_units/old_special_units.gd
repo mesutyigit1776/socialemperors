@@ -10,6 +10,8 @@ const UNITS := {
 	661: "conan",
 	635: "ent",
 	773: "poseidon",
+	778: "zeus", 828: "zeus",
+	765: "hades",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -25,6 +27,8 @@ const POSEIDON_SHOT_RANGE := 11
 const OCTOPUS := 624
 const OCTOPUSES := 4
 const OCTOPUS_SECONDS := 8
+const ZEUS_HEAL := 300
+const HELL_ABYSS := 7
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -172,6 +176,49 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 						for octopus in octopuses:
 							if octopus in sim.fighters:
 								sim.remove_item(octopus))}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+		"zeus":
+			# The units within 3 tiles take 1.5 times the attack and fly 3
+			# tiles, at frame 8 and then once a second, 8 times in all.
+			var spin := {}
+			for i in 8:
+				spin[8 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: _zeus_blow(sim, unit, 3)
+			add(ability, 0, "360 attack", "botonZeus360", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP1, 8 + 7 * BattleSim.FRAMES_PER_SECOND + 1, spin), Callable(), "", COOLDOWN_OLD)
+			# The same blow on the units within the range of Zeus.
+			add(ability, 1, "Lightning Smasth", "botonZeusRayoSuelo", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP2, 3 * BattleSim.FRAMES_PER_SECOND, {21: func() -> void: _zeus_blow(sim, unit, unit.def.attack_range)},
+						Callable(), true), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "Lightning Strikes", "botonZeusLluviaRayos", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, 3 * BattleSim.FRAMES_PER_SECOND, {5: func() -> void: _zeus_strikes(sim, unit)}, Callable(), true),
+				Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Lightning Strikes", "botonZeusCuracion", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP3, 3 * BattleSim.FRAMES_PER_SECOND, {5: func() -> void: sim.heal(unit, ZEUS_HEAL, unit)}, Callable(), true),
+				Callable(), "", COOLDOWN_OLD)
+		"hades":
+			add(ability, 0, "hades_lluvia", "hades_lluvia", SpecialAttacks.Frames.new(sim, unit, SP2, [1], func() -> void:
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.HADES_SPIKE, 25, 3, 1, 20, 3)), Callable(), "", COOLDOWN_OLD)
+			# A hole of the Hell Abyss spell with an area of 5 tiles opens under
+			# the target and swallows the enemy units.
+			add(ability, 1, "hades_suelo", "hades_suelo", SpecialAttacks.Frames.new(sim, unit, SP4, [7], func() -> void:
+				var target := unit.target
+				if target == null or target.dead:
+					return
+				var abyss := sim.unit_spell(HELL_ABYSS) as HellAbyssSpell
+				if abyss != null:
+					abyss.open_hole(sim, target.tile, 5, 0.7, 0, BattleAbility.enemy_side(unit), true)), Callable(), "", COOLDOWN_OLD)
+			# At frame 41 and then once a second, 7 times in all.
+			var spin := {}
+			for i in 7:
+				spin[41 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: samurai_whirlwind(sim, unit, 5)
+			add(ability, 2, "hades_torbellino", "hades_torbellino", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP3, 41 + 6 * BattleSim.FRAMES_PER_SECOND + 1, spin, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "hades_kill", "hades_kill", SpecialAttacks.Frames.new(sim, unit, SP1, [29], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or sim.distance(unit, target) > 3:
+					return
+				sim.receive_attack(target, 500, unit)
+				if target.is_unit() and not target.dead:
+					sim.push_in_air(target, unit, 4)), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -245,6 +292,34 @@ static func _poseidon_shot(sim: BattleSim, unit: BattleFighter, shots: int) -> v
 		var target := sim.nearest_enemy(unit, unit.tile, POSEIDON_SHOT_RANGE)
 		if target != null:
 			sim.shoot(unit, target, "p.napalm", unit.attack)}, func() -> void: _poseidon_shot(sim, unit, shots - 1), true)
+
+
+## The enemy units within range_tiles of Zeus take 1.5 times the attack and fly 3 tiles.
+static func _zeus_blow(sim: BattleSim, unit: BattleFighter, range_tiles: int) -> void:
+	for enemy in sim.items_near(unit.tile, range_tiles, 20, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+			return item.is_unit() and not item.dead):
+		sim.receive_attack(enemy, int(unit.attack * 1.5), unit)
+		if not enemy.dead:
+			sim.push_in_air(enemy, unit, 3)
+
+
+## Lightning falls near the target; 650 ms later the enemy units within the
+## range of Zeus take 1.5 times the attack, fly 3 tiles and are held by
+## electricity for 1 second.
+static func _zeus_strikes(sim: BattleSim, unit: BattleFighter) -> void:
+	var enemies := sim.items_near(unit.tile, unit.def.attack_range, 20, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead)
+	if enemies.is_empty():
+		return
+	BattleAbility.arrow_storm(sim, unit, MagicParticles.ZEUS_LIGHTNING, 10, 5)
+	sim.after(roundi(0.65 * BattleSim.FRAMES_PER_SECOND), func() -> void:
+		for enemy in enemies:
+			if enemy.dead:
+				continue
+			sim.receive_attack(enemy, int(unit.attack * 1.5), unit if unit in sim.fighters else null)
+			if not enemy.dead:
+				sim.push_in_air(enemy, unit, 3)
+				sim.electrocute(enemy, enemy, 0, 10, 3))
 
 
 ## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the
