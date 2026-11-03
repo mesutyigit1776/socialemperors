@@ -490,6 +490,20 @@ const SCRIPTS := {
 	810: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Priest
 	827: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Necro Scorpion
 	830: preload("res://battle/abilities/necro_soldiers_ability.gd"),  # Dragon King
+	# Minions and whirlwinds (step 3.2).
+	2309: preload("res://battle/abilities/minion_units_ability.gd"),  # Horror minion 1
+	2371: preload("res://battle/abilities/minion_units_ability.gd"),  # Dark Horror minion 1
+	2374: preload("res://battle/abilities/minion_units_ability.gd"),  # Dark Horror minion 4
+	2372: preload("res://battle/abilities/minion_units_ability.gd"),  # Dark Horror minion 2
+	2311: preload("res://battle/abilities/minion_units_ability.gd"),  # Horror minion 3
+	2373: preload("res://battle/abilities/minion_units_ability.gd"),  # Dark Horror minion 3
+	2298: preload("res://battle/abilities/minion_units_ability.gd"),  # Rays whirlwind
+	2104: preload("res://battle/abilities/minion_units_ability.gd"),  # Rays whirlwind (mortal)
+	2110: preload("res://battle/abilities/minion_units_ability.gd"),  # Infraworld soul whirlwind
+	2147: preload("res://battle/abilities/minion_whirlwind_ability.gd"),  # MinionWhirlwindDelegate
+	2314: preload("res://battle/abilities/tornado_ability.gd"),  # TornadoDelegate
+	2115: preload("res://battle/abilities/shot_ability.gd"),  # Evil god minion
+	2091: preload("res://battle/abilities/shot_ability.gd"),  # Soul god minion
 }
 
 

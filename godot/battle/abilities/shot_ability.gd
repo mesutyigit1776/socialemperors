@@ -155,6 +155,8 @@ const UNITS := {
 	883: {"shot": "p.ballTitanHydros", "delay": 7},  # Limit Adder (LimitAdderDelegate); its limit help is in BattleAbility.add_limit().
 	733: {"shots": [[10, "p.goldenDragon", ""], [13, "p.goldenDragon", ""]]},  # Dracula (DraculaDelegate): a second shot 100 ms after the first
 	885: {"shots": [[10, "p.turkSpear", ""]]},  # Turkish Horseman (TurkishHorsemanDelegate)
+	2115: {"shot": "p.dualPurple", "delay": 7},  # GodEvilMinionDelegate
+	2091: {"shot": "p.purpleBall", "delay": 7},  # GodSoulMinionDelegate
 }
 
 var _shots: Array = []
