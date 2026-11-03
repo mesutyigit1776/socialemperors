@@ -1,14 +1,19 @@
-class_name MythUnits
+class_name OldSpecialUnits
 extends SpecialUnit
-## The first special units of the client: the old gods and the creatures of
-## myth. Their buttons have a cooldown of 25 seconds and no limit.
+## The first special units of the client: old gods, creatures of myth and
+## heroes. Their buttons have a cooldown of 25 seconds and no limit.
 
 const UNITS := {
 	711: "arcangel",
 	788: "ares",
+	787: "chimera",
+	661: "conan",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
+const CHIMERA_BEAMS := 3
+const CHIMERA_BEAM_FRAMES := 30
+const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
 const THRUST_STEPS := {1: Vector2i(-1, 0), 2: Vector2i(0, -1), 3: Vector2i(0, -1), 4: Vector2i(1, 0), 5: Vector2i(1, 0), 6: Vector2i(-1, 0), 7: Vector2i(0, 1), 8: Vector2i(0, 1)}
 
@@ -30,28 +35,16 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				BattleAbility.arrow_storm(sim, unit, MagicParticles.ARCHANGEL_BEAM, 40, 2, 1.6, 10, 120)), Callable(), "", COOLDOWN_OLD)
 		"ares":
 			ability.ranged_melee = true  # AresDelegate
-			# The 3 x 3 tiles in front of Ares: one enemy on each takes twice
-			# the attack, and a unit is stunned.
-			add(ability, 0, "ares_sword", "ares_sword", SpecialAttacks.Frames.new(sim, unit, SP2, [12], func() -> void:
-				var front: Vector2i = unit.tile + BattleAbility.TILE_STEPS[BattleAbility.direction(unit)]
-				for y in range(-1, 2):
-					for x in range(-1, 2):
-						var target := tile_target(sim, unit, front + Vector2i(x, y))
-						if target == null:
-							continue
-						sim.receive_attack(target, unit.attack * 2, unit)
-						if target.is_unit() and not target.dead:
-							sim.stun(target)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 0, "ares_sword", "ares_sword", SpecialAttacks.Frames.new(sim, unit, SP2, [12], func() -> void: front_sword(sim, unit)),
+					Callable(), "", COOLDOWN_OLD)
 			add(ability, 1, "ares_pincer", "ares_pincer", SpecialAttacks.Frames.new(sim, unit, SP4, [10], func() -> void:
 				var target := unit.target
 				if target != null and not target.dead and sim.distance(unit, target) <= 3:
 					sim.receive_attack(target, 350, unit)), Callable(), "", COOLDOWN_OLD)
-			# Once a second, 9 times: on each tile within 2 tiles that is not
-			# on the row or the column of Ares, one enemy takes half the
-			# attack, and a unit flies 2 tiles.
+			# Once a second, 9 times.
 			var spin := {}
 			for second in range(1, 10):
-				spin[second * BattleSim.FRAMES_PER_SECOND] = func() -> void: _ares_whirlwind(sim, unit)
+				spin[second * BattleSim.FRAMES_PER_SECOND] = func() -> void: spin_blow(sim, unit)
 			add(ability, 2, "ares_whirlwind", "ares_whirlwind", func(_s: BattleSim, _f: BattleFighter) -> void:
 				sim.play_special(unit, SP1, 10 * BattleSim.FRAMES_PER_SECOND, spin, Callable(), true), Callable(), "", COOLDOWN_OLD)
 			# A magma bubble: the units within 5 tiles that can act burn, 8
@@ -62,6 +55,49 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					for enemy in sim.items_near(unit.tile, 5, 100, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
 							return item.is_unit() and not item.dead and not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS):
 						sim.incinerate(enemy, unit, 8, 10, BattleSim.FRAMES_PER_SECOND)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+		"chimera":
+			ability.ranged_melee = true  # ChimeraDelegate
+			add(ability, 0, "chimera_lion", "botonChimeraLion", SpecialAttacks.Frames.new(sim, unit, SP2, [12], func() -> void: front_sword(sim, unit)),
+					Callable(), "", COOLDOWN_OLD)
+			# Electric beams at the 3 nearest enemy units within 5 tiles, one
+			# after the other: each beam freezes its unit for 2 seconds and
+			# does twice the attack when it ends.
+			add(ability, 1, "chimera_dragon", "botonChimeraDragon", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP1, 16 + CHIMERA_BEAMS * (CHIMERA_BEAM_FRAMES + CHIMERA_BEAM_PAUSE), {16: func() -> void:
+					var targets := sim.items_near(unit.tile, 5, CHIMERA_BEAMS, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead)
+					_chimera_beam(sim, unit, targets)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			# The target within 3 tiles takes the attack and is poisoned: the
+			# attack each second, 2 times.
+			add(ability, 2, "chimera_snake", "botonChimeraSnake", SpecialAttacks.Frames.new(sim, unit, SP3, [15], func() -> void:
+				var target := unit.target
+				if target == null or target.dead or sim.distance(unit, target) > 3:
+					return
+				sim.receive_attack(target, unit.attack, unit)
+				if target.is_unit() and not target.dead:
+					sim.poison(target, unit.attack, 2, 0, unit)), Callable(), "", COOLDOWN_OLD)
+		"conan":
+			add(ability, 0, "Power Sword", "botonFeelThePowerOfThySword", SpecialAttacks.Frames.new(sim, unit, SP1, [9], func() -> void:
+				front_sword(sim, unit)), Callable(), "", COOLDOWN_OLD)
+			# At the end of the animation Conan gets a quarter of his life back.
+			add(ability, 1, "Heroic Endurance", "botonEndurance", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP2, sim.animation_frames(unit, SP2, 30), {}, func() -> void:
+					if unit.dead:
+						return
+					sim.heal(unit, unit.max_life() / 4, unit)
+					show_particle(sim, unit, unit.tile, MagicParticles.STARS)), Callable(), "", COOLDOWN_OLD)
+			# The items within 2 tiles take 1.5 times the attack; units fly 2 tiles.
+			add(ability, 2, "Sword Jump", "botonSwordJump", SpecialAttacks.Frames.new(sim, unit, SP3, [32], func() -> void:
+				for enemy in sim.items_near(unit.tile, 2, 100, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead):
+					sim.receive_attack(enemy, int(unit.attack * 1.5), unit)
+					if enemy.is_unit() and not enemy.dead:
+						sim.push_in_air(enemy, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			# Once a second, 4 times.
+			var spin := {}
+			for second in range(1, 5):
+				spin[second * BattleSim.FRAMES_PER_SECOND] = func() -> void: spin_blow(sim, unit)
+			add(ability, 3, "Spinning Blow", "botonSpinningBlow", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, 5 * BattleSim.FRAMES_PER_SECOND, spin), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -100,7 +136,23 @@ static func _arcangel_line(sim: BattleSim, unit: BattleFighter, burn: bool) -> v
 				sim.incinerate(target, unit, unit.attack / 2, 5, BattleSim.FRAMES_PER_SECOND)
 
 
-static func _ares_whirlwind(sim: BattleSim, unit: BattleFighter) -> void:
+## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the
+## attack, and a unit is stunned.
+static func front_sword(sim: BattleSim, unit: BattleFighter) -> void:
+	var front: Vector2i = unit.tile + BattleAbility.TILE_STEPS[BattleAbility.direction(unit)]
+	for y in range(-1, 2):
+		for x in range(-1, 2):
+			var target := tile_target(sim, unit, front + Vector2i(x, y))
+			if target == null:
+				continue
+			sim.receive_attack(target, unit.attack * 2, unit)
+			if target.is_unit() and not target.dead:
+				sim.stun(target)
+
+
+## On each tile within 2 tiles that is not on the row or the column of the
+## unit, one enemy takes half the attack, and a unit flies 2 tiles.
+static func spin_blow(sim: BattleSim, unit: BattleFighter) -> void:
 	for y in range(-2, 3):
 		for x in range(-2, 3):
 			if x == 0 or y == 0:
@@ -111,3 +163,15 @@ static func _ares_whirlwind(sim: BattleSim, unit: BattleFighter) -> void:
 			sim.receive_attack(target, unit.attack / 2, unit)
 			if target.is_unit() and not target.dead:
 				sim.push_in_air(target, unit, 2)
+
+
+static func _chimera_beam(sim: BattleSim, unit: BattleFighter, targets: Array[BattleFighter]) -> void:
+	if targets.is_empty() or unit.dead:
+		return
+	var target: BattleFighter = targets.pop_front()
+	if target.dead:
+		_chimera_beam(sim, unit, targets)
+		return
+	sim.freeze_with_damage(target, unit, 0, 1, 2 * BattleSim.FRAMES_PER_SECOND)
+	sim.shoot_beam(unit, target, target.tile, "p.electricityBeam", CHIMERA_BEAM_FRAMES, unit.attack * 2, func(_shot: BattleProjectile) -> void:
+		sim.after(CHIMERA_BEAM_PAUSE, func() -> void: _chimera_beam(sim, unit, targets)))

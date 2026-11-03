@@ -20,7 +20,7 @@ static func _families() -> Array:
 		Gladiators,
 		ClassicDragons,
 		Monsters,
-		MythUnits,
+		OldSpecialUnits,
 	]
 
 
