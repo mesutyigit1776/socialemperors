@@ -504,6 +504,17 @@ const SCRIPTS := {
 	2314: preload("res://battle/abilities/tornado_ability.gd"),  # TornadoDelegate
 	2115: preload("res://battle/abilities/shot_ability.gd"),  # Evil god minion
 	2091: preload("res://battle/abilities/shot_ability.gd"),  # Soul god minion
+	# Gods and colossi (step 3.2).
+	2093: preload("res://battle/abilities/god_units_ability.gd"),  # Elemental Heaven God
+	2079: preload("res://battle/abilities/god_units_ability.gd"),  # Elemental Forest God
+	2169: preload("res://battle/abilities/god_units_ability.gd"),  # Genesis Iron God
+	2156: preload("res://battle/abilities/god_units_ability.gd"),  # Genesis Wind God
+	2162: preload("res://battle/abilities/god_units_ability.gd"),  # Genesis Wind Colossus
+	2235: preload("res://battle/abilities/god_units_ability.gd"),  # Genesis Ice Colossus
+	2236: preload("res://battle/abilities/god_units_ability.gd"),  # Genesis Shadow Colossus
+	2077: preload("res://battle/abilities/god_units_ability.gd"),  # Elemental Fire Colossus
+	2153: preload("res://battle/abilities/god_units_ability.gd"),  # Tiny Fire God
+	2155: preload("res://battle/abilities/god_units_ability.gd"),  # Tiny Water God
 }
 
 
