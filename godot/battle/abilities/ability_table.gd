@@ -452,6 +452,14 @@ const SCRIPTS := {
 	740: preload("res://battle/abilities/cycle_units_ability.gd"),  # Evil Black Dragon
 	737: preload("res://battle/abilities/trex_ability.gd"),  # T-Rex (TRexDelegate)
 	2139: preload("res://battle/abilities/trex_ability.gd"),  # T-Rex (TRexDelegate)
+	570: preload("res://battle/abilities/healer_ability.gd"),  # Engineer (ClericEngineerDelegate)
+	653: preload("res://battle/abilities/cycle_units_ability.gd"),  # Snake
+	668: preload("res://battle/abilities/cycle_units_ability.gd"),  # Snake II
+	709: preload("res://battle/abilities/cycle_units_ability.gd"),  # Cobra
+	683: preload("res://battle/abilities/cycle_units_ability.gd"),  # Earth Merlin
+	690: preload("res://battle/abilities/cycle_units_ability.gd"),  # Earth Merlin II
+	771: preload("res://battle/abilities/cycle_units_ability.gd"),  # Antimatter Wizard
+	796: preload("res://battle/abilities/cycle_units_ability.gd"),  # Master Wizard
 }
 
 

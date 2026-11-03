@@ -4,9 +4,6 @@ extends BattleAbility
 ## (checkUnitSpecial and updateAttack), not in a delegate. These units repeat
 ## a cycle of a normal attack and one or two special attacks. While a special
 ## animation plays, each attack is the special attack instead of the normal one.
-##
-## The Snake (653, 668) also has a delegate (SnakeDelegate); no island of the
-## campaign has it, and the port does not have its eating attack.
 
 ## Item id -> [kind, intervals, durations].
 const UNITS := {
