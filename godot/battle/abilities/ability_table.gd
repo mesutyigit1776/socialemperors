@@ -367,6 +367,20 @@ const SCRIPTS := {
 	2369: preload("res://battle/abilities/beam_ability.gd"),
 	2370: preload("res://battle/abilities/beam_ability.gd"),
 	2375: preload("res://battle/abilities/beam_ability.gd"),
+	# Orcs (step 3.2).
+	2027: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Crusher
+	2046: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Kamikaze
+	2068: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Boomerang
+	2030: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Spear Warrior
+	2056: preload("res://battle/abilities/orc_units_ability.gd"),  # Monster Orc Rider
+	2029: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Boar Rider
+	2074: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Battering Ram
+	2061: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Dual Axe
+	2054: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Priest
+	2031: preload("res://battle/abilities/orc_units_ability.gd"),  # Orc Spider Rider
+	2066: preload("res://battle/abilities/orc_units_ability.gd"),  # Two-Headed Orc
+	2047: preload("res://battle/abilities/orc_slasher_ability.gd"),  # OrcSlasherDelegate
+	2072: preload("res://battle/abilities/orc_slasher_ability.gd"),  # OrcSlasherDelegate
 }
 
 
