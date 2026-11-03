@@ -465,6 +465,19 @@ const SCRIPTS := {
 	732: preload("res://battle/abilities/halloween_units_ability.gd"),  # Frankenstein
 	746: preload("res://battle/abilities/halloween_units_ability.gd"),  # Pumpkin Monster
 	731: preload("res://battle/abilities/halloween_units_ability.gd"),  # Witch
+	# Warriors (step 3.2).
+	825: preload("res://battle/abilities/warrior_units_ability.gd"),  # Double Sword
+	829: preload("res://battle/abilities/warrior_units_ability.gd"),  # Punisher Knight
+	871: preload("res://battle/abilities/warrior_units_ability.gd"),  # Cobra Rider
+	881: preload("res://battle/abilities/warrior_units_ability.gd"),  # Turkish Axe
+	880: preload("res://battle/abilities/warrior_units_ability.gd"),  # Turkish Sword
+	2035: preload("res://battle/abilities/warrior_units_ability.gd"),  # Burning Tiger
+	2059: preload("res://battle/abilities/warrior_units_ability.gd"),  # Sword Lion
+	2145: preload("res://battle/abilities/warrior_units_ability.gd"),  # Ice Golem
+	2138: preload("res://battle/abilities/warrior_units_ability.gd"),  # Black Lizard
+	2108: preload("res://battle/abilities/warrior_units_ability.gd"),  # Demolisher
+	885: preload("res://battle/abilities/shot_ability.gd"),  # Turkish Horseman
+	2120: preload("res://battle/abilities/death_warrior_ability.gd"),  # Death Warrior II (DeathWarriorDelegate)
 }
 
 
