@@ -381,6 +381,20 @@ const SCRIPTS := {
 	2066: preload("res://battle/abilities/orc_units_ability.gd"),  # Two-Headed Orc
 	2047: preload("res://battle/abilities/orc_slasher_ability.gd"),  # OrcSlasherDelegate
 	2072: preload("res://battle/abilities/orc_slasher_ability.gd"),  # OrcSlasherDelegate
+	# Gladiators (step 3.2).
+	2151: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Chariot
+	2117: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Priest Gladiator
+	2118: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Priest Gladiator minion
+	2105: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Sword Gladiator
+	2106: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Spear Gladiator
+	2107: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Rider Gladiator
+	2125: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Big Warrior Gladiator
+	2126: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Bull Gladiator
+	2143: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Blade Gladiator
+	2150: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Devil Gladiator
+	2116: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Mace Gladiator
+	2136: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Centaur Gladiator
+	2109: preload("res://battle/abilities/shot_ability.gd"),  # Monster Gladiator
 }
 
 

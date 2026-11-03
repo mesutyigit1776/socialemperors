@@ -117,6 +117,7 @@ const UNITS := {
 	2364: {"shot": "p.energyBall", "delay": 10},  # Night Forge Draggy (NightForgeDragonMinionDelegate)
 	2367: {"shot": "p.energyBall", "delay": 10},  # Devil Ancient Draggy (DevilAncientDragonMinionDelegate)
 	786: {"melee": true},  # Manticora (ManticoraDelegate)
+	2109: {"shot": "p.axeMonster", "delay": 8},  # Monster Gladiator (MonsterGladiatorDelegate)
 }
 
 func configure(item_id: int) -> void:
