@@ -395,6 +395,38 @@ const SCRIPTS := {
 	2116: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Mace Gladiator
 	2136: preload("res://battle/abilities/gladiator_units_ability.gd"),  # Centaur Gladiator
 	2109: preload("res://battle/abilities/shot_ability.gd"),  # Monster Gladiator
+	# Delegates whose attack is shots after a delay (step 3.2).
+	2062: preload("res://battle/abilities/shot_ability.gd"),
+	2001: preload("res://battle/abilities/shot_ability.gd"),
+	2004: preload("res://battle/abilities/shot_ability.gd"),
+	892: preload("res://battle/abilities/shot_ability.gd"),
+	725: preload("res://battle/abilities/shot_ability.gd"),
+	2181: preload("res://battle/abilities/shot_ability.gd"),
+	2172: preload("res://battle/abilities/shot_ability.gd"),
+	2178: preload("res://battle/abilities/shot_ability.gd"),
+	2187: preload("res://battle/abilities/shot_ability.gd"),
+	2184: preload("res://battle/abilities/shot_ability.gd"),
+	2191: preload("res://battle/abilities/shot_ability.gd"),
+	2175: preload("res://battle/abilities/shot_ability.gd"),
+	2212: preload("res://battle/abilities/shot_ability.gd"),
+	2218: preload("res://battle/abilities/shot_ability.gd"),
+	2170: preload("res://battle/abilities/shot_ability.gd"),
+	2161: preload("res://battle/abilities/shot_ability.gd"),
+	2159: preload("res://battle/abilities/shot_ability.gd"),
+	2092: preload("res://battle/abilities/shot_ability.gd"),
+	865: preload("res://battle/abilities/shot_ability.gd"),
+	882: preload("res://battle/abilities/shot_ability.gd"),
+	767: preload("res://battle/abilities/shot_ability.gd"),
+	2064: preload("res://battle/abilities/shot_ability.gd"),
+	750: preload("res://battle/abilities/shot_ability.gd"),
+	655: preload("res://battle/abilities/shot_ability.gd"),
+	870: preload("res://battle/abilities/shot_ability.gd"),
+	2133: preload("res://battle/abilities/shot_ability.gd"),
+	2111: preload("res://battle/abilities/shot_ability.gd"),
+	2044: preload("res://battle/abilities/shot_ability.gd"),
+	2024: preload("res://battle/abilities/shot_ability.gd"),
+	2049: preload("res://battle/abilities/shot_ability.gd"),
+	2040: preload("res://battle/abilities/shot_ability.gd"),
 }
 
 

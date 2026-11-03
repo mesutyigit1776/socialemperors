@@ -9,7 +9,9 @@ extends BattleAbility
 ## "beam" (frames until a beam hurts), "melee" (true: ranged_melee), "scale",
 ## "immune" (true: push, freeze, poison, swallow, conversion and stun do not act),
 ## "cycle" ([intervals, durations] of a cycle of special animations; the unit
-## does not attack while one plays, as in the client).
+## does not attack while one plays, as in the client), "shots" (a list of
+## [delay in frames, graphic, blast graphic or ""]: each attack fires these
+## shots at the target instead of the normal shot, each with the attack).
 const UNITS := {
 	818: {"shot": "p.arrow", "delay": 5},  # Skeleton Archer (ArcherSkeletonDelegate)
 	850: {"shot": "p.lightBall", "delay": 12},  # Bahamut Draggy
@@ -118,10 +120,46 @@ const UNITS := {
 	2367: {"shot": "p.energyBall", "delay": 10},  # Devil Ancient Draggy (DevilAncientDragonMinionDelegate)
 	786: {"melee": true},  # Manticora (ManticoraDelegate)
 	2109: {"shot": "p.axeMonster", "delay": 8},  # Monster Gladiator (MonsterGladiatorDelegate)
+	# Delegates whose attack is one or more shots after a delay (step 3.2).
+	2062: {"shot": "p.orcArrowSmall", "delay": 14},  # Wyvern Rider (OrcSpectrumDelegate)
+	2001: {"shot": "p.egyptianBall", "delay": 11},  # BahamutPaladinDraggyDelegate
+	2004: {"shot": "p.multicolredEnergyBall", "delay": 11},  # BahamutSupremeDraggyDelegate
+	892: {"shot": "p.napalm", "delay": 10},  # BlackBahamutDraggyDelegate
+	725: {"shot": "p.lightMiniBeam", "delay": 12},  # BlackDraggyDelegate
+	2181: {"shot": "p.windBall", "delay": 12},  # ExtremeBullDraggyDelegate
+	2172: {"shot": "p.windBall", "delay": 12},  # ExtremeElectricDraggyDelegate
+	2178: {"shot": "p.windBall", "delay": 12},  # ExtremeFireDraggyDelegate
+	2187: {"shot": "p.windBall", "delay": 12},  # ExtremeForestDraggyDelegate
+	2184: {"shot": "p.windBall", "delay": 12},  # ExtremeFrostDraggyDelegate
+	2191: {"shot": "p.windBall", "delay": 12},  # ExtremeWindDraggyDelegate
+	2175: {"shot": "p.fireBall_02", "delay": 12},  # ExtremeGoldenDraggyDelegate
+	2212: {"shot": "p.energyBall", "delay": 10},  # NeonEpicDraggyDelegate
+	2218: {"shot": "p.lightBall", "delay": 10},  # ShogunEpicDraggyDelegate
+	2170: {"shot": "p.shadowBall", "delay": 12},  # GodIronMinionDelegate
+	2161: {"shot": "p.shadowBall", "delay": 12},  # GodShadowMinionDelegate
+	2159: {"shot": "p.windBall", "delay": 12},  # GodWindMinionDelegate
+	2092: {"shot": "p.solar", "delay": 16},  # HeavenGodMinionDelegate
+	865: {"shot": "p.goldenArrow", "delay": 8},  # GuardianArcherDelegate (250 ms)
+	882: {"shot": "p.goldenArrow", "delay": 8},  # TurkishArcherDelegate (250 ms)
+	767: {"shot": "p.rock", "delay": 8},  # CatapoltDelegate
+	2064: {"shot": "p.star"},  # StarDraggyDelegate
+	750: {"melee": true},  # Icaro (IcaroDelegate)
+	655: {"melee": true},  # Paladin (PaladinDelegate)
+	870: {"shots": [[8, "p.spinningAxe", ""], [10, "p.spinningAxe", ""]]},  # AxeGuardianDelegate (250 and 325 ms)
+	2133: {"shots": [[7, "p.catapultFireball", "b.earthFire"], [10, "p.catapultFireball", "b.earthFire"], [13, "p.catapultFireball", "b.earthFire"]]},  # ThreeHeadedElementalDraggyDelegate
+	2111: {"shots": [[15, "p.antimatter", "b.earthFire"]]},  # AntimatterGolemDelegate (500 ms)
+	2044: {"shots": [[1, "p.dualPurple", ""], [1, "p.dualWhite", ""]]},  # DualGodsDraggyDelegate
+	2024: {"shots": [[1, "p.napalm", ""], [1, "p.chorrazo", ""]]},  # FrostFireDraggyDelegate
+	2049: {"shots": [[1, "p.crystalBall", "b.blueEnergy"]]},  # GalaxyDraggyDelegate
+	2040: {"shots": [[1, "p.catapultFireball", "b.earthFire"]]},  # SunDraggyDelegate
 }
+
+var _shots: Array = []
+
 
 func configure(item_id: int) -> void:
 	var data: Dictionary = UNITS.get(item_id, {})
+	_shots = data.get("shots", [])
 	shot_graphic = data.get("shot", "")
 	shot_delay = data.get("delay", 0)
 	if data.has("beam"):
@@ -140,3 +178,17 @@ func configure(item_id: int) -> void:
 		immune_to_conversion = true
 		immune_to_stun = true
 
+
+func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
+	if _shots.is_empty():
+		return true
+	var target := fighter.target
+	for shot: Array in _shots:
+		sim.after(maxi(shot[0], 1), func() -> void:
+			if fighter.dead or target == null or target.dead:
+				return
+			var tile := target.tile
+			sim.shoot(fighter, target, shot[1], fighter.attack, func(_landed: BattleProjectile) -> void:
+				if shot[2] != "":
+					sim.effect(shot[2], tile)))
+	return false
