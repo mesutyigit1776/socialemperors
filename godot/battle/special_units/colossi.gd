@@ -11,6 +11,8 @@ const UNITS := {
 	2152: "genesis_earth",
 	2098: "antimatter_golem", 2111: "antimatter_golem",
 	2094: "heaven",
+	2077: "fire",
+	2086: "water",
 }
 
 
@@ -88,6 +90,106 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				circular_push(battle, colossus, 8, 15, int(colossus.attack * 1.5), 12))
 			combo(sim, unit, [2350, 2093])
 
+		"fire":
+			add(ability, 0, "Mega Slash", "2077_2", SpecialAttacks.Frames.new(sim, unit, SP1, [26], func() -> void:
+				_directional_push(sim, unit, 12, 4, int(atk), 6)), has_target(), "No target within range")
+			# Flames: at each frame, each unit of the directional attack takes
+			# the attack once and burns.
+			var flame_frames: Array[int] = []
+			for frame in range(18, 63, 4):
+				flame_frames.append(frame)
+			add(ability, 1, "Ultra Fireball", "2077_1", SpecialAttacks.Frames.new(sim, unit, SP2, flame_frames, func() -> void:
+				var burnt: Array[BattleFighter] = []
+				for enemy in directional_hits(sim, unit, 12, 6):
+					if enemy.dead or enemy in burnt:
+						continue
+					burnt.append(enemy)
+					sim.receive_attack(enemy, int(atk), unit)
+					sim.incinerate(enemy, unit, 25, 5, BattleSim.FRAMES_PER_SECOND)), has_target(), "No target within range")
+			var smash_frames: Array[int] = []
+			for frame in range(40, 116, 5):
+				smash_frames.append(frame)
+			add(ability, 2, "Hyper Whirlwind", "2077_3", SpecialAttacks.Frames.new(sim, unit, SP3, smash_frames, func() -> void:
+				var burn := Damages.Sequenced.new(sim, unit).add(Damages.PushInAir.new(sim, unit, atk / 2, 6)).add(Damages.Incinerate.new(sim, unit, 5, 5, 1000))
+				for enemy in sim.items_near(unit.tile, 8, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead):
+					if burn.can_apply(enemy):
+						burn.apply(enemy)))
+			_colossus_minions(sim, unit, ability, "2077_4", SP4, 12, 2076)
+			var magma := SpecialAttacks.Rain.new(sim, unit, 4, 2, SP5, MagicParticles.MAGMA_BALL_RAIN, _BurnHit.new(sim, unit)).with_delay(0.075)
+			limit_special(ability, SP5, [65], func(_battle: BattleSim, _colossus: BattleFighter) -> void: magma.start())
+			combo(sim, unit, [2369, 2075])
+		"water":
+			add(ability, 0, "Anchor Shot", "2086_water_colossus_sw3", SpecialAttacks.Frames.new(sim, unit, SP1, [60], func() -> void:
+				_directional_push(sim, unit, 12, 6, int(atk), 7)))
+			add(ability, 1, "Black Smash", "2086_water_colossus_sw2", SpecialAttacks.Frames.new(sim, unit, SP2, [22], func() -> void:
+				for enemy in sim.items_near(unit.tile, 5, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_push)):
+					sim.receive_attack(enemy, int(atk / 2), unit)
+					sim.push_in_air(enemy, unit, 5)))
+			add(ability, 2, "Whirlwind", "2086_water_colossus_sw1", SpecialAttacks.Frames.new(sim, unit, SP3, [15], func() -> void:
+				circular_push(sim, unit, 7, 5, int(atk / 4), 6), 10))
+			_colossus_minions(sim, unit, ability, "2086_water_colossus_sw4", SP4, 15, 2096)
+			ability.buttons[3].name = "Colossus Minions"
+			# For 6 seconds, at each frame, the enemies within 7 tiles turn
+			# around the colossus: units with more than 1000 life take 150
+			# points; units with at most 500 life vanish; others vanish one
+			# time in five, else they take 150 points and fly 7 tiles.
+			var swirling: Array[BattleFighter] = []
+			ability.has_limit = true
+			add(ability, BattleAbility.LIMIT_BUTTON, "", "", func(battle: BattleSim, colossus: BattleFighter) -> void:
+				var events := {}
+				for frame in range(60, 96, 5):
+					events[frame] = func() -> void: _water_swap(battle, colossus, swirling)
+				battle.play_special(colossus, SP5, 6 * BattleSim.FRAMES_PER_SECOND, events, Callable(), true), Callable(), "", 0)
+
+
+## Each enemy of the directional attack takes damage and flies tiles.
+static func _directional_push(sim: BattleSim, unit: BattleFighter, length: int, radius: int, damage: int, tiles: int) -> void:
+	for enemy in directional_hits(sim, unit, length, radius):
+		if enemy.dead or (enemy.ability != null and enemy.ability.immune_to_push):
+			continue
+		sim.receive_attack(enemy, damage, unit)
+		if not enemy.dead:
+			sim.push_in_air(enemy, unit, tiles)
+
+
+static func _water_swap(sim: BattleSim, unit: BattleFighter, swirling: Array[BattleFighter]) -> void:
+	for enemy in sim.items_near(unit.tile, 7, 20, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+			return item.is_unit() and not item.dead and not item in swirling):
+		var life := enemy.max_life()
+		if life > 1000:
+			sim.receive_attack(enemy, 150, unit)
+			continue
+		var vanish := life <= 500 or sim.rng.randf() <= 0.2
+		var target := enemy
+		swirling.append(target)
+		target.incapacitated = true
+		target.swallowed = true
+		sim.state_changed.emit(target)
+		sim.after(3 * BattleSim.FRAMES_PER_SECOND, func() -> void:
+			swirling.erase(target)
+			if target.dead:
+				return
+			if vanish:
+				sim.remove_item(target)
+				return
+			target.swallowed = false
+			target.incapacitated = target.frozen or target.stunned or target.in_air
+			sim.state_changed.emit(target)
+			sim.receive_attack(target, 150, unit)
+			if not target.dead:
+				sim.push_in_air(target, unit, 7))
+
+
+## A magma ball of the Fire Colossus limit: the attack, then fire.
+class _BurnHit extends UnitDamage:
+	func can_apply(target: BattleFighter) -> bool:
+		return super(target) and (target.ability == null or not target.ability.immune_to_burn)
+
+	func apply(target: BattleFighter, _multiplier := 1.0) -> void:
+		sim.receive_attack(target, attacker.attack, _source())
+		sim.incinerate(target, attacker, 5, 5, BattleSim.FRAMES_PER_SECOND)
 
 ## The minion button of the elemental colossi: 3 minions at frame of
 ## animation while at most 3 are alive.
