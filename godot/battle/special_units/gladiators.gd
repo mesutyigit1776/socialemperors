@@ -14,7 +14,10 @@ const UNITS := {
 	2062: "orc_spectrum",
 	2019: "bull_rider",
 	2020: "silver_paladin",
+	2036: "golden_paladin",
 }
+## The 8 directions in which the Golden Paladin throws a fireball.
+const PALADIN_STEPS: Array[Vector2i] = [Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1)]
 const COOLDOWN_OLD := 25
 ## The frame of the boomerang animation for each direction of the client;
 ## at that frame the boomerang hits the enemies on that side.
@@ -122,6 +125,43 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				circular_push(sim, unit, 3, 10, int(atk / 2), 2), 4), Callable(), "", COOLDOWN_OLD)
 			add(ability, 1, "Auto Heal", "btn_autoHeal_2020", SpecialAttacks.Frames.new(sim, unit, SP2, [25], func() -> void:
 				sim.heal(unit, 500, unit)), Callable(), "", COOLDOWN_OLD)
+		"golden_paladin":
+			# For 6 seconds, at frame 12 of each loop, a ball of light flies 3
+			# to 8 tiles in a random direction; every third ball, from the
+			# first, flies to the nearest enemy in range. Where it lands, the
+			# 5 nearest enemy units within 2 tiles take half the attack and
+			# fly 2 tiles.
+			var shots := [0]
+			add(ability, 0, "Fireball Storm", "2036_boton_especial_02", SpecialAttacks.Frames.new(sim, unit, SP1, [12], func() -> void:
+				_paladin_ball(sim, unit, shots), 6))
+			# A golden bubble: 16 frames later the 4 nearest enemy units in range
+			# turn to gold: they cannot act for 5 seconds and take 5 points a
+			# second. The bubble goes after 3 seconds.
+			add(ability, 1, "Convert to Gold", "2036_boton_especial_01", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP2, 13 + 3 * BattleSim.FRAMES_PER_SECOND, {13: func() -> void:
+					show_particle(sim, unit, unit.tile + Vector2i(2, 2), MagicParticles.GOLDEN_SEAL)
+					sim.after(16, func() -> void:
+						for enemy in sim.items_near(unit.tile, unit.attack_range, 4, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+								return item.is_unit() and not item.dead):
+							sim.freeze_with_damage(enemy, unit, 5, 5, BattleSim.FRAMES_PER_SECOND)
+							show_particle(sim, unit, enemy.tile, MagicParticles.STARS))}, Callable(), true))
+
+
+static func _paladin_ball(sim: BattleSim, unit: BattleFighter, shots: Array) -> void:
+	var tile: Vector2i = unit.tile + PALADIN_STEPS[sim.rng.randi_range(0, PALADIN_STEPS.size() - 1)] * sim.rng.randi_range(3, 8)
+	if shots[0] % 3 == 0:
+		var target := sim.nearest_enemy(unit, unit.tile, unit.attack_range)
+		if target != null:
+			tile = target.tile
+	shots[0] += 1
+	tile = tile.clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+	sim.shoot_at(unit, tile, "p.lightBall", func(_shot: BattleProjectile) -> void:
+		sim.effect("b.energy", tile)
+		for enemy in sim.items_near(tile, 2, 5, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+				return item.is_unit() and not item.dead):
+			sim.receive_attack(enemy, unit.attack / 2, unit if unit in sim.fighters else null)
+			if not enemy.dead:
+				sim.push_in_air(enemy, unit, 2))
 
 
 ## The boomerang hits the 5 nearest enemy units within 7 tiles on the side

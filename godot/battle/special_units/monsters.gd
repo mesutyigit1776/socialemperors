@@ -6,11 +6,14 @@ extends SpecialUnit
 const UNITS := {
 	2067: "invisible_killer",
 	2102: "medieval_samurai",
+	2101: "ether_messiah",
 	715: "muerte",
 	2137: "swap_monster",
 	782: "spiky_spider",
 }
 const COOLDOWN_OLD := 25
+const MESSIAH := 2101
+const MESSIAH_AXE_SECONDS := 6
 
 
 static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, kind: String) -> void:
@@ -27,6 +30,42 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					sim.state_changed.emit(unit)
 					if not unit.dead:
 						_stars(sim, unit)))
+		"ether_messiah":
+			add(ability, 0, "Mega Slash", "2101_botones_ataques_sw1", _messiah_axe(sim, unit), has_target(), "No target within range")
+			# For 10 seconds attacks do nothing to the Messiah.
+			add(ability, 1, "Ultra Fireball", "2101_botones_ataques_sw2", SpecialAttacks.Frames.new(sim, unit, SP2, [35], func() -> void:
+				if unit.untouchable:
+					return
+				unit.untouchable = true
+				sim.after(10 * BattleSim.FRAMES_PER_SECOND, func() -> void: unit.untouchable = false)), Callable(), "No target within range")
+			# For 8 seconds, at frame 5 of each loop, the 10 nearest enemy units
+			# within 5 tiles take a quarter of the attack and fly 5 tiles.
+			add(ability, 2, "Hyper Whirlwind", "2101_botones_ataques_sw5", SpecialAttacks.Frames.new(sim, unit, SP3, [5], func() -> void:
+				for enemy in sim.items_near(unit.tile, 5, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_push)):
+					sim.receive_attack(enemy, unit.attack / 4, unit)
+					if not enemy.dead:
+						sim.push_in_air(enemy, unit, 5), 8).with_incapacitate(false))
+			# Two ghosts of the Messiah go 5 tiles up and down from him and do
+			# the axe attack; then the Messiah does it too. The ghosts go away
+			# after their attack.
+			add(ability, 3, "God Minions", "2101_botones_ataques_sw3", func(_s: BattleSim, _f: BattleFighter) -> void:
+				unit.incapacitated = true
+				sim.state_changed.emit(unit)
+				for ghost_step: Array in [[Vector2i(0, 5), 15], [Vector2i(0, -5), 18]]:
+					var ghost := sim.spawn(sim.config_item(MESSIAH), unit.tile + ghost_step[0], unit.team)
+					if ghost == null:
+						continue
+					sim.after(ghost_step[1], func() -> void:
+						if ghost.dead:
+							return
+						_messiah_axe(sim, ghost).execute()
+						sim.after(MESSIAH_AXE_SECONDS * BattleSim.FRAMES_PER_SECOND + 15, func() -> void:
+							if ghost in sim.fighters:
+								sim.remove_item(ghost)))
+				sim.after(18, func() -> void:
+					if not unit.dead:
+						_messiah_axe(sim, unit).execute()))
 		"medieval_samurai":
 			# The first unit of the directional attack dies when it has at most
 			# 500 life, else it takes 300 points and flies 10 tiles; the
@@ -127,3 +166,12 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 
 static func _stars(sim: BattleSim, unit: BattleFighter) -> void:
 	sim.particle(unit, unit.tile, MagicParticles.STARS, 0, 0, func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void: pass, true)
+
+
+## For 6 seconds, at frame 5 of each loop, each unit of a directional attack
+## of 5 tiles with a radius of 3 takes 5 points.
+static func _messiah_axe(sim: BattleSim, unit: BattleFighter) -> SpecialAttacks.Frames:
+	return SpecialAttacks.Frames.new(sim, unit, SP1, [5], func() -> void:
+		for enemy in directional_hits(sim, unit, 5, 3):
+			if not enemy.dead:
+				sim.receive_attack(enemy, 5, unit), MESSIAH_AXE_SECONDS)

@@ -406,7 +406,7 @@ func heal(target: BattleFighter, amount: int, healer: BattleFighter = null) -> v
 
 ## An attack of amount points on target. attacker can be null.
 func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter) -> void:
-	if amount == 0 or target.dead:
+	if amount == 0 or target.dead or target.untouchable:
 		return
 	if target.ability != null and not target.ability.on_attacked(self, target, amount, attacker):
 		return

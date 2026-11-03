@@ -14,6 +14,7 @@ const UNITS := {
 	765: "hades",
 	781: "hefesto",
 	660: "leonidas",
+	786: "manticora",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -300,6 +301,43 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				BattleAbility.arrow_storm(sim, unit, MagicParticles.SPARTAN_SPEAR, 30, 4, 1.5, 20, 30)
 				BattleAbility.arrow_storm(sim, unit, MagicParticles.SPARTAN_SPEAR, 30, 4, 1.5, 30, 30)
 				sim.play_special(unit, SP4, 13, {}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+		"manticora":
+			ability.ranged_melee = true  # ManticoraDelegate
+			# The target, or the nearest enemy within 2 tiles, takes half the
+			# attack and is poisoned: a third of the attack a second for 6
+			# seconds, and the poison passes to 3 other units.
+			add(ability, 0, "Tail's attack", "botonManticoraTailAttack", SpecialAttacks.Frames.new(sim, unit, SP1, [20], func() -> void:
+				if unit.target == null or unit.target.dead:
+					var near := sim.nearest_enemy(unit, unit.tile, 2)
+					if near != null:
+						sim.set_target(unit, near)
+				var target := unit.target
+				if target != null and not target.dead and target.is_unit():
+					sim.receive_attack(target, unit.def.attack / 2, unit)
+					if not target.dead:
+						sim.poison(target, unit.def.attack / 3, 6, 4, unit)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 1, "Manticora's lethal shout", "botonManticoraLethalShout", SpecialAttacks.Frames.new(sim, unit, SP4, [27], func() -> void:
+				for enemy in _manticora_hits(sim, unit):
+					sim.receive_attack(enemy, unit.attack / 2, unit)
+					if enemy.is_unit() and not enemy.dead:
+						sim.stun(enemy, 8)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "Manticora's earthquake", "botonMAnticoraEarthquake", SpecialAttacks.Frames.new(sim, unit, SP3, [42], func() -> void:
+				for enemy in _manticora_hits(sim, unit):
+					sim.receive_attack(enemy, unit.attack / 2, unit)
+					if enemy.is_unit() and not enemy.dead:
+						sim.push_in_air(enemy, unit, 2)), Callable(), "", COOLDOWN_OLD)
+			# For 10 seconds, at frame 27 of each loop, a ball of light flies to
+			# the target in range and explodes on it. Without a target the
+			# Manticora stops.
+			add(ability, 3, "Manticora's enery balls", "botonManticoraEnergyBalls", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var total := 10 * BattleSim.FRAMES_PER_SECOND
+				var loop := maxi(sim.animation_frames(unit, SP2, 35), 27)
+				var events := {}
+				var start := 0
+				while start + 27 <= total:
+					events[start + 27] = func() -> void: _manticora_ball(sim, unit)
+					start += loop
+				sim.play_special(unit, SP2, total, events, Callable(), true), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -413,6 +451,26 @@ static func _hefesto_hammer(sim: BattleSim, unit: BattleFighter, frame: int) -> 
 		sim.receive_attack(target, int(unit.attack * 0.75), unit)
 		if target.is_unit() and not target.dead:
 			sim.push_in_air(target, unit, 3)
+
+
+## The 10 nearest enemy items within the range of the Manticora, not on its tile.
+static func _manticora_hits(sim: BattleSim, unit: BattleFighter) -> Array[BattleFighter]:
+	return sim.items_near(unit.tile, unit.attack_range, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool: return not item.dead)
+
+
+static func _manticora_ball(sim: BattleSim, unit: BattleFighter) -> void:
+	if unit.target == null or unit.target.dead:
+		var near := sim.nearest_enemy(unit, unit.tile, unit.attack_range)
+		if near != null:
+			sim.set_target(unit, near)
+	var target := unit.target
+	if target == null or target.dead:
+		sim.stop_special(unit)
+		return
+	if sim.distance(unit, target) > unit.attack_range:
+		return
+	sim.shoot(unit, target, "p.lightBall", unit.attack, func(_shot: BattleProjectile) -> void:
+		show_particle(sim, unit, target.tile, MagicParticles.BALL_EXPLOSION))
 
 
 ## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the

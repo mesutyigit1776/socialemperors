@@ -1025,6 +1025,10 @@ class Frames extends Attack:
 		action = frame_action
 		seconds = duration
 
+	func with_incapacitate(value: bool) -> Frames:
+		incapacitate = value
+		return self
+
 	func execute() -> void:
 		super()
 		if seconds > 0:

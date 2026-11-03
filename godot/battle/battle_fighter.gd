@@ -49,6 +49,7 @@ var levitating := false  ## The unit floats in the air (LevitateDamage, AttractD
 var damage_factor := 1.0  ## The part of each damage that the unit takes (recieveDamageModifier), see ShieldAttack.
 var invisible := false  ## Others cannot attack the unit (isInvisible of some delegates).
 var cannot_die := false  ## The life does not go below 1 (canDie of the client), during some special attacks.
+var untouchable := false  ## Attacks do nothing to the unit, for example under the shield of the Ether Messiah.
 
 # Units only.
 var ai: BattleAI
