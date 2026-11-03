@@ -50,6 +50,11 @@ var damage_factor := 1.0  ## The part of each damage that the unit takes (reciev
 var invisible := false  ## Others cannot attack the unit (isInvisible of some delegates).
 var cannot_die := false  ## The life does not go below 1 (canDie of the client), during some special attacks.
 var untouchable := false  ## Attacks do nothing to the unit, for example under the shield of the Ether Messiah.
+## The attacks of the unit do 1.5 times the damage: the berserk seal of the
+## Wolf Ancient Dragon (buffWolfMC) and the aura of the Attack Adder
+## (MagicAttackAdderMC). Both together do 2.25 times the damage.
+var wolf_buff := false
+var attack_adder_buff := false
 
 # Units only.
 var ai: BattleAI

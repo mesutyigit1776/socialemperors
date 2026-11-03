@@ -103,6 +103,7 @@ const POISON_TICK_FRAMES := 90  ## Poison hurts every 3 seconds.
 const SWALLOW_FRAMES := 15  ## A swallowed item shrinks for 0.5 seconds, then dies.
 const SWALLOW_MAX_LIFE := 500
 const ENLARGED_ATTACK := 1.5
+const BUFF_ATTACK := 1.5  ## See BattleFighter.wolf_buff.
 const EXPLOSION_DAMAGE := 500
 const KAMIKAZES: Array[int] = [575]  ## The kamikazes that explode in a chain.
 
@@ -413,6 +414,10 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var points := float(amount)
 	if attacker != null and attacker.enlarged:
 		points *= ENLARGED_ATTACK
+	if attacker != null and attacker.wolf_buff:
+		points *= BUFF_ATTACK
+	if attacker != null and attacker.attack_adder_buff:
+		points *= BUFF_ATTACK
 	if attacker != null and attacker.is_unit() and target.is_unit():
 		if attacker.def.subcat_functional == SUBCAT_SIEGE:
 			points = ceilf(points * SIEGE_DAMAGE_DONE)

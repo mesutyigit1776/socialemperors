@@ -427,6 +427,16 @@ const SCRIPTS := {
 	2024: preload("res://battle/abilities/shot_ability.gd"),
 	2049: preload("res://battle/abilities/shot_ability.gd"),
 	2040: preload("res://battle/abilities/shot_ability.gd"),
+	# Buildings and support units (step 3.2).
+	2052: preload("res://battle/abilities/attack_adder_ability.gd"),  # Attack Adder
+	883: preload("res://battle/abilities/shot_ability.gd"),  # Limit Adder (LimitAdderDelegate)
+	# Big units (step 3.2).
+	792: preload("res://battle/abilities/big_units_ability.gd"),  # Cyclops II
+	2114: preload("res://battle/abilities/big_units_ability.gd"),  # Atlas Titan
+	741: preload("res://battle/abilities/big_units_ability.gd"),  # Kong
+	770: preload("res://battle/abilities/big_units_ability.gd"),  # Mammoth
+	776: preload("res://battle/abilities/big_units_ability.gd"),  # Nuclear Godzilla
+	861: preload("res://battle/abilities/big_units_ability.gd"),  # Sphinx
 }
 
 

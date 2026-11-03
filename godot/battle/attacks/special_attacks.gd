@@ -770,20 +770,33 @@ class PowerDown extends Attack:
 					enemy.attack = enemy.def.attack)
 
 
-## The own units in range get a buff graphic for seconds (powerUpSpecialAttack).
-## The client changes only the look of the units; so does the port.
+## The own units in range get the buff of the Wolf Ancient Dragon for seconds:
+## their attacks do 1.5 times the damage (powerUpSpecialAttack, buffWolfMC).
 class PowerUp extends Attack:
 	var animation: int
 	var frames: Array
+	var area_range: int
+	var seconds: int
 
-	func _init(battle: BattleSim, owner: BattleFighter, anim: int, frame_list: Array, _area_range: int, _duration: int) -> void:
+	func _init(battle: BattleSim, owner: BattleFighter, anim: int, frame_list: Array, range_tiles: int, duration: int) -> void:
 		super(battle, owner)
 		animation = anim
 		frames = frame_list
+		area_range = range_tiles
+		seconds = duration
 
 	func execute() -> void:
 		super()
-		_play_till_end(animation, frames, func() -> void: pass)
+		_play_till_end(animation, frames, _buff)
+
+	## The own units within the range (the unit too) get the buff for seconds.
+	func _buff() -> void:
+		var allies := _allies(unit.tile, area_range, 100)
+		for ally in allies:
+			ally.wolf_buff = true
+		sim.after(seconds * BattleSim.FRAMES_PER_SECOND, func() -> void:
+			for ally in allies:
+				ally.wolf_buff = false)
 
 
 ## The unit runs to the tile at its attack range in front of it, damages the
