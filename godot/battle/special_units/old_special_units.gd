@@ -9,6 +9,7 @@ const UNITS := {
 	787: "chimera",
 	661: "conan",
 	635: "ent",
+	773: "poseidon",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -19,6 +20,11 @@ const ENT_SPIRIT := 636
 const ENT_SPIRITS := 16
 const ENT_GIANT_SECONDS := 20
 const ENT_GIANT_SCALE := 1.8
+const POSEIDON_SHOTS := 5
+const POSEIDON_SHOT_RANGE := 11
+const OCTOPUS := 624
+const OCTOPUSES := 4
+const OCTOPUS_SECONDS := 8
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -133,6 +139,39 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					for spirit in spirits:
 						if spirit in sim.fighters:
 							sim.remove_item(spirit)), Callable(), "", COOLDOWN_OLD)
+		"poseidon":
+			add(ability, 0, "Shoot Beam", "boton_tridente", func(_s: BattleSim, _f: BattleFighter) -> void: _poseidon_shot(sim, unit, POSEIDON_SHOTS),
+					Callable(), "", COOLDOWN_OLD)
+			# One enemy on each tile within 2 tiles takes 1.5 times the attack;
+			# a unit flies 4 tiles. Poseidon waits 250 ms after the animation.
+			add(ability, 1, "Smash Attack", "boton_tentaculos", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var length := maxi(sim.animation_frames(unit, SP3, 31), 31) + 8
+				sim.play_special(unit, SP3, length, {31: func() -> void:
+					for y in range(-2, 3):
+						for x in range(-2, 3):
+							var target := tile_target(sim, unit, unit.tile + Vector2i(x, y))
+							if target == null:
+								continue
+							sim.receive_attack(target, int(unit.attack * 1.5), unit)
+							if target.is_unit() and not target.dead:
+								sim.push_in_air(target, unit, 4)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			# 4 octopuses (item 624) come near Poseidon for 8 seconds and attack
+			# its target. Poseidon waits 1 second after the animation.
+			add(ability, 2, "Spawn Octospuss", "boton_pulpos", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var length := maxi(sim.animation_frames(unit, SP2, 18), 18) + BattleSim.FRAMES_PER_SECOND
+				sim.play_special(unit, SP2, length, {18: func() -> void:
+					var octopuses: Array[BattleFighter] = []
+					for i in OCTOPUSES:
+						var octopus := sim.spawn(sim.config_item(OCTOPUS), unit.tile, unit.team)
+						if octopus == null:
+							continue
+						if unit.target != null and not unit.target.dead:
+							sim.set_target(octopus, unit.target)
+						octopuses.append(octopus)
+					sim.after(OCTOPUS_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+						for octopus in octopuses:
+							if octopus in sim.fighters:
+								sim.remove_item(octopus))}, Callable(), true), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -195,6 +234,17 @@ static func _roots_wave(sim: BattleSim, unit: BattleFighter) -> void:
 							return
 						sim.push_in_air(target, unit, 1)
 						sim.receive_attack(target, unit.def.attack, unit if unit in sim.fighters else null)))
+
+
+## Poseidon throws napalm at the nearest enemy within 11 tiles at frame 22,
+## then plays the animation again until it has thrown shots times.
+static func _poseidon_shot(sim: BattleSim, unit: BattleFighter, shots: int) -> void:
+	if shots <= 0 or unit.dead:
+		return
+	sim.play_special(unit, SP1, maxi(sim.animation_frames(unit, SP1, 30), 22), {22: func() -> void:
+		var target := sim.nearest_enemy(unit, unit.tile, POSEIDON_SHOT_RANGE)
+		if target != null:
+			sim.shoot(unit, target, "p.napalm", unit.attack)}, func() -> void: _poseidon_shot(sim, unit, shots - 1), true)
 
 
 ## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the
