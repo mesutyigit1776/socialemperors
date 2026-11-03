@@ -87,7 +87,6 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			add(ability, 3, "Lluvia Laser", "botonLluviaLaser", SpecialAttacks.Frames.new(sim, unit, SP4, [1], func() -> void:
 				BattleAbility.arrow_storm(sim, unit, MagicParticles.ARCHANGEL_BEAM, 40, 2, 1.6, 10, 120)), Callable(), "", COOLDOWN_OLD)
 		"ares":
-			ability.ranged_melee = true  # AresDelegate
 			add(ability, 0, "ares_sword", "ares_sword", SpecialAttacks.Frames.new(sim, unit, SP2, [12], func() -> void: front_sword(sim, unit)),
 					Callable(), "", COOLDOWN_OLD)
 			add(ability, 1, "ares_pincer", "ares_pincer", SpecialAttacks.Frames.new(sim, unit, SP4, [10], func() -> void:
@@ -256,7 +255,6 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				if target.is_unit() and not target.dead:
 					sim.push_in_air(target, unit, 4)), Callable(), "", COOLDOWN_OLD)
 		"hefesto":
-			ability.ranged_melee = true  # HefestoDelegate
 			# For 8 seconds the hammer turns around Hefesto: at some frames of
 			# each loop the enemy nearest to some tiles takes 0.75 times the
 			# attack, and a unit flies 3 tiles.
@@ -324,7 +322,6 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				BattleAbility.arrow_storm(sim, unit, MagicParticles.SPARTAN_SPEAR, 30, 4, 1.5, 30, 30)
 				sim.play_special(unit, SP4, 13, {}, Callable(), true), Callable(), "", COOLDOWN_OLD)
 		"manticora":
-			ability.ranged_melee = true  # ManticoraDelegate
 			# The target, or the nearest enemy within 2 tiles, takes half the
 			# attack and is poisoned: a third of the attack a second for 6
 			# seconds, and the poison passes to 3 other units.
