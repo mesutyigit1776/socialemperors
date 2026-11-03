@@ -12,6 +12,8 @@ const UNITS := {
 	773: "poseidon",
 	778: "zeus", 828: "zeus",
 	765: "hades",
+	781: "hefesto",
+	660: "leonidas",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
@@ -29,6 +31,17 @@ const OCTOPUSES := 4
 const OCTOPUS_SECONDS := 8
 const ZEUS_HEAL := 300
 const HELL_ABYSS := 7
+## Frame of the Hefesto hammer animation -> the tiles it hits around him.
+const HEFESTO_HAMMER := {
+	12: [Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2)], 14: [Vector2i(0, 1), Vector2i(0, 2)],
+	16: [Vector2i(-1, 1), Vector2i(-2, 1), Vector2i(-1, 2)], 18: [Vector2i(-1, 0), Vector2i(-2, 0)],
+	20: [Vector2i(-1, -1), Vector2i(-2, -1), Vector2i(-1, -2)], 22: [Vector2i(0, -1), Vector2i(0, -2)],
+	24: [Vector2i(1, -1), Vector2i(2, -1), Vector2i(1, -2)], 26: [Vector2i(1, 0), Vector2i(2, 0)],
+}
+const SPARTAN := 663
+const SPARTAN_STEPS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+const SPARTAN_SECONDS := 20
+const SHIELD_WALL_SECONDS := 10
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -219,6 +232,74 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				sim.receive_attack(target, 500, unit)
 				if target.is_unit() and not target.dead:
 					sim.push_in_air(target, unit, 4)), Callable(), "", COOLDOWN_OLD)
+		"hefesto":
+			ability.ranged_melee = true  # HefestoDelegate
+			# For 8 seconds the hammer turns around Hefesto: at some frames of
+			# each loop the enemy nearest to some tiles takes 0.75 times the
+			# attack, and a unit flies 3 tiles.
+			add(ability, 0, "hefesto_big", "hefesto_big", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var total := 8 * BattleSim.FRAMES_PER_SECOND
+				var loop := maxi(sim.animation_frames(unit, SP3, 30), 26)
+				var events := {}
+				var start := 0
+				while start < total:
+					for frame: int in HEFESTO_HAMMER:
+						if start + frame <= total:
+							events[start + frame] = _hefesto_hammer.bind(sim, unit, frame)
+					start += loop
+				sim.play_special(unit, SP3, total, events), Callable(), "", COOLDOWN_OLD)
+			# Anvils fall on 15 % of the tiles within 5 tiles of the target,
+			# within 3 seconds; the enemy nearest to each, within 1 tile, takes
+			# half the attack.
+			add(ability, 1, "hefesto_rain", "hefesto_rain", SpecialAttacks.Frames.new(sim, unit, SP2, [9], func() -> void:
+				var centre := unit.target.tile if unit.target != null and not unit.target.dead else unit.tile
+				for x in range(-5, 6):
+					for y in range(-5, 6):
+						var tile := centre + Vector2i(x, y)
+						if sim.rng.randf() > 0.15 or tile.x <= 0 or tile.y <= 0 or tile.x >= IsoGrid.MAP_TILES or tile.y >= IsoGrid.MAP_TILES:
+							continue
+						sim.particle(unit, tile, MagicParticles.ANVIL, 0, roundi(sim.rng.randf() * 3 * BattleSim.FRAMES_PER_SECOND),
+								func(_a: BattleFighter, _t: BattleFighter, _v: int) -> void:
+									var found := sim.items_near(tile, 1, 1, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+										return not item.dead and item.is_valid_target())
+									if not found.is_empty():
+										sim.receive_attack(found[0], unit.attack / 2, unit if unit in sim.fighters else null), true)),
+					Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "hefesto_smash", "hefesto_smash", SpecialAttacks.Frames.new(sim, unit, SP1, [10], func() -> void:
+				samurai_whirlwind(sim, unit, 5, 1.5)), Callable(), "", COOLDOWN_OLD)
+		"leonidas":
+			# The nearest enemy within 2 tiles flies 20 tiles when it is a unit
+			# with a population below 10.
+			add(ability, 0, "Spartan kick", "botonSpartanKick", SpecialAttacks.Frames.new(sim, unit, SP1, [13], func() -> void:
+				var target := sim.nearest_enemy(unit, unit.tile, 2)
+				if target != null and target.is_unit() and target.def.population < 10:
+					sim.push_in_air(target, unit, 20, roundi(1.5 * BattleSim.FRAMES_PER_SECOND))), Callable(), "", COOLDOWN_OLD)
+			# For 10 seconds each attack on Leonidas does the least damage (the
+			# client sets the attack to 0 before the random part and the defence).
+			add(ability, 1, "Shield wall", "botonShieldWall", func(_s: BattleSim, _f: BattleFighter) -> void:
+				unit.damage_factor = 0.0
+				sim.play_special(unit, SP2, SHIELD_WALL_SECONDS * BattleSim.FRAMES_PER_SECOND, {}, func() -> void: unit.damage_factor = 1.0),
+				Callable(), "", COOLDOWN_OLD)
+			# 4 spartans (item 663) come beside Leonidas for 20 seconds.
+			add(ability, 2, "Spartan Battlecry", "botonBattlecry", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var spartans: Array[BattleFighter] = []
+				for step in SPARTAN_STEPS:
+					var spartan := sim.spawn(sim.config_item(SPARTAN), unit.tile + step, unit.team)
+					if spartan == null:
+						continue
+					var target := unit.target if unit.target != null and not unit.target.dead else sim.nearest_enemy(spartan, unit.tile, 10)
+					if target != null:
+						sim.set_target(spartan, target)
+					spartans.append(spartan)
+				sim.play_special(unit, SP3, 2 * BattleSim.FRAMES_PER_SECOND, {}, Callable(), true)
+				sim.after(SPARTAN_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					for spartan in spartans:
+						if spartan in sim.fighters:
+							sim.remove_item(spartan)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Spear Rain", "botonSpearRain", func(_s: BattleSim, _f: BattleFighter) -> void:
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.SPARTAN_SPEAR, 30, 4, 1.5, 20, 30)
+				BattleAbility.arrow_storm(sim, unit, MagicParticles.SPARTAN_SPEAR, 30, 4, 1.5, 30, 30)
+				sim.play_special(unit, SP4, 13, {}, Callable(), true), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -320,6 +401,18 @@ static func _zeus_strikes(sim: BattleSim, unit: BattleFighter) -> void:
 			if not enemy.dead:
 				sim.push_in_air(enemy, unit, 3)
 				sim.electrocute(enemy, enemy, 0, 10, 3))
+
+
+static func _hefesto_hammer(sim: BattleSim, unit: BattleFighter, frame: int) -> void:
+	for offset: Vector2i in HEFESTO_HAMMER[frame]:
+		var found := sim.items_near(unit.tile + offset, 1, 1, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+			return not item.dead and item.is_valid_target())
+		if found.is_empty():
+			continue
+		var target: BattleFighter = found[0]
+		sim.receive_attack(target, int(unit.attack * 0.75), unit)
+		if target.is_unit() and not target.dead:
+			sim.push_in_air(target, unit, 3)
 
 
 ## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the
