@@ -515,6 +515,23 @@ const SCRIPTS := {
 	2077: preload("res://battle/abilities/god_units_ability.gd"),  # Elemental Fire Colossus
 	2153: preload("res://battle/abilities/god_units_ability.gd"),  # Tiny Fire God
 	2155: preload("res://battle/abilities/god_units_ability.gd"),  # Tiny Water God
+	# Dragons that share a delegate with a unit above (step 3.2).
+	671: preload("res://battle/abilities/furious_red_dragon_ability.gd"),  # FuriousRedDragonDelegate
+	832: preload("res://battle/abilities/furious_red_dragon_ability.gd"),  # FuriousRedDragonDelegate
+	833: preload("res://battle/abilities/lightning_dragon_ability.gd"),  # LightningDragonDelegate
+	839: preload("res://battle/abilities/infernal_dragon_ability.gd"),  # InfernalDragonDelegate
+	2045: preload("res://battle/abilities/dual_dragon_ability.gd"),  # DualGodsDragonDelegate
+	2026: preload("res://battle/abilities/dual_dragon_ability.gd"),  # FrostFireDragonDelegate
+	708: preload("res://battle/abilities/shot_ability.gd"),
+	835: preload("res://battle/abilities/shot_ability.gd"),
+	695: preload("res://battle/abilities/shot_ability.gd"),
+	834: preload("res://battle/abilities/shot_ability.gd"),
+	723: preload("res://battle/abilities/shot_ability.gd"),
+	837: preload("res://battle/abilities/shot_ability.gd"),
+	714: preload("res://battle/abilities/dual_dragon_ability.gd"),  # Two-head dragon
+	836: preload("res://battle/abilities/dual_dragon_ability.gd"),  # Two-head dragon
+	736: preload("res://battle/abilities/dual_dragon_ability.gd"),  # Two-head dragon
+	838: preload("res://battle/abilities/dual_dragon_ability.gd"),  # Two-head dragon
 }
 
 

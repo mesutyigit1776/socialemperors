@@ -1,46 +1,62 @@
 class_name DualDragonAbility
 extends BattleAbility
-## The 2-Head Holydeath Dragon and the 2-Head Frostfire Dragon
-## (DualGodsDragonDelegate and FrostFireDragonDelegate of the client). Their
-## attacks turn: a fire beam (special attack 2), a freeze beam (special attack
-## 3), then both beams (special attack 1). Each beam leaves after the shot
-## delay and hurts with its attack when it ends, after 0.7 seconds. A beam goes
-## to another unit near the dragon than the last chosen one when there is one.
-## When the dragon walks, the attack stops. The beams of the Frostfire Dragon
-## also set the target on fire (10 damage every 700 ms, 5 times) or freeze it
-## (5 times 700 ms, 10 damage each time) when they start.
+## The two-head dragons (DualGodsDragonDelegate, FrostFireDragonDelegate,
+## DoubleHeadDragonDelegate and DoubleHeadDragon2Delegate of the client).
+## Their attacks turn: the first beam, the second beam, then both beams, each
+## in its own special animation. Each beam leaves after the shot delay and
+## hurts with the attack when it ends. A beam goes to another unit near the
+## dragon than the last chosen one when there is one. When the dragon walks,
+## the attack stops. Some beams also act on the target when they start: they
+## set it on fire, freeze it or hold it with electricity (10 damage each
+## time, 5 times).
 ##
-## Its limit attack (lightning beams) starts only from the button of the
-## player, see roadmap step 3.2.
+## Its limit attack starts only from the button of the player, see
+## special_units/.
 
 const FIRE_BEAM := "p.fireBeam"
 const FREEZE_BEAM := "p.freezeBeam"
-const BEAM_FRAMES := 21
 const FREEZE := 1
 const FIRE := 2
 const BOTH := 3
-const FROSTFIRE := 2023
+const SP1 := UnitSprite.Action.SPECIAL
+const SP2 := SP1 + 1
+const SP3 := SP1 + 2
+## Item id -> [the beam of attack 2, the beam of attack 1, the animations of
+## attack 2, 1 and both, the effect of each beam ("burn", "freeze", "shock" or
+## ""), the frames between the effect ticks, the frames of a beam].
+const KINDS := {
+	2043: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP3, SP1], ["", ""], 21, 21],  # 2-Head Holydeath Dragon
+	2045: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP3, SP1], ["", ""], 21, 21],
+	2023: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP3, SP1], ["burn", "freeze"], 21, 21],  # 2-Head Frostfire Dragon
+	2026: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP3, SP1], ["burn", "freeze"], 21, 21],
+	714: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP1, SP3], ["burn", "freeze"], 30, 30],  # DoubleHeadDragonDelegate
+	836: [FIRE_BEAM, FREEZE_BEAM, [SP2, SP1, SP3], ["burn", "freeze"], 30, 30],
+	736: ["p.lightBeam", "p.electricityBeam", [SP2, SP1, SP3], ["shock", "shock"], 30, 30],  # DoubleHeadDragon2Delegate
+	838: ["p.lightBeam", "p.electricityBeam", [SP2, SP1, SP3], ["shock", "shock"], 30, 30],
+}
 const EFFECT_TICKS := 5
 const EFFECT_DAMAGE := 10
-const EFFECT_INTERVAL := 21  ## 700 ms.
 
 var _next := 2
 var _current := 0
 var _selected: BattleFighter
 var _attack_id := 0
 var _beams := 0
+var _kind: Array = KINDS[2043]
 var _effects := false
 
 
 func configure(item_id: int) -> void:
-	_effects = item_id == FROSTFIRE
+	_kind = KINDS.get(item_id, KINDS[2043])
+	_effects = _kind[3][0] != ""
+	beam_frames = _kind[5]
 
 
 func _init() -> void:
 	shot_delay = 13
 	shot_graphic = FIRE_BEAM
 	beam = true
-	beam_frames = BEAM_FRAMES
+	beam_frames = 21
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
@@ -50,7 +66,7 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 	_current = _next
 	_attack_id += 1
 	var id := _attack_id
-	var action := {FIRE: UnitSprite.Action.SPECIAL + 1, FREEZE: UnitSprite.Action.SPECIAL + 2, BOTH: UnitSprite.Action.SPECIAL}[_current] as int
+	var action: int = _kind[2][{FIRE: 0, FREEZE: 1, BOTH: 2}[_current]]
 	sim.play_special(fighter, action, 1 << 20)
 	sim.after(shot_delay, func() -> void:
 		if id != _attack_id:
@@ -62,10 +78,10 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			_current = 0
 			return
 		if _current == BOTH:
-			_fire(sim, fighter, FIRE_BEAM, id)
-			_fire(sim, fighter, FREEZE_BEAM, id)
+			_fire(sim, fighter, 0, id)
+			_fire(sim, fighter, 1, id)
 		else:
-			_fire(sim, fighter, FIRE_BEAM if _current == FIRE else FREEZE_BEAM, id))
+			_fire(sim, fighter, 0 if _current == FIRE else 1, id))
 	return false
 
 
@@ -76,17 +92,21 @@ func on_update(sim: BattleSim, fighter: BattleFighter) -> void:
 			_reset(sim, fighter)
 
 
-func _fire(sim: BattleSim, fighter: BattleFighter, graphic: String, id: int) -> void:
+## Fires beam 0 (the beam of attack 2) or beam 1.
+func _fire(sim: BattleSim, fighter: BattleFighter, which: int, id: int) -> void:
 	var target := _different_target(sim, fighter)
 	if target == null:
 		return
 	_beams += 1
-	if _effects and target.is_unit():
-		if graphic == FIRE_BEAM:
-			sim.incinerate(target, fighter, EFFECT_DAMAGE, EFFECT_TICKS, EFFECT_INTERVAL)
-		else:
-			sim.freeze_with_damage(target, fighter, EFFECT_DAMAGE, EFFECT_TICKS, EFFECT_INTERVAL)
-	sim.shoot(fighter, target, graphic, fighter.attack, func(_shot: BattleProjectile) -> void:
+	if target.is_unit():
+		match _kind[3][which]:
+			"burn":
+				sim.incinerate(target, fighter, EFFECT_DAMAGE, EFFECT_TICKS, _kind[4])
+			"freeze":
+				sim.freeze_with_damage(target, fighter, EFFECT_DAMAGE, EFFECT_TICKS, _kind[4])
+			"shock":
+				sim.electrocute(target, fighter, EFFECT_DAMAGE, EFFECT_TICKS, _kind[4])
+	sim.shoot_beam(fighter, target, target.tile, _kind[which], beam_frames, fighter.attack, func(_shot: BattleProjectile) -> void:
 		_beams -= 1
 		if id == _attack_id and _beams <= 0:
 			_reset(sim, fighter))

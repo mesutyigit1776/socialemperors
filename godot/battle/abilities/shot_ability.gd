@@ -11,7 +11,9 @@ extends BattleAbility
 ## "cycle" ([intervals, durations] of a cycle of special animations; the unit
 ## does not attack while one plays, as in the client), "shots" (a list of
 ## [delay in frames, graphic, blast graphic or ""]: each attack fires these
-## shots at the target instead of the normal shot, each with the attack).
+## shots at the target instead of the normal shot, each with the attack),
+## "hold" (when the shot leaves, electricity holds the target for 1 second
+## if its life is at most this number; 0: any target).
 const UNITS := {
 	818: {"shot": "p.arrow", "delay": 5},  # Skeleton Archer (ArcherSkeletonDelegate)
 	850: {"shot": "p.lightBall", "delay": 12},  # Bahamut Draggy
@@ -157,14 +159,22 @@ const UNITS := {
 	885: {"shots": [[10, "p.turkSpear", ""]]},  # Turkish Horseman (TurkishHorsemanDelegate)
 	2115: {"shot": "p.dualPurple", "delay": 7},  # GodEvilMinionDelegate
 	2091: {"shot": "p.purpleBall", "delay": 7},  # GodSoulMinionDelegate
+	708: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]]},  # GoldenDragonSpecialDelegate: a second shot 100 ms later
+	835: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]]},  # GoldenDragonSpecialDelegate
+	695: {"shot": "p.lightBeam", "delay": 12, "beam": 30, "hold": 350},  # LightDragonDelegate
+	834: {"shot": "p.lightBeam", "delay": 12, "beam": 30, "hold": 350},  # LightDragonDelegate
+	723: {"shot": "p.beamBlackDragonFire", "delay": 12, "beam": 30, "hold": 0},  # BlackDragonSpecialDelegate
+	837: {"shot": "p.beamBlackDragonFire", "delay": 12, "beam": 30, "hold": 0},  # BlackDragonSpecialDelegate
 }
 
 var _shots: Array = []
+var _hold := -1
 
 
 func configure(item_id: int) -> void:
 	var data: Dictionary = UNITS.get(item_id, {})
 	_shots = data.get("shots", [])
+	_hold = data.get("hold", -1)
 	shot_graphic = data.get("shot", "")
 	shot_delay = data.get("delay", 0)
 	if data.has("beam"):
@@ -185,9 +195,13 @@ func configure(item_id: int) -> void:
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
+	var target := fighter.target
+	if _hold >= 0 and target != null:
+		sim.after(maxi(shot_delay, 1), func() -> void:
+			if not fighter.dead and not target.dead and (_hold == 0 or target.max_life() <= _hold):
+				sim.electrocute(target, fighter, 0, 10, 3))
 	if _shots.is_empty():
 		return true
-	var target := fighter.target
 	for shot: Array in _shots:
 		sim.after(maxi(shot[0], 1), func() -> void:
 			if fighter.dead or target == null or target.dead:
