@@ -8,10 +8,17 @@ const UNITS := {
 	788: "ares",
 	787: "chimera",
 	661: "conan",
+	635: "ent",
 }
 const COOLDOWN_OLD := 25
 const ARCHANGEL_AURA_FRAMES := 220
 const CHIMERA_BEAMS := 3
+const SACRED_RAIN := 5
+const HAIL := 3
+const ENT_SPIRIT := 636
+const ENT_SPIRITS := 16
+const ENT_GIANT_SECONDS := 20
+const ENT_GIANT_SCALE := 1.8
 const CHIMERA_BEAM_FRAMES := 30
 const CHIMERA_BEAM_PAUSE := 8  ## 250 ms.
 ## The steps of the thrust of the Archangel (doThrust of the client).
@@ -98,6 +105,34 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				spin[second * BattleSim.FRAMES_PER_SECOND] = func() -> void: spin_blow(sim, unit)
 			add(ability, 3, "Spinning Blow", "botonSpinningBlow", func(_s: BattleSim, _f: BattleFighter) -> void:
 				sim.play_special(unit, SP4, 5 * BattleSim.FRAMES_PER_SECOND, spin), Callable(), "", COOLDOWN_OLD)
+		"ent":
+			add(ability, 0, "Earth calls", "botonCuracion", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.cast_unit_spell(SACRED_RAIN, _ent_spell_tile(sim, unit)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 1, "Stone Rain", "botonStoneRain", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.cast_unit_spell(HAIL, _ent_spell_tile(sim, unit)), Callable(), "", COOLDOWN_OLD)
+			add(ability, 2, "Protecting roots", "botonRaices", func(_s: BattleSim, _f: BattleFighter) -> void: _roots_wave(sim, unit),
+					Callable(), "", COOLDOWN_OLD)
+			# The Ent grows for 20 seconds and 16 spirits of the woods (item
+			# 636) come near it. Growing does not change the
+			# battle.
+			add(ability, 3, "Giant Ent", "botonGiantEnt", func(_s: BattleSim, _f: BattleFighter) -> void:
+				var spirits: Array[BattleFighter] = []
+				for i in ENT_SPIRITS:
+					var spirit := sim.spawn(sim.config_item(ENT_SPIRIT), unit.tile, unit.team)
+					if spirit == null:
+						continue
+					if spirit.ability != null:
+						spirit.ability.scale = 0.6
+					var target := unit.target if unit.target != null and not unit.target.dead else sim.nearest_enemy(spirit, unit.tile, 10)
+					if target != null:
+						sim.set_target(spirit, target)
+					spirits.append(spirit)
+				unit.ability.scale = ENT_GIANT_SCALE
+				sim.after(ENT_GIANT_SECONDS * BattleSim.FRAMES_PER_SECOND, func() -> void:
+					unit.ability.scale = 1.0
+					for spirit in spirits:
+						if spirit in sim.fighters:
+							sim.remove_item(spirit)), Callable(), "", COOLDOWN_OLD)
 
 
 ## One enemy item on tile, or null (getNearestTarget with a range of 0).
@@ -134,6 +169,32 @@ static func _arcangel_line(sim: BattleSim, unit: BattleFighter, burn: bool) -> v
 			sim.push_in_air(target, unit, sim.rng.randi_range(1, 5))
 			if burn:
 				sim.incinerate(target, unit, unit.attack / 2, 5, BattleSim.FRAMES_PER_SECOND)
+
+
+## The Ent casts its spells on the corner tile half the area of its Sacred
+## Rain right and down from it; the Hail uses the area of the Sacred Rain too.
+static func _ent_spell_tile(sim: BattleSim, unit: BattleFighter) -> Vector2i:
+	var def := sim.config.get_spell(SACRED_RAIN) if sim.config != null else null
+	var area: int = def.areas[sim.config.spell_level(sim.spell_uses.get(SACRED_RAIN, 0)) - 1] if def != null else 0
+	var half := roundi(area / 2.0)
+	return unit.tile + Vector2i(half, half)
+
+
+## Roots grow every 500 ms on each tile of a square around the Ent that gets
+## one tile larger each time, 6 times (the first square is empty). The enemy
+## unit on a tile takes the attack of the Ent and flies 1 tile.
+static func _roots_wave(sim: BattleSim, unit: BattleFighter) -> void:
+	for dist in 6:
+		sim.after(dist * BattleSim.FRAMES_PER_SECOND / 2 + 15, func() -> void:
+			for y in range(-dist, dist + 1):
+				for x in range(-dist, dist + 1):
+					if x == 0 and y == 0:
+						continue
+					sim.particle(unit, unit.tile + Vector2i(x, y), MagicParticles.ROOT, 0, 0, func(_a: BattleFighter, target: BattleFighter, _v: int) -> void:
+						if target == null or not target.is_unit() or target.dead:
+							return
+						sim.push_in_air(target, unit, 1)
+						sim.receive_attack(target, unit.def.attack, unit if unit in sim.fighters else null)))
 
 
 ## The 3 x 3 tiles in front of the unit: one enemy on each takes twice the

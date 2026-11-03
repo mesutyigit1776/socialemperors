@@ -47,6 +47,9 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	_ui = ui
 	_cast_ui = cast_ui
 	_spell_graphics = spell_graphics
+	# For the units that cast spells of the spell book.
+	quest.sim.spell_graphics = spell_graphics
+	quest.sim.spell_uses = village.spell_uses()
 	_config = config
 	var island := quest.island
 	add_child(_view)

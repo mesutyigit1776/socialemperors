@@ -38,6 +38,8 @@ signal gold_earned(amount: int)
 signal look_changed(fighter: BattleFighter)
 ## An effect graphic of <data>/fx plays once on tile, see effect().
 signal effect_played(graphic: String, tile: Vector2i)
+## A unit made its own spell of the spell book, see cast_unit_spell().
+signal spell_created(spell: BattleSpell)
 ## An attack pushed the unit through the air to its new tile, see push_in_air().
 signal pushed(unit: BattleFighter, frames: int)
 ## The unit changes to new_team, see convert(). The signal comes before the
@@ -110,6 +112,11 @@ var frame := 0
 var player_level := 1
 ## The configuration, for the units that abilities bring; can be null.
 var config: GameConfig
+## The casts of each spell of the player (spell id -> casts) and how the
+## spell graphics play (see BattleSpell.read_graphics()), for the units that
+## cast spells of the spell book, see cast_unit_spell().
+var spell_uses := {}
+var spell_graphics := {}
 var fighters: Array[BattleFighter] = []  ## In the order in which they act in each frame.
 var projectiles: Array[BattleProjectile] = []
 var _removed: Array[BattleFighter] = []  # Items that left the map; others can still target them.
@@ -885,6 +892,19 @@ func change_look(fighter: BattleFighter, look: GameConfig.ItemDef) -> void:
 ## Plays the effect graphic once on tile. Only the view uses it.
 func effect(graphic: String, tile: Vector2i) -> void:
 	effect_played.emit(graphic, tile)
+
+
+## A unit casts spell_id on tile with its own copy of the spell, at the level
+## that the casts of the player give (MagicSpell.spellLevel of the client).
+func cast_unit_spell(spell_id: int, tile: Vector2i) -> void:
+	var def := config.get_spell(spell_id) if config != null else null
+	if def == null:
+		return
+	var spell := BattleSpell.create(def, config, spell_graphics.get(def.img_name, {}))
+	if spell == null:
+		return
+	spell_created.emit(spell)
+	spell.cast(self, tile, config.spell_level(spell_uses.get(spell_id, 0)))
 
 
 ## The item of the configuration, or null when the battle has no configuration.

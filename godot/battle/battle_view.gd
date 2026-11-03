@@ -133,6 +133,7 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 	sim.shot_landed.connect(_on_shot_landed)
 	sim.state_changed.connect(_on_state_changed)
 	sim.particle_added.connect(_on_particle_added)
+	sim.spell_created.connect(show_spell)
 	sim.effect_played.connect(func(graphic: String, tile: Vector2i) -> void:
 		_play_effect(graphic, _shot_layer, IsoGrid.tile_to_map(tile)))
 	sim.pushed.connect(func(unit: BattleFighter, frames: int) -> void:
