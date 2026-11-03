@@ -749,6 +749,9 @@ func _teleport(unit: BattleFighter, tile: Vector2i) -> void:
 				unit.walk_point = null
 				unit.path.clear()
 				unit.moving = false
+			# The move ends here: an ordered move gives the unit back to its AI.
+			if unit.ai != null:
+				unit.ai.on_arrived(self, unit)
 			play_special(unit, first + 1, animation_frames(unit, first + 1, 20), {}, func() -> void:
 				unit.ability.teleport_ready = frame + 3 * FRAMES_PER_SECOND, true)), true)
 

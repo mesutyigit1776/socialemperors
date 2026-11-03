@@ -8,7 +8,9 @@ extends BattleAbility
 ## The limit attacks of these dragons (smash, healing beams) start only from
 ## the buttons of the player, see roadmap step 3.2.
 
-## Item id -> [beam graphic in <data>/fx, shot delay in frames].
+## Item id -> [beam graphic in <data>/fx, shot delay in frames]. The graphic
+## can also be a list of [beam, blast] that the beams take in turn, or at
+## random when a third element "random" follows.
 const UNITS := {
 	891: ["p.blackBeam", 13],  # Black Bahamut Dragon
 	793: ["p.energyBeam", 13],  # Angelical Dragon
@@ -146,16 +148,56 @@ const UNITS := {
 	2369: ["p.fireBeam", 13],  # Elemental Fire Goddess (ElementalFireGoddessDelegate)
 	2370: ["", 13],  # Dark Horror Ancient Dragon (DarkHorrorAncientDragonDelegate)
 	2375: ["", 13],  # Dark Horror Ancient Dragon Rider (DarkHorrorAncientDragonDelegate)
+	# Dragons whose delegates add only button or limit logic to the beam (step 3.2).
+	2292: ["p.steamBeam", 9],  # BlackDemonEpicDragonDelegate
+	2294: ["p.steamBeam", 9],
+	2202: ["p.electricityBeam", 12],  # ElectricEpicDragonDelegate
+	2204: ["p.electricityBeam", 12],
+	2223: ["p.blueBeam", 13],  # EnelEpicDragonDelegate
+	2225: ["p.blueBeam", 13],
+	2171: ["p.electricityBeam", 13],  # ExtremeElectricDragonDelegate
+	2173: ["p.electricityBeam", 13],
+	2177: ["p.firebeamBahamut", 13],  # ExtremeFireDragonDelegate
+	2179: ["p.firebeamBahamut", 13],
+	2193: ["p.steamBeam", 13],  # ExtremeSoulDragonDelegate
+	2195: ["p.steamBeam", 13],
+	2196: ["p.goldenRay", 13],  # GoldenEpicDragonDelegate
+	2198: ["p.goldenRay", 13],
+	2205: ["p.rainbowBeam", 9],  # JewelEpicDragonDelegate
+	2207: ["p.rainbowBeam", 9],
+	2208: ["p.fireBeam", 9],  # RedHotEpicDragonDelegate
+	2210: ["p.fireBeam", 9],
+	853: ["p.firebeamBahamut", 13],  # RedBahamutDragonDelegate; the flames of its flight are in special_units/
+	855: ["p.firebeamBahamut", 13],
+	2140: ["p.greenBeam", 16],  # FourWingDragonDelegate; the flames of its flight are in special_units/
+	2142: ["p.greenBeam", 16],
+	2016: ["p.energyBeam", 13],  # SnakeDragonElecDelegate
+	2018: ["p.energyBeam", 13],
+	2180: ["p.galaxyDragon", 13],  # ExtremeBullDragonDelegate
+	2182: ["p.galaxyDragon", 13],
+	843: ["p.energyBeam", 13],  # CelestialDragonDelegate
+	2132: [[["p.hellBeam", ""], ["p.beamWater", ""], ["p.brownBeam", ""]], 20],  # ThreeHeadedElementalDragonDelegate: the heads in turn
+	2134: [[["p.hellBeam", ""], ["p.beamWater", ""], ["p.brownBeam", ""]], 20],
+	2336: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],  # CerberusAncientDragonDelegate
+	2338: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],
 }
 const BEAM_FRAMES := 15  ## The client lets a beam of a dragon last 0.5 seconds.
 
 var _beaming := false
 var _beam := 0  # Counts the beams, so that an old beam does nothing.
+var _choices: Array = []  # [beam, blast] pairs, see UNITS.
+var _random := false
+var _turn := 0
 
 
 func configure(item_id: int) -> void:
 	var data: Array = UNITS.get(item_id, ["p.energyBeam", 12])
-	shot_graphic = data[0]
+	if data[0] is Array:
+		_choices = data[0]
+		_random = data.size() > 2 and data[2] == "random"
+		shot_graphic = _choices[0][0]
+	else:
+		shot_graphic = data[0]
 	shot_delay = data[1]
 	beam = true
 	beam_frames = BEAM_FRAMES
@@ -168,11 +210,20 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 	_beam += 1
 	var beam_id := _beam
 	var target := fighter.target
+	var blast := ""
+	if not _choices.is_empty():
+		var choice: Array = _choices[sim.rng.randi_range(0, _choices.size() - 1)] if _random else _choices[_turn % _choices.size()]
+		_turn += 1
+		shot_graphic = choice[0]
+		blast = choice[1]
 	sim.after(shot_delay, func() -> void:
 		if beam_id != _beam or fighter.dead or fighter.moving or target == null or target.dead or fighter.target != target:
 			_beaming = false
 			return
+		var tile := target.tile
 		sim.shoot(fighter, target, shot_graphic, fighter.attack, func(_shot: BattleProjectile) -> void:
+			if blast != "":
+				sim.effect(blast, tile)
 			if beam_id == _beam:
 				_beaming = false))
 	return false

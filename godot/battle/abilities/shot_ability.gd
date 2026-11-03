@@ -165,6 +165,13 @@ const UNITS := {
 	834: {"shot": "p.lightBeam", "delay": 12, "beam": 30, "hold": 350},  # LightDragonDelegate
 	723: {"shot": "p.beamBlackDragonFire", "delay": 12, "beam": 30, "hold": 0},  # BlackDragonSpecialDelegate
 	837: {"shot": "p.beamBlackDragonFire", "delay": 12, "beam": 30, "hold": 0},  # BlackDragonSpecialDelegate
+	2037: {"shot": "p.rainbowBeam", "delay": 13, "beam": 21},  # RainbowDragonDelegate
+	2038: {"shot": "p.rainbowBeam", "delay": 13, "beam": 21},
+	862: {"shot": "p.electricityBeam", "delay": 13, "beam": 30},  # ElectricBahamutDragonDelegate
+	864: {"shot": "p.electricityBeam", "delay": 13, "beam": 30},
+	842: {"shot": "p.bullDragonBeam", "delay": 13, "beam": 30},  # FuriousBullDragonDelegate
+	875: {"shot": "p.lightBeam", "delay": 12, "beam": 21},  # GoldenBahamutDragonDelegate
+	877: {"shot": "p.lightBeam", "delay": 12, "beam": 21},
 }
 
 var _shots: Array = []
