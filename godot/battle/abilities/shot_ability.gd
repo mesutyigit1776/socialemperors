@@ -153,6 +153,7 @@ const UNITS := {
 	2049: {"shots": [[1, "p.crystalBall", "b.blueEnergy"]]},  # GalaxyDraggyDelegate
 	2040: {"shots": [[1, "p.catapultFireball", "b.earthFire"]]},  # SunDraggyDelegate
 	883: {"shot": "p.ballTitanHydros", "delay": 7},  # Limit Adder (LimitAdderDelegate); its limit help is in BattleAbility.add_limit().
+	733: {"shots": [[10, "p.goldenDragon", ""], [13, "p.goldenDragon", ""]]},  # Dracula (DraculaDelegate): a second shot 100 ms after the first
 }
 
 var _shots: Array = []

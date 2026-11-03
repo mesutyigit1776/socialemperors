@@ -460,6 +460,11 @@ const SCRIPTS := {
 	690: preload("res://battle/abilities/cycle_units_ability.gd"),  # Earth Merlin II
 	771: preload("res://battle/abilities/cycle_units_ability.gd"),  # Antimatter Wizard
 	796: preload("res://battle/abilities/cycle_units_ability.gd"),  # Master Wizard
+	# Halloween units (step 3.2).
+	733: preload("res://battle/abilities/shot_ability.gd"),  # Dracula
+	732: preload("res://battle/abilities/halloween_units_ability.gd"),  # Frankenstein
+	746: preload("res://battle/abilities/halloween_units_ability.gd"),  # Pumpkin Monster
+	731: preload("res://battle/abilities/halloween_units_ability.gd"),  # Witch
 }
 
 
