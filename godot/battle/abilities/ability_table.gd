@@ -58,6 +58,8 @@ const SCRIPTS := {
 	575: preload("res://battle/abilities/kamikaze_ability.gd"),  # Kamikaze
 	686: preload("res://battle/abilities/kamikaze_ability.gd"),  # Infernal Kamikaze
 	745: preload("res://battle/abilities/godzilla_ability.gd"),  # Godzilla
+	2083: preload("res://battle/abilities/minion_whirlwind_ability.gd"),  # Evil crow whirlwind
+	2154: preload("res://battle/abilities/minion_whirlwind_ability.gd"),  # Whirlwind of the earth god
 	780: preload("res://battle/abilities/grabber_ability.gd"),  # Harpy
 	789: preload("res://battle/abilities/grabber_ability.gd"),  # Hercules
 	751: preload("res://battle/abilities/hermes_ability.gd"),  # Hermes

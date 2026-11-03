@@ -13,7 +13,13 @@ const UNITS := {
 	2094: "heaven",
 	2077: "fire",
 	2086: "water",
+	2080: "forest",
+	764: "rhodas",
 }
+const COOLDOWN_OLD := 25  ## The cooldown of the first special units of the client.
+const FOREST_PLANTS := 10
+const FOREST_ROOT_DAMAGE := 25
+const FOREST_ROOT_FRAMES := 141  ## The roots let the unit go at this frame.
 
 
 static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, kind: String) -> void:
@@ -142,6 +148,41 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 				for frame in range(60, 96, 5):
 					events[frame] = func() -> void: _water_swap(battle, colossus, swirling)
 				battle.play_special(colossus, SP5, 6 * BattleSim.FRAMES_PER_SECOND, events, Callable(), true), Callable(), "", 0)
+		"forest":
+			add(ability, 0, "Mega Slash", "1_2080", SpecialAttacks.Frames.new(sim, unit, SP1, [18], func() -> void:
+				_directional_push(sim, unit, 10, 4, int(atk), 7)), has_target_in_range(10), "No target within range")
+			# The 2 nearest enemies within 3 tiles with at most 500 life are
+			# eaten. The client kills them at the end of the animation; the
+			# port kills them at the second frame of the swallow.
+			var edible := func(item: BattleFighter) -> bool: return item.max_life() <= 500
+			add(ability, 1, "Ultra Fireball", "2_2080", SpecialAttacks.Eat.new(sim, unit, SP2, [18], [115], Damages.DirectKill.new(sim, unit),
+					["sub", "sub1"], 3).with_incapacitate(true).with_filter(edible),
+					func(battle: BattleSim, fighter: BattleFighter) -> bool:
+						return battle.items_near(fighter.tile, 3, 2, BattleAbility.enemy_side(fighter), true, func(item: BattleFighter) -> bool:
+							return item.is_unit() and not item.dead and edible.call(item)).size() > 0, "No target within range")
+			# The evil crow whirlwind (item 2083) for 15 seconds.
+			add(ability, 2, "Hyper Whirlwind", "3_2080", SpecialAttacks.Frames.new(sim, unit, SP3, [25], func() -> void:
+				MinionWhirlwindAbility.summon(sim, unit, 2083, unit.tile, 15)))
+			_colossus_minions(sim, unit, ability, "4_2080", SP4, 40, 2078)
+			ability.has_limit = true
+			add(ability, BattleAbility.LIMIT_BUTTON, "", "", func(battle: BattleSim, colossus: BattleFighter) -> void:
+				battle.play_special(colossus, SP5, 6 * BattleSim.FRAMES_PER_SECOND, {29: func() -> void: _killer_roots(battle, colossus)}, Callable(), true),
+				Callable(), "", 0)
+		"rhodas":
+			add(ability, 0, "Colossus Rage", "botonColossusRage", SpecialAttacks.Frames.new(sim, unit, SP2, [14], func() -> void: _colossus_rage(sim, unit)),
+					Callable(), "", COOLDOWN_OLD)
+			# A normal shot (an arrow) at the target.
+			add(ability, 1, "Rhoda's Fury", "botonRhodasFury", SpecialAttacks.Frames.new(sim, unit, SP1, [9], func() -> void:
+				if unit.target != null and not unit.target.dead:
+					sim.shoot(unit, unit.target, BattleProjectile.DEFAULT_GRAPHIC, unit.attack)), Callable(), "", COOLDOWN_OLD)
+			# The storm hits at frame 24, then once a second, 10 times in all.
+			var storm := {}
+			for i in 10:
+				storm[24 + i * BattleSim.FRAMES_PER_SECOND] = func() -> void: _colossus_storm(sim, unit)
+			add(ability, 2, "Colossus Storm", "botonColossusStorm", func(_s: BattleSim, _f: BattleFighter) -> void:
+				sim.play_special(unit, SP4, 24 + 9 * BattleSim.FRAMES_PER_SECOND + 1, storm, Callable(), true), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Ancient's Sword", "botonAncientSword", SpecialAttacks.Frames.new(sim, unit, SP3, [10], func() -> void: _ancient_sword(sim, unit)),
+					Callable(), "", COOLDOWN_OLD)
 
 
 ## Each enemy of the directional attack takes damage and flies tiles.
@@ -180,6 +221,105 @@ static func _water_swap(sim: BattleSim, unit: BattleFighter, swirling: Array[Bat
 			sim.receive_attack(target, 150, unit)
 			if not target.dead:
 				sim.push_in_air(target, unit, 7))
+
+
+## The limit of the Forest Colossus: roots grow under the 10 nearest enemies
+## within 8 tiles. An enemy with at most 500 life is held until frame 141 of
+## the roots and then goes free. While it is held, it takes 25 points each
+## second for each held enemy, because the client starts one damage timer for
+## each of them. The other roots grow on random tiles and do nothing.
+static func _killer_roots(sim: BattleSim, unit: BattleFighter) -> void:
+	var enemies := sim.items_near(unit.tile, 8, FOREST_PLANTS, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead)
+	var held: Array[BattleFighter] = []
+	for i in FOREST_PLANTS:
+		var prey: BattleFighter = enemies[i] if i < enemies.size() else null
+		if prey != null and (prey.dead or prey.max_life() > 500):
+			prey = null
+		if prey == null:
+			var reach := unit.attack_range
+			var tile := (unit.tile + Vector2i(sim.rng.randi_range(-reach, reach), sim.rng.randi_range(-reach, reach))) \
+					.clamp(Vector2i.ZERO, Vector2i.ONE * (IsoGrid.MAP_TILES - 1))
+			sim.after(roundi(sim.rng.randf() * BattleSim.FRAMES_PER_SECOND) + 1, func() -> void:
+				sim.particle(unit, tile, MagicParticles.KILLER_ROOTS, 0, 0))
+			continue
+		held.append(prey)
+		sim.particle(unit, prey.tile, MagicParticles.KILLER_ROOTS, 0, 0)
+		prey.incapacitated = true
+		prey.swallowed = true
+		sim.state_changed.emit(prey)
+	if held.is_empty():
+		return
+	var timers := held.size()
+	for second in range(1, FOREST_ROOT_FRAMES / BattleSim.FRAMES_PER_SECOND + 1):
+		sim.after(second * BattleSim.FRAMES_PER_SECOND, func() -> void:
+			for prey in held:
+				if not prey.dead:
+					sim.receive_attack(prey, FOREST_ROOT_DAMAGE * timers, unit if unit in sim.fighters else null))
+	sim.after(FOREST_ROOT_FRAMES, func() -> void:
+		for prey in held:
+			if prey.dead:
+				continue
+			prey.swallowed = false
+			prey.incapacitated = prey.frozen or prey.stunned or prey.in_air
+			sim.state_changed.emit(prey))
+
+
+## The units within 10 tiles of a point 2 tiles beside the Rhodas Colossus
+## fly 2 tiles; one second later electricity holds each for 2 seconds and
+## takes 10 points a second.
+static func _colossus_rage(sim: BattleSim, unit: BattleFighter) -> void:
+	var epicenter := unit.tile
+	match BattleAbility.direction(unit):
+		1, 2: epicenter += Vector2i(2, -2)
+		3, 4: epicenter += Vector2i(2, 2)
+		6, 7: epicenter += Vector2i(-2, -2)
+		5, 8: epicenter += Vector2i(-2, 2)
+	for enemy in sim.items_near(epicenter, 10, 10, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool: return not item.dead):
+		if not enemy.is_unit():
+			continue
+		sim.push_in_air(enemy, unit, 2)
+		sim.after(BattleSim.FRAMES_PER_SECOND, func() -> void: sim.electrocute(enemy, unit, 10, 2, BattleSim.FRAMES_PER_SECOND))
+
+
+## The 20 nearest enemy units within 2 tiles take the attack / 2.2 and fly 3
+## tiles. The colossus takes the first of them as its target when it has none.
+static func _colossus_storm(sim: BattleSim, unit: BattleFighter) -> void:
+	for enemy in sim.items_near(unit.tile, 2, 20, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
+			return item.is_unit() and not item.dead):
+		sim.push_in_air(enemy, unit, 3)
+		sim.receive_attack(enemy, int(unit.attack / 2.2), unit)
+		if unit.target == null and not enemy.dead:
+			sim.set_target(unit, enemy)
+
+
+## The colossus cannot act for 2.5 seconds. On each tile within 2 tiles of it,
+## one enemy takes 1.5 times the attack; a unit also burns and flies 4 tiles.
+## The client shows the Force Shield spell in red; the port shows a fire
+## explosion.
+static func _ancient_sword(sim: BattleSim, unit: BattleFighter) -> void:
+	unit.incapacitated = true
+	sim.state_changed.emit(unit)
+	sim.after(roundi(2.5 * BattleSim.FRAMES_PER_SECOND), func() -> void:
+		if unit.dead:
+			return
+		unit.incapacitated = unit.frozen or unit.stunned or unit.in_air
+		sim.state_changed.emit(unit))
+	sim.particle(unit, unit.tile + Vector2i(2, 2), MagicParticles.FIRE_EXPLOSION, 0, 0)
+	sim.after(16, func() -> void:
+		if unit.dead:
+			return
+		for y in range(-2, 3):
+			for x in range(-2, 3):
+				var found := sim.items_near(unit.tile + Vector2i(x, y), 0, 1, BattleAbility.enemy_side(unit), true, func(item: BattleFighter) -> bool:
+					return not item.dead and item.is_valid_target())
+				if found.is_empty():
+					continue
+				var target: BattleFighter = found[0]
+				sim.receive_attack(target, int(unit.attack * 1.5), unit)
+				if target.is_unit() and not target.dead:
+					sim.incinerate(target, unit, int(unit.attack * 0.2), 5, BattleSim.FRAMES_PER_SECOND)
+					sim.push_in_air(target, unit, 4))
 
 
 ## A magma ball of the Fire Colossus limit: the attack, then fire.

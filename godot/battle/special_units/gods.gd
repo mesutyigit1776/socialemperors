@@ -220,11 +220,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 					.with_multiplier(1.2).with_frames([20]), Callable(), NO_TARGET_TEXT)
 			# A whirlwind (item 2154) for 12 seconds.
 			add(ability, 2, "Hyper Whirlwind", "2148_3", SpecialAttacks.Frames.new(sim, unit, SP3, [25], func() -> void:
-				var whirl := sim.spawn(sim.config_item(2154), unit.tile, unit.team)
-				if whirl != null:
-					sim.after(12 * BattleSim.FRAMES_PER_SECOND, func() -> void:
-						if not whirl.dead and whirl in sim.fighters:
-							sim.remove_item(whirl))))
+				MinionWhirlwindAbility.summon(sim, unit, 2154, unit.tile, 12)))
 			_god_minions_on(sim, unit, ability, "2148_4", SP1, 30, 2149)
 			# Of the 10 nearest enemies within 8 tiles, every second one falls
 			# into a hole and dies when it has at most 500 life (at most 6),
