@@ -25,9 +25,8 @@ const DEFAULT_ATTACK_FRAME := 10
 ## The client fades a particle out in 1 second, by default 1 second after it acts.
 const FADE_FRAMES := 30
 const DEFAULT_STAY_FRAMES := 30
-## Spells that the port does not have yet. Instant Limit fills the limit bars
-## of units, which come with their special abilities (battle stages 5 and 6).
-const NOT_IN_PORT: Array[int] = [INSTANT_LIMIT]
+## Spells that the port does not have yet. The spell book shows them grey.
+const NOT_IN_PORT: Array[int] = []
 const INSTANT_LIMIT := 13
 ## Items that the client protects from most spells.
 const SUBCAT_TOWN_HALL := 135
@@ -69,6 +68,8 @@ static func create(spell: GameConfig.SpellDef, config: GameConfig, graphic: Dict
 			result = ColossusSpell.new()
 		12:
 			result = DragonSpell.new()
+		INSTANT_LIMIT:
+			result = InstantLimitSpell.new()
 		14:
 			result = DoubleStatSpell.new(DoubleStatSpell.Stat.SPEED)
 		15:
@@ -116,7 +117,7 @@ static func describe(spell: GameConfig.SpellDef, config: GameConfig) -> Array[St
 		return created.descriptions(config)
 	var texts: Array[String] = []
 	for level in range(1, GameConfig.SPELL_LEVELS + 1):
-		texts.append(_fill(config, "SPELL_FULL_LIMIT_DESCRIPTION" if spell.id == INSTANT_LIMIT else "", [spell.areas[level - 1], spell.areas[level - 1]]))
+		texts.append("")
 	return texts
 
 

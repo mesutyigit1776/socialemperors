@@ -30,6 +30,7 @@ const TOWN_HALL := 26  # 4x4
 const TOWER := 29
 const SUMMONED_GOLEM := 630
 const WIZARDRY := 416  # 3x3
+const ANGEL := 886  # Megahealing Angel, a unit with a limit bar
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 const TILE := Vector2i(50, 50)  # The tile on which the checks cast.
@@ -60,7 +61,7 @@ func _init() -> void:
 	_graphics = graphics
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_wizardry_gift, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats, _check_descriptions]:
+	for scenario: Callable in [_check_configuration, _check_buy_mana, _check_buy_spell, _check_use_spell, _check_spells_in_port, _check_wizardry_gift, _check_fire_havoc, _check_hail, _check_frostbite, _check_sacred_rain, _check_summons, _check_swallowing, _check_poison_flood, _check_ether_shield, _check_colossus, _check_double_stats, _check_instant_limit, _check_descriptions]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -107,8 +108,8 @@ func _check_use_spell() -> bool:
 
 func _check_spells_in_port() -> bool:
 	var created := _config.spells.filter(func(spell: GameConfig.SpellDef) -> bool: return BattleSpell.create(spell, _config, {}) != null)
-	_check(created.size() == 14 and BattleSpell.create(_config.get_spell(INSTANT_LIMIT), _config, {}) == null, "the port has 14 spells; Instant Limit is not in the port")
-	_check(not BattleSpell.is_in_port(INSTANT_LIMIT) and BattleSpell.is_in_port(FIRE_HAVOC), "the spell book can tell which spells are in the port")
+	_check(created.size() == 15, "the port has all 15 spells")
+	_check(_config.spells.all(func(spell: GameConfig.SpellDef) -> bool: return BattleSpell.is_in_port(spell.id)), "the spell book shows no spell as not in the port")
 	return true
 
 
@@ -352,11 +353,26 @@ func _check_double_stats() -> bool:
 	return true
 
 
+## Instant Limit fills the limit bars of the units of the player in its area.
+func _check_instant_limit() -> bool:
+	var sim := _sim(44)
+	var middle := TILE - Vector2i(2, 2)
+	var inside := _passive(sim.add_item(_config.get_item(ANGEL), middle + Vector2i(1, 0), PLAYER))
+	var outside := _passive(sim.add_item(_config.get_item(ANGEL), middle + Vector2i(8, 0), PLAYER))
+	var enemy := _passive(sim.add_item(_config.get_item(ANGEL), middle + Vector2i(0, 1), ENEMY))
+	_check(inside.ability.has_limit and inside.ability.limit == 0, "the angel has an empty limit bar")
+	_spell(INSTANT_LIMIT).cast(sim, TILE, 1)
+	_run(sim, 60)
+	_check(inside.ability.limit == inside.ability.limit_max, "Instant Limit fills the bar of a unit of the player in its area")
+	_check(outside.ability.limit == 0 and enemy.ability.limit == 0, "it does not fill the bars of units outside the area or of enemies")
+	return true
+
+
 ## The spell window shows the texts of the client with the numbers of the spells.
 func _check_descriptions() -> bool:
 	_check(BattleSpell.describe(_config.get_spell(FIRE_HAVOC), _config) == ["Area: 5x5 / Damage: 150+30", "Area: 7x7 / Damage: 200+80", "Area: 9x9 / Damage: 250+150"], "Fire Havoc has the texts of the client")
 	_check(BattleSpell.describe(_config.get_spell(ETHER_SHIELD), _config)[2] == "Area: 9x9 / Lasts: 40s / DMG reduction: 60%", "Ether Shield names its marked area")
-	_check(BattleSpell.describe(_config.get_spell(INSTANT_LIMIT), _config)[0] == "Area: 5x5", "Instant Limit has its text, also without a port")
+	_check(BattleSpell.describe(_config.get_spell(INSTANT_LIMIT), _config)[0] == "Area: 5x5", "Instant Limit has the text of the client")
 	return true
 
 

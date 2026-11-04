@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 4 done. Branch `godot-port`.
+Status: stages 1 to 6 done. Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -186,7 +186,7 @@ The spells (4c) follow their classes in the client. The player casts on a tile, 
 | Age of Colossus | The units of the player within 5, 7 or 9 tiles of the tile get bigger for 30, 45 or 60 seconds. |
 | 2x Speed, 2x Range | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square get double speed or range for 15, 30 or 45 seconds. 2x Range stops at the first building of the player, with an error of the client: the units before it keep the double range, the units after it get nothing. |
 | Black Hole | Like Hell Abyss, at once and then every second for 15, 20 or 30 seconds. |
-| Instant Limit | Not in the port, see decision 7. |
+| Instant Limit | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square that have a limit bar get a full bar (stage 6). |
 
 Errors of the client, each with a switch in the code:
 
@@ -292,12 +292,41 @@ Changes from the original game:
 
 Not in this stage:
 
-- The attacks that the player starts with the buttons of the portraits (limit attacks, smash, healing beams) belong to roadmap step 3.2 and battle stage 6. Enemy units do not use them in the client either.
-- The Snake (`SnakeDelegate`) is on no island; its eating attack is not in the port.
+- The attacks that the player starts with the buttons of the portraits (limit attacks, smash, healing beams) came in stage 6, see "Stage 6 result". Enemy units do not use them in the client either.
 - The minions of Titan Lythos have full size; the client draws them at 0.3 of their size.
 - The port does not draw the cracks of the Mole.
 
 Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. Not tested: a full play of each new island by hand, and a comparison of the new islands with the original game in Ruffle.
+
+### Stage 6 result
+
+All delegates of the client and all special unit classes (`isounits/`) that change a battle are in the port. The units that a player can own (store, nests, Soul Mixer, riders, collections) fight as in the client, also when no quest map has them.
+
+| File | Contents |
+|---|---|
+| `battle/special_units/` | The special units (`IsoSpecialUnit` and its subclasses): `SpecialUnitTable` maps 261 item ids to the family scripts (dragons, gods, colossi, gladiators, heroes, monsters, old special units). Each family makes the portrait buttons of its units: the action, the cast and cooldown times, the condition and the text when the button cannot be used, the limit button and its attack. |
+| `battle/abilities/` | The delegates: `AbilityTable` maps 582 item ids. Group scripts hold the units whose delegates are close: `ShotAbility` and `BeamAbility` (data only: shots, delays, beams), `CycleUnitsAbility`, `WarriorUnitsAbility`, `GladiatorUnitsAbility`, `OrcUnitsAbility`, `NecroSoldiersAbility`, `GodUnitsAbility`, `MinionUnitsAbility`, `MonsterUnitsAbility`, `TowersAbility` and others. |
+| `battle/attacks/` | The attack objects of the client that the buttons use: frames of a forced animation, rains, beams, damages with their conditions. |
+| `battle/unit_button_panel.gd` | The portrait buttons at the bottom of the battle screen, with the pictures of the client, the masks of the cast and cooldown times and the limit bar. |
+| `battle/spells/instant_limit_spell.gd` | Instant Limit. |
+
+How the player uses it: select one own unit that has buttons; its buttons show at the bottom of the screen. A click uses a button. After a click the unit casts, then acts, then the buttons wait for their cooldown. The limit bar fills with the damage (or for healers the healing) that the unit does, at most once a second; a Limit Wizard within 10 tiles doubles it. When the bar is full, the limit button starts the limit attack.
+
+The rules come from the client. Where the client has an error that the player can see, the port keeps it, and the comment in the code tells it. Examples:
+
+- The earthquake of the Greater Demon and the rage of the Samurai stop at the first building in their area.
+- The Ice and Shadow Genesis colossi look for their targets on the enemy side of the player, also when the colossus is an enemy.
+- The bonus of 1.5 times the attack that some gods and colossi have against their own groups never applies in the client, so the port does not have it.
+- The smash of the 4-Weapons Gladiator kills a small unit when the unit lands; a unit that cannot fly does not die.
+- A star particle of a healer also gives an attack of 0 to an enemy on its tile.
+
+Not in this stage, because they do not change the battle:
+
+- Effects that the client only draws: the domes of protection (1357 to 1359), the colour of the Swamp Minion and of the Huge Egg when it is hit, the extra rocks of the Catapult, the red bubble of Anubis, the bigger balls of the Mother Monster, the white flash of Instant Limit, and the heads of the Three-Headed Dragon in turn.
+- The arrows of the units in a Fortress: the port has no units in buildings, so the Fortress shoots only its cannonballs.
+- The Dummy (`DummyDelegate`, item 1533) is not in the configuration.
+
+Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.
 
 ## Decisions of the owner
 
@@ -307,6 +336,6 @@ Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Ar
 4. The limit of quests in a row uses 2 hours instead of 6, and the code makes it easy to change or remove.
 5. Islands that the port does not have yet are locked, with a "not in the port" sign in the style of the game, until their quest is ported.
 6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. `EtherShieldSpell.FIX_CLIENT_ERRORS` turns on a correction.
-7. Instant Limit is locked with the "not in the port" sign until units have their limit bars (stages 5 and 6).
+7. Instant Limit was locked with the "not in the port" sign until units had their limit bars. Since stage 6 it is in the port.
 8. The player can cast spells in the own village, as in the client.
 9. Sacred Rain heals the units of the player. In the client it heals nobody.

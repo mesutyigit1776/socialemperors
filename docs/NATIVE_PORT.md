@@ -155,7 +155,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 **3. The campaign, one quest at a time**
 
 1. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). Done: all 28 islands of the island list are in the port (`docs/GODOT_BATTLES.md`, "Stage 5 result"). Survival, the tournament and the collection islands are not in the island list; they belong to step 4.
-2. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6).
+2. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6). Done: all delegates and special unit classes of the client that change a battle, the portrait buttons with their cast and cooldown times, the limit bars and the limit attacks, and the spell Instant Limit (`docs/GODOT_BATTLES.md`, "Stage 6 result").
 
 **4. The rest of the single-player game**
 
