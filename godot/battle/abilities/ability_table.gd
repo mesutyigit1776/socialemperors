@@ -571,6 +571,14 @@ const SCRIPTS := {
 	842: preload("res://battle/abilities/shot_ability.gd"),
 	875: preload("res://battle/abilities/shot_ability.gd"),
 	877: preload("res://battle/abilities/shot_ability.gd"),
+	641: preload("res://battle/abilities/giant_boss_ability.gd"),  # Golden Golem
+	665: preload("res://battle/abilities/giant_boss_ability.gd"),  # Golden Golem
+	642: preload("res://battle/abilities/giant_boss_ability.gd"),  # Black Yeti
+	1426: preload("res://battle/abilities/towers_ability.gd"),  # Dragon Killer Fortress
+	1361: preload("res://battle/abilities/towers_ability.gd"),  # Sky Tower
+	1360: preload("res://battle/abilities/towers_ability.gd"),  # Sky Tower II
+	429: preload("res://battle/abilities/towers_ability.gd"),  # Water Tower
+	469: preload("res://battle/abilities/shot_ability.gd"),  # Fortress
 }
 
 

@@ -23,6 +23,10 @@ const UNITS := {
 	# stream of fire arrows without damage while the castle keeps its target;
 	# the port does not draw it.
 	198: {"shot": "p.fireArrow"},
+	# Fortress (FortressDelegate): a cannonball. In the client each unit in the
+	# fortress also shoots an arrow of 1 point at its own target; the port
+	# has no units in buildings, so it does not.
+	469: {"shot": "p.cannonBall"},
 	785: {"shot": "p.bullDragonBeam", "delay": 13, "beam": 30},  # Furious Bull Dragon
 	778: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # God Zeus
 	828: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # Furious Zeus
