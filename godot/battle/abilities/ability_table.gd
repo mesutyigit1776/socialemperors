@@ -586,6 +586,16 @@ const SCRIPTS := {
 	817: preload("res://battle/abilities/rhino_ability.gd"),  # Necro Rhino
 	886: preload("res://battle/abilities/isis_healer_ability.gd"),  # Megahealing Angel
 	873: preload("res://battle/abilities/shot_ability.gd"),  # Dragon Hunter II
+	822: preload("res://battle/abilities/warrior_units_ability.gd"),  # Dragon Rider I
+	823: preload("res://battle/abilities/warrior_units_ability.gd"),  # Dragon Rider II
+	824: preload("res://battle/abilities/warrior_units_ability.gd"),  # Dragon Rider III
+	860: preload("res://battle/abilities/warrior_units_ability.gd"),  # Ramses II
+	879: preload("res://battle/abilities/warrior_units_ability.gd"),  # Anubis
+	2127: preload("res://battle/abilities/monster_units_ability.gd"),  # Mother Monster
+	2128: preload("res://battle/abilities/monster_units_ability.gd"),  # Mother Monster minion
+	769: preload("res://battle/abilities/monster_units_ability.gd"),  # Dark Punky Draggy
+	2067: preload("res://battle/abilities/monster_units_ability.gd"),  # Invisible Killer
+	896: preload("res://battle/abilities/shot_ability.gd"),  # Chameleon
 }
 
 

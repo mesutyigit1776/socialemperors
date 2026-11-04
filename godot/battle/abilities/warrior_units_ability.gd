@@ -50,6 +50,22 @@ extends BattleAbility
 ##   1.2 times the attack, flies 5 tiles and is stunned; attack 16 (special
 ##   attack 2): for 2.8 seconds from frame 7, every 500 ms, the 6 nearest enemy
 ##   units within 8 tiles take 1.4 times the attack and fly 5 tiles.
+## - dragon_rider (DragonRiderDelegate): each fifth attack (special attack 1)
+##   the enemies within 2 tiles, not on its tile, take half the attack and
+##   units fly 3 tiles; without a target it takes the first of them.
+## - ramses (RamsesDelegate): a hit; attack 4 of each 8 (special attack 1,
+##   frame 9): the target takes twice the attack; attack 8 (special attack 2,
+##   frame 11): the 10 nearest enemies within 3 tiles, not on its tile, take
+##   the attack and units fly 2 tiles.
+## - anubis (AnubisDelegate): a golden ball 12 frames after the attack. With
+##   the target within 5 tiles, attack 4 of each 8 is a jump (special attack 1,
+##   frame 19): the 10 nearest enemy units within 5 tiles take half the attack
+##   and fly 3 tiles. Attack 8, while fewer than 4 of its minions live, is an
+##   energy bubble (special attack 2, frame 22, for 3 seconds): 16 frames
+##   later, enemy units within 5 tiles with at most 350 life become Mini
+##   Anubis (item 878) of its side, up to 4 minions. A new minion cannot act
+##   for 1.5 seconds and is poisoned (the attack of Anubis every 3 seconds).
+##   The port does not draw the red bubble.
 
 const UNITS := {
 	825: "double_sword",
@@ -62,17 +78,27 @@ const UNITS := {
 	2145: "ice_golem",
 	2138: "black_lizard",
 	2108: "demolisher",
+	822: "dragon_rider", 823: "dragon_rider", 824: "dragon_rider",
+	860: "ramses",
+	879: "anubis",
 }
 const SP1 := UnitSprite.Action.SPECIAL
 const SP2 := SP1 + 1
 const SMALL_LIFE := 500
 const PUSH_LAND_FRAMES := BattleSim.FRAMES_PER_SECOND
 const ICE_SECONDS := 15
+const MINI_ANUBIS := 878
+const ANUBIS_MINIONS := 4
+const ANUBIS_RANGE := 5
+const ANUBIS_CONVERT_LIFE := 350
+const ANUBIS_POISON_TICKS := 1000
+const ANUBIS_APPEAR_FRAMES := 45  ## 1.5 seconds.
 
 var _kind := ""
 var _count := 0
 var _second_count := 0
 var _rain: SpecialAttacks.Rain  # Kept here: the rain lives longer than the call.
+var _anubis_minions: Array[BattleFighter] = []
 
 
 func configure(item_id: int) -> void:
@@ -83,7 +109,10 @@ func configure(item_id: int) -> void:
 		"black_lizard":
 			_count = 1
 			_second_count = 1
-	ranged_melee = _kind in ["punisher", "cobra_rider", "turkish_axe", "turkish_sword", "burning_tiger", "sword_lion", "ice_golem", "demolisher"]
+	ranged_melee = _kind in ["punisher", "cobra_rider", "turkish_axe", "turkish_sword", "burning_tiger", "sword_lion", "ice_golem", "demolisher", "ramses"]
+	if _kind == "anubis":
+		shot_graphic = "p.goldenDragon"
+		shot_delay = 12
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
@@ -92,6 +121,47 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 		return true
 	var distance := sim.distance(fighter, target)
 	match _kind:
+		"dragon_rider":
+			if _count < 4:
+				_count += 1
+				return true
+			_count = 0
+			sim.play_special(fighter, SP1, sim.animation_frames(fighter, SP1, 30))
+			for enemy in sim.items_near(fighter.tile, 2, 20, enemy_side(fighter), false, func(item: BattleFighter) -> bool:
+					return not item.dead and item.is_valid_target()):
+				if enemy.is_unit():
+					sim.push_in_air(enemy, fighter, 3)
+				sim.receive_attack(enemy, fighter.attack / 2, fighter)
+				if fighter.target == null and not enemy.dead:
+					sim.set_target(fighter, enemy)
+			return false
+		"ramses":
+			_count += 1
+			if _count % 8 == 0:
+				play(sim, fighter, SP2, 20, {11: func() -> void:
+					for enemy in sim.items_near(fighter.tile, 3, 10, enemy_side(fighter), false, func(item: BattleFighter) -> bool:
+							return not item.dead and item.is_valid_target()):
+						sim.receive_attack(enemy, fighter.attack, fighter)
+						if enemy.is_unit() and not enemy.dead:
+							sim.push_in_air(enemy, fighter, 2)})
+				return false
+			if _count % 4 == 0:
+				play(sim, fighter, SP1, 20, {9: func() -> void:
+					if fighter.target != null and not fighter.target.dead:
+						sim.receive_attack(fighter.target, fighter.attack * 2, fighter)})
+				return false
+			return true
+		"anubis":
+			_count += 1
+			_anubis_minions = _anubis_minions.filter(func(unit: BattleFighter) -> bool: return not unit.dead)
+			if _count % 8 == 0 and _anubis_minions.size() < ANUBIS_MINIONS and distance <= ANUBIS_RANGE:
+				sim.play_special(fighter, SP2, 22 + 3 * BattleSim.FRAMES_PER_SECOND, {22 + 16: func() -> void: _anubis_convert(sim, fighter)}, Callable(), true)
+				return false
+			if _count % 4 == 0 and distance <= ANUBIS_RANGE:
+				play(sim, fighter, SP1, 30, {19: func() -> void:
+					_push_near(sim, fighter, fighter.tile, ANUBIS_RANGE, 10, fighter.attack / 2, 3)})
+				return false
+			return true
 		"double_sword":
 			if distance < 2:
 				return true
@@ -270,6 +340,28 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			_count = _count + 1 if _count < 16 else 1
 			return false
 	return true
+
+
+func _anubis_convert(sim: BattleSim, fighter: BattleFighter) -> void:
+	if fighter.dead:
+		return
+	var victims := sim.items_near(fighter.tile, ANUBIS_RANGE, ANUBIS_MINIONS - _anubis_minions.size(), enemy_side(fighter), true, func(item: BattleFighter) -> bool:
+		return item.is_unit() and not item.dead and not item.incapacitated and item.def.life <= ANUBIS_CONVERT_LIFE \
+				and item.def.subcat_functional != BattleSim.SUBCAT_BOSS and (item.ability == null or not item.ability.immune_to_conversion))
+	for victim in victims:
+		var tile := victim.tile
+		sim.kill(victim, fighter)
+		sim.remove_item(victim)
+		var minion := sim.spawn(sim.config_item(MINI_ANUBIS), tile, fighter.team)
+		if minion == null:
+			continue
+		_anubis_minions.append(minion)
+		minion.converted = true
+		minion.incapacitated = true
+		sim.poison(minion, fighter.attack, ANUBIS_POISON_TICKS, 0, fighter)
+		sim.after(ANUBIS_APPEAR_FRAMES, func() -> void:
+			if not minion.dead:
+				minion.incapacitated = minion.frozen or minion.stunned or minion.in_air)
 
 
 static func _edible(unit: BattleFighter) -> bool:
