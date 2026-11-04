@@ -180,8 +180,14 @@ const UNITS := {
 	2134: [[["p.hellBeam", ""], ["p.beamWater", ""], ["p.brownBeam", ""]], 20],
 	2336: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],  # CerberusAncientDragonDelegate
 	2338: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],
+	# Three-Headed Dragon (ThreeHeadedDragonDelegate): the client shows the
+	# heads in turn (special attacks 1 to 3); the port shows the attack.
+	2057: ["p.lightBeam", 22],
+	2058: ["p.lightBeam", 22],
 }
 const BEAM_FRAMES := 15  ## The client lets a beam of a dragon last 0.5 seconds.
+## Item id -> frames of a beam, for the dragons whose beams last longer.
+const LONG_BEAMS := {2057: 90, 2058: 90}
 
 var _beaming := false
 var _beam := 0  # Counts the beams, so that an old beam does nothing.
@@ -200,7 +206,7 @@ func configure(item_id: int) -> void:
 		shot_graphic = data[0]
 	shot_delay = data[1]
 	beam = true
-	beam_frames = BEAM_FRAMES
+	beam_frames = LONG_BEAMS.get(item_id, BEAM_FRAMES)
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:

@@ -31,6 +31,7 @@ const UNITS := {
 	# Chameleon (ChamaleonDelegate): a golden ball. Its button gives it the
 	# attack of its target for 30 seconds, see special_units/heroes.gd.
 	896: {"shot": "p.goldenDragon", "delay": 10},
+	787: {"melee": true},  # Chimera (ChimeraDelegate); its beams are in special_units/old_special_units.gd
 	785: {"shot": "p.bullDragonBeam", "delay": 13, "beam": 30},  # Furious Bull Dragon
 	778: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # God Zeus
 	828: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # Furious Zeus

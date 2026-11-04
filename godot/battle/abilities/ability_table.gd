@@ -596,6 +596,11 @@ const SCRIPTS := {
 	769: preload("res://battle/abilities/monster_units_ability.gd"),  # Dark Punky Draggy
 	2067: preload("res://battle/abilities/monster_units_ability.gd"),  # Invisible Killer
 	896: preload("res://battle/abilities/shot_ability.gd"),  # Chameleon
+	787: preload("res://battle/abilities/shot_ability.gd"),  # Chimera
+	2087: preload("res://battle/abilities/monster_units_ability.gd"),  # Big Lure
+	2057: preload("res://battle/abilities/beam_ability.gd"),  # Three-Headed Dragon
+	2058: preload("res://battle/abilities/beam_ability.gd"),  # Three-Headed Dragon Rider
+	887: preload("res://battle/abilities/monster_units_ability.gd"),  # Orc Dragon
 }
 
 

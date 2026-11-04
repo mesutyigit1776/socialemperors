@@ -108,7 +108,6 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 							return item.is_unit() and not item.dead and not item.incapacitated and item.def.subcat_functional != BattleSim.SUBCAT_BOSS):
 						sim.incinerate(enemy, unit, 8, 10, BattleSim.FRAMES_PER_SECOND)}, Callable(), true), Callable(), "", COOLDOWN_OLD)
 		"chimera":
-			ability.ranged_melee = true  # ChimeraDelegate
 			add(ability, 0, "chimera_lion", "botonChimeraLion", SpecialAttacks.Frames.new(sim, unit, SP2, [12], func() -> void: front_sword(sim, unit)),
 					Callable(), "", COOLDOWN_OLD)
 			# Electric beams at the 3 nearest enemy units within 5 tiles, one
