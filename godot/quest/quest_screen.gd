@@ -4,7 +4,9 @@ extends Node2D
 ## of the client around it.
 ##
 ## 1. The map of the island shows with the army on it, under the start window
-##    (QuestStartWindow). The battle waits.
+##    (QuestStartWindow). As in the client, the battle already runs, but the
+##    player cannot give orders. The gold of the quest is divided only at the
+##    start, so an enemy that dies before gives no gold.
 ## 2. The start button starts the battle with the chosen stars (started).
 ## 3. During the battle the bar shows the gold and experience (QuestHud), and
 ##    the player can cast spells (SpellBook). A selected special unit shows its
@@ -18,6 +20,9 @@ signal started(stars: int)
 signal closed(result: Dictionary)  ## The result for Village.end_quest().
 signal village_changed  ## A spell or mana changed the village; the owner saves it.
 
+## The client runs the battle while the start window is open. False: the
+## battle waits for the start button.
+const RUN_UNDER_START_WINDOW := true
 const COLLECTABLE_RESOURCE := "g"  ## The mark of a collectable item has the color of gold.
 ## The client fills the screen behind a quest island with this blue, which is
 ## the sea around the island.
@@ -58,7 +63,8 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	add_child(_camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
 	_screen = BattleScreen.new(quest.sim, _view)
-	_screen.paused = true
+	_screen.paused = not RUN_UNDER_START_WINDOW
+	_screen.takes_orders = false
 	add_child(_screen)
 	_screen.stepped.connect(quest.update)
 	_screen.item_clicked.connect(func(item: BattleFighter) -> void: quest.collect(item))
@@ -99,6 +105,7 @@ func _on_started(stars: int, start_window: QuestStartWindow) -> void:
 		book.changed.connect(func() -> void: village_changed.emit())
 		add_child(book)
 	_screen.paused = false
+	_screen.takes_orders = true
 
 
 func _cast(spell: GameConfig.SpellDef, tile: Vector2i, level: int) -> void:

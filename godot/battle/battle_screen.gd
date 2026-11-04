@@ -38,6 +38,7 @@ signal item_clicked(item: BattleFighter)  ## The player clicked an item that is 
 
 var sim: BattleSim
 var paused := false  ## A paused battle does not run and takes no orders, as under a window of the client.
+var takes_orders := true  ## False: the battle runs, but the player cannot give orders.
 var _view: BattleView
 var _selected: Array[BattleFighter] = []
 var _time := 0.0
@@ -100,7 +101,7 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if paused:
+	if paused or not takes_orders:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_selection_tool = true

@@ -63,6 +63,9 @@ const CAME_BACK := 3
 var sim: BattleSim
 var island: QuestIsland
 var stars := 1
+## The player pressed the start button. The battle can run before, under the
+## start window (see QuestScreen.RUN_UNDER_START_WINDOW), but it ends only after it.
+var started := false
 var gold := 0
 var xp := 0
 ## The items of collections that the player found: Vector2i(collection, item
@@ -143,6 +146,7 @@ static func create(quest_island: QuestIsland, map: Village, army: Dictionary, co
 
 ## Starts the battle with 1 to 3 stars, see QuestBook.max_stars().
 func start(chosen_stars: int) -> void:
+	started = true
 	stars = chosen_stars
 	_apply_stars()
 	_divide_reward()
@@ -151,7 +155,7 @@ func start(chosen_stars: int) -> void:
 
 ## Call after each frame of the battle: ends the quest END_DELAY_FRAMES after a win or a loss.
 func update() -> void:
-	if _end_frame >= 0 and not _finished and sim.frame >= _end_frame:
+	if started and _end_frame >= 0 and not _finished and sim.frame >= _end_frame:
 		_finished = true
 		ended.emit()
 

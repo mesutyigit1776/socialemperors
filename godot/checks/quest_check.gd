@@ -51,7 +51,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -390,6 +390,29 @@ func _check_item_rewards() -> bool:
 	var before := int(village.stored_items().get(HEAVY_KNIGHT, 0))
 	village.end_quest({"quest_id": ARCTIC, "difficulty": 1, "win": 1, "resources": {"g": 0, "x": 0}, "units": [], "item_rewards": {HEAVY_KNIGHT: 1}})
 	_check(int(village.stored_items().get(HEAVY_KNIGHT, 0)) == before + 1, "the reward unit goes to the store")
+	return true
+
+
+## The battle runs under the start window, as in the client: an enemy that dies
+## before the start gives no gold, and the quest does not end before the start.
+func _check_before_start() -> bool:
+	var quest := _quest(TROLLS_1, {SPEARMAN: 4}, 0)
+	var payers := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY and item.def.attack > 0 and item.def.collect == 0)
+	quest.sim.receive_attack(payers[0], 100000, null)
+	_check(payers[0].dead and quest.gold == 0, "an enemy that dies before the start gives no gold")
+	var treasure: BattleFighter = quest.sim.fighters.filter(quest.is_treasure).front()
+	for enemy in quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY and item.is_unit()):
+		quest.sim.receive_attack(enemy, 100000, null)
+	quest.collect(treasure)
+	var ended := [false]
+	quest.ended.connect(func() -> void: ended[0] = true)
+	for i in QuestBattle.END_DELAY_FRAMES * 2:
+		quest.sim.step()
+		quest.update()
+	_check(not ended[0], "the quest does not end before the start")
+	quest.start(1)
+	quest.update()
+	_check(ended[0], "it ends after the start")
 	return true
 
 
