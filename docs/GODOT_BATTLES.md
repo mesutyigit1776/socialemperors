@@ -258,6 +258,29 @@ Result of 3 runs of the client and 4 runs of the port (frames after the order):
 
 Difference found: the client runs the battle while the start window is open. On this island the High Elf stands next to the landing, so the army fights it while the player chooses the stars; after 30 seconds in the window, the elf is dead before the battle starts. The client shares the gold of the quest among the enemies only when the player starts, so this elf then gives no gold. The port now follows the client: the battle runs under the start window, and the player can give orders only after the start. An enemy that dies before the start gives no gold, as in the client. The quest ends only after the start. `QuestScreen.RUN_UNDER_START_WINDOW` set to false makes the battle wait for the start button.
 
+### Played islands
+
+After stage 6, a scratch script played all 28 islands through the game window (`main.tscn` with `--quest`), as a player does. It used a village of level 60 with 38 units (gods, colossi, dragons, heroes, archers and knights) and 1 star. It waited 3 seconds under the start window, pressed the start button, and then, every 2 seconds: it sent each idle unit to the nearest enemy unit that it can reach (then the town hall, then other targets), used each portrait button that it could use, and collected keys and treasures. On the islands with a team it chose 20 units in the team window. Each island ran for at most 20000 frames.
+
+- 24 islands were won: the 4 troll and 8 civilisation islands, the Yeti, Golem and Rockdriller islands, both dragon islands, the Heroes island (all 7 doors), and hard islands 1, 2, 3, 5, 6 and 7.
+- Hard island 4 and the 3 god islands were lost: all units of the army or team died. The quest then ended with the result window, as it must. Without the window and with an army of twice the size, hard island 4 and god islands 1 and 2 were won. The same test of god island 3 is not finished yet.
+- On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
+- The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
+
+Not tested: islands with 2 or 3 stars, and a play by a person.
+
+### Second comparison: hard island 1
+
+Hard island 1 (Celestial Isle, `100000041`) was played in the client in Ruffle and in the port with the same village (the 38 units above) and the same plan: three orders "select all, attack" on the Celestial Mech at (60, 65), the Reaper at (57, 57) and an archer at (53, 50), at 130, 459 and 606 frames after the start. One run of each.
+
+| | Client | Port |
+|---|---|---|
+| Island and goal in the start window | Celestial Isle, "Defeat the Celestial Empire!" | the same |
+| First enemy dies (frames after the start) | about 392 | 469 |
+| Enemies dead 845 frames after the start | 16 (1280 gold, 64 experience) | 15 (1200 gold, 60 experience) |
+
+The gold and the experience of each kill are the same (80 gold and 4 experience). The port kills one enemy fewer in this time, and its first kill comes later; the order of the army and the walk to the enemies 30 tiles away decide this time, and the path search of the client in Ruffle is not exact in time (see above). The client counts the frames of the page, so its numbers have an error of about 20 frames.
+
 ### Stage 5 result
 
 All 28 islands of the island list are in the port. The "not in the port" sign shows on no island of the list. Survival (`100000035`, `100000036`), the tournament (`100000040`) and the collection islands (`100000051` to `100000055`) are not in the island list; they belong to stage 7.
@@ -296,7 +319,7 @@ Not in this stage:
 - The minions of Titan Lythos have full size; the client draws them at 0.3 of their size.
 - The port does not draw the cracks of the Mole.
 
-Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. Not tested: a full play of each new island by hand, and a comparison of the new islands with the original game in Ruffle.
+Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. The played tests and the second comparison with the client are in "Played islands" below.
 
 ### Stage 6 result
 
