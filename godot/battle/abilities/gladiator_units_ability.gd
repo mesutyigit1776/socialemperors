@@ -63,6 +63,11 @@ extends BattleAbility
 ##   and then takes 1.5 times the attack. Near the target, each fifth attack
 ##   (special attack 3, frame 62): the 5 nearest enemy units within 8 tiles
 ##   take the attack and fly 5 tiles.
+## - four_weapons (FourWeaponGladiatorDelegate): a hit; attack 5 (special
+##   attack 1, frame 37): a target unit with at most 500 life flies 10 tiles
+##   and dies when it lands, others take 2 times the attack and fly 2 tiles;
+##   attack 10 (special attack 2, frame 91): the 10 nearest enemy units within
+##   6 tiles that can fly take the attack and fly 10 tiles.
 
 const UNITS := {
 	2151: "chariot",
@@ -77,6 +82,7 @@ const UNITS := {
 	2150: "devil",
 	2116: "mace",
 	2136: "centaur",
+	2135: "four_weapons",
 }
 const SP1 := UnitSprite.Action.SPECIAL
 const SP2 := SP1 + 1
@@ -96,9 +102,9 @@ var _defence := 0  # Chariot: seconds with enemies near the standing chariot.
 
 func configure(item_id: int) -> void:
 	_kind = UNITS[item_id]
-	ranged_melee = _kind in ["chariot", "priest_minion", "sword", "rider", "big_warrior", "blade", "devil"]
+	ranged_melee = _kind in ["chariot", "priest_minion", "sword", "rider", "big_warrior", "blade", "devil", "four_weapons"]
 	match _kind:
-		"sword", "rider", "big_warrior":
+		"sword", "rider", "big_warrior", "four_weapons":
 			_count = 1
 		"blade", "mace", "centaur":
 			_count = 1
@@ -236,6 +242,15 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 				sim.receive_attack(target, fighter.attack, fighter)
 			_count = _count + 1 if _count < 10 else 1
 			return false
+		"four_weapons":
+			if _count == 5:
+				play(sim, fighter, SP1, 40, {37: func() -> void: _four_weapons_smash(sim, fighter)}, Callable(), true)
+			elif _count == 10:
+				play(sim, fighter, SP2, 95, {91: func() -> void: _push_near(sim, fighter, fighter.tile, 6, 10, fighter.attack, 10)}, Callable(), true)
+			else:
+				sim.receive_attack(target, fighter.attack, fighter)
+			_count = _count + 1 if _count < 10 else 1
+			return false
 		"devil":
 			if _count == 6:
 				play(sim, fighter, SP1, 30, {13: func() -> void:
@@ -327,6 +342,24 @@ static func _fly_and_die(sim: BattleSim, fighter: BattleFighter, unit: BattleFig
 	sim.after(PUSH_LAND_FRAMES, func() -> void:
 		if not unit.dead:
 			sim.kill(unit, fighter if fighter in sim.fighters else null))
+
+
+## 4-Weapons Gladiator: in the client, a small unit that cannot fly does not
+## die, because the kill waits for the end of the flight.
+static func _four_weapons_smash(sim: BattleSim, fighter: BattleFighter) -> void:
+	var target := fighter.target
+	if target == null or target.dead or not target.is_unit():
+		return
+	if target.max_life() > SMALL_LIFE:
+		sim.receive_attack(target, fighter.attack * 2, fighter)
+		if not target.dead:
+			sim.push_in_air(target, fighter, 2)
+		return
+	sim.push_in_air(target, fighter, 10)
+	if target.in_air:
+		sim.after(PUSH_LAND_FRAMES, func() -> void:
+			if not target.dead:
+				sim.kill(target, fighter if fighter in sim.fighters else null))
 
 
 ## Bull: the trident leaves after 1 second; the gladiator cannot act meanwhile.
