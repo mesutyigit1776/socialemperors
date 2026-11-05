@@ -38,12 +38,13 @@ from ui_import import CAST_SWF, CLIENT_SWF, import_ui
 SKIPPED = "done before"
 TERRAIN_ITEM_IDS = range(1000, 1010)  # 1000 + map skin; see the land graphic in the client
 NEUTRAL_RESOURCE_SUBCATS = {"125", "126", "127", "128"}  # trees, stone, gold and their regrowth
-WILD_ANIMAL_SUBCATS = {"74", "75", "88", "90"}  # cow, sheep, horse and boar; see Village.WILD_ANIMALS
 # The units that footmen and archers become in the training stables; see Village.MOUNTED_UNITS.
 MOUNTED_UNIT_IDS = {512, 513, 514, 541, 572, 515, 573, 574}
 # The units of the dragon and monster nests, the riders of the Rider Academy and
 # the free dragon nest and Soul Mixer; see Village.NESTS, RIDER_UNITS and FREE_BUILDING_TILES.
 SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 822, 823, 824, 1233, 1529}
+# The Huge Egg that the second dragon island lays during the battle; see quest/kinds/dragon_2_quest.gd.
+BATTLE_BUILDING_IDS = {434}
 # The code that decides the content of the output. A graphic from other code is imported again.
 IMPORTER_FILES = ("import_assets.py", "swf_bounds.py", "ui_import.py")
 # The copy of the SWF file in the folder of a graphic, from which the port draws it.
@@ -111,8 +112,9 @@ def needed_items(config, villages, shop, export_all):
 	By default these are the land, the store buildings, all items of the store
 	rotation, the units that these buildings train, the trees and deposits, the
 	wild animals, the mounted units of the training stables, the items that the
-	special buildings and the collections give, and the items in the villages
-	and on the quest maps.
+	special buildings and the collections give, the items in the villages
+	and on the quest maps, all units (bosses and abilities call units that are
+	on no map) and the buildings that battles make (BATTLE_BUILDING_IDS).
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
 	if export_all:
@@ -121,7 +123,8 @@ def needed_items(config, villages, shop, export_all):
 		ids = set(TERRAIN_ITEM_IDS)
 		ids.update(item_id for item_id, item in items.items() if item["type"] == "b" and str(item["in_store"]) != "0")
 		ids.update(item_id for item_id, item in items.items() if str(item["subcat_functional"]) in NEUTRAL_RESOURCE_SUBCATS)
-		ids.update(item_id for item_id, item in items.items() if item["type"] == "u" and str(item["subcat_functional"]) in WILD_ANIMAL_SUBCATS)
+		ids.update(item_id for item_id, item in items.items() if item["type"] == "u")
+		ids.update(BATTLE_BUILDING_IDS)
 		ids.update(MOUNTED_UNIT_IDS)
 		ids.update(SPECIAL_BUILDING_ITEM_IDS)
 		cfg_globals = config["globals"]
