@@ -263,11 +263,29 @@ Difference found: the client runs the battle while the start window is open. On 
 After stage 6, a scratch script played all 28 islands through the game window (`main.tscn` with `--quest`), as a player does. It used a village of level 60 with 38 units (gods, colossi, dragons, heroes, archers and knights) and 1 star. It waited 3 seconds under the start window, pressed the start button, and then, every 2 seconds: it sent each idle unit to the nearest enemy unit that it can reach (then the town hall, then other targets), used each portrait button that it could use, and collected keys and treasures. On the islands with a team it chose 20 units in the team window. Each island ran for at most 20000 frames.
 
 - 24 islands were won: the 4 troll and 8 civilisation islands, the Yeti, Golem and Rockdriller islands, both dragon islands, the Heroes island (all 7 doors), and hard islands 1, 2, 3, 5, 6 and 7.
-- Hard island 4 and the 3 god islands were lost: all units of the army or team died. The quest then ended with the result window, as it must. Without the window and with an army of twice the size, hard island 4 and all 3 god islands were won (at frames 2760 to 7440). In that test the god islands do not limit the army to a team of 20.
+- Hard island 4 and the 3 god islands were lost: all units of the army or team died. The quest then ended with the result window, as it must.
+- Second runs, through the game window, with stronger villages that obey the island rules. Hard island 4 has no team, so the whole army goes: with 5 goddesses (2369, 2350) and 15 dragon riders added to the 38 units, it was won at 1 star (2810 frames). On the god islands the team window took 20 units. A team of 5 goddesses and 15 dragon riders did not end any god island in 25 minutes. A team of 5 goddesses and 15 Supreme Bahamut Dragons (2003) won all 3 god islands at 1 star: `100000090` at 8113 frames, `100000091` at 9129 and `100000092` at 6905.
+- Stars, with the village of the Supreme Bahamut Dragons (the whole army where an island has no team, else a team of 20). Each run was won with 0 enemies left:
+
+| Island | Stars | Frames | Gold | Experience |
+|---|---|---|---|---|
+| `100000006` | 2 | 1929 | 3217 | 40 |
+| `100000002` | 2 | 4785 | 6741 | 60 |
+| `100000012` | 2 | 3897 | 6576 | 283 |
+| `100000041` | 2 | 7657 | 22235 | 710 |
+| `100000090` | 2 | 10044 | 34722 | 1204 |
+| `100000007` | 3 | 3066 | 6000 | 90 |
+| `100000021` | 3 | 4047 | 6870 | 195 |
+| `100000011` | 3 | 5859 | 24980 | 70 |
+| `100000045` | 3 | 5871 | 29976 | 324 |
+| `100000091` | 3 | 14133 | 37770 | 1800 |
+| `100000092` | 3 | 12162 | 37714 | 1962 |
+
+  With more stars the enemies are more (a copy of each enemy unit for each extra star) and the gold is more: on `100000002` 4494 gold at 1 star and 6741 at 2 stars.
 - On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
 - The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
 
-Not tested: islands with 2 or 3 stars, and a play by a person.
+Not tested: a play by a person, and a comparison with the client in Ruffle of each island (only hard island 1, below). A script, not a person, played all the runs above.
 
 ### Second comparison: hard island 1
 
