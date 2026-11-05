@@ -29,7 +29,9 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, rank: int, ma
 	_window = ui.make("PopupLoadingQuestMC")
 	add_child(_window)
 	_window.set_text("title", config.text("POPUP_STARTING_QUEST_TITLE"))
-	_window.set_text("desc1", config.text(island.description_text) if island.description_text != "" else "")
+	# Without a goal text (the Desert island), the field keeps the text of the window art, as in the client.
+	if island.description_text != "":
+		_window.set_text("desc1", config.text(island.description_text))
 	_window.set_text("difficultyText", config.text("POPUP_QUEST_ELIGE_DIFICULTAD"))
 	_window.set_part_visible("loadingText", false)
 	_window.set_part_visible("lockedPopup", false)
