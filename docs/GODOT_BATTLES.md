@@ -343,7 +343,7 @@ Result (frames after the order; gold and experience of the quest):
 | `100000006` | Battle Troll (59,44) | 280: 374, 11 | 216 after a late order: 374, 11 |
 | `100000007` | Axethrower (53,35) | 237: 450, 9 | 235: 450, 9 |
 | `100000008` | Skeleton (28,44) | 306: 80, 12 | 297: 60, 9; 332: 80, 12 |
-| `100000012` | Boar Rider (32,41) | run in progress | run in progress |
+| `100000012` | Boar Rider (32,41), click point read from the screen, slow clock | kills at 134, 186, 222, 276; 338: 160, 17 | kills at 210, 215, 223, 252; 338: 160, 17 |
 | `100000002` | Boar Rider (18,36), camera pan | 326: 528, 12 | 336: 528, 12 |
 | `100000003` | Battle Troll (70,40), drag pan, slow clock | 456: 543, 12 (3 kills) | 456: 543, 12 (3 kills) |
 | `100000011` | Axethrower (81,11), drag pan, slow clock, click point read from the screen | kills at 278, 311, 395, 417; 454: 832, 12 | kills at 235, 272, 331, 356, 410; 454: 1040, 15 |
