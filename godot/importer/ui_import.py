@@ -53,6 +53,8 @@ SYMBOLS = [
 	"AOEMC",
 	# The window in which the player chooses the team for an island with teams.
 	"SelectionTeamWindowMC",
+	# The alert of the team window (Alert of the client).
+	"AlertTournamentMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows

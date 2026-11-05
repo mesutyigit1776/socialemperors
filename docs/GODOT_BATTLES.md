@@ -328,7 +328,7 @@ The rules come from the client. Where the client has an error that the player ca
 Changes from the original game:
 
 - **Item rewards.** The client puts the reward units of the boss islands in the store itself, and sends them in `item_rewards`; the server of this project does not read this field. `Village.end_quest()` puts them in the store.
-- **Team window.** The client asks with Yes and No when the team has fewer than 20 units. The port shows the question in an alert; a second click on OK starts the quest. The port hides the formations of the tournaments in this window, because they do not change a quest.
+- **Team window.** As in the client, the alerts of this window use its own window (`AlertTournamentMC`), and the question for a team of fewer than 20 units has Yes and No. The port hides the formations of the tournaments in this window, because they do not change a quest.
 - **Collection items** that the player finds in a quest go to the village when the quest ends. The client sends them at once with `add_collectable`.
 
 Not in this stage:

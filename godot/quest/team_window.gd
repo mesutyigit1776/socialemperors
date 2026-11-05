@@ -7,9 +7,9 @@ extends Control
 ##   the arrows show the other pages. A click on a unit puts one in the team.
 ## - The team shows in 2 rows of 10 places. A click on a place takes the
 ##   unit out of the team.
-## - OK checks the groups of the island, then that the team has a unit. The
-##   client asks with Yes and No when the team has fewer than 20 units; the
-##   port shows the question in an alert, and a second OK starts the quest.
+## - OK checks the groups of the island, then that the team has a unit, and
+##   asks with Yes and No when the team has fewer than 20 units. These alerts
+##   use the window of the client for the team window (Alert, AlertTournamentMC).
 ## - The client also shows the formations of the tournaments here. They do not
 ##   change a quest, so the port hides them.
 
@@ -35,7 +35,6 @@ var _team: Array[int] = []  # The unit ids of the places, in order.
 var _page := 0
 var _thumbs := Control.new()
 var _places := Control.new()
-var _asked_small_team := false
 
 
 func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Dictionary) -> void:
@@ -142,7 +141,6 @@ func _add(choice: Array) -> void:
 		return
 	choice[1] -= 1
 	_team.append(choice[0])
-	_asked_small_team = false
 	_show()
 
 
@@ -152,7 +150,6 @@ func _remove(index: int) -> void:
 	for choice in _choices:
 		if choice[0] == id:
 			choice[1] += 1
-	_asked_small_team = false
 	_show()
 
 
@@ -166,10 +163,13 @@ func _on_ok() -> void:
 	if team.is_empty():
 		_show_alert(_config.text("QUEST_TEAM_SELECTION_ALERT_1_UNIT"))
 		return
-	if _team.size() < QuestBattle.TEAM_SIZE and not _asked_small_team:
-		_asked_small_team = true
-		_show_alert(_config.text("QUEST_TEAM_SELECTION_ALERT_LESS_20_CONFIRM"))
+	if _team.size() < QuestBattle.TEAM_SIZE:
+		_show_alert(_config.text("QUEST_TEAM_SELECTION_ALERT_LESS_20_CONFIRM"), _accept.bind(team))
 		return
+	_accept(team)
+
+
+func _accept(team: Dictionary) -> void:
 	accepted.emit(team)
 	queue_free()
 
@@ -182,5 +182,27 @@ func _requirement_text() -> String:
 	return text
 
 
-func _show_alert(text: String) -> void:
-	add_child(AlertWindow.new(_ui, _config, text))
+## An alert with OK, or with Yes and No when on_yes is given: Yes calls on_yes.
+func _show_alert(text: String, on_yes := Callable()) -> void:
+	var cover := ColorRect.new()
+	cover.color = Color(0, 0, 0, 0.3)
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(cover)
+	var alert := _ui.make("AlertTournamentMC")
+	alert.position = _window.position
+	cover.add_child(alert)
+	alert.set_text("msg_txt", text)
+	var asks := on_yes.is_valid()
+	alert.set_part_visible("ok_btn", not asks)
+	alert.set_part_visible("yes_btn", asks)
+	alert.set_part_visible("no_btn", asks)
+	var buttons := {"yes_btn": ["AUX_SI", on_yes], "no_btn": ["AUX_NO", Callable()]} if asks else {"ok_btn": ["AUX_OK", Callable()]}
+	for part: String in buttons:
+		alert.set_text(part + "/txtLabel", _config.text(buttons[part][0]))
+		var button := alert.clip(part)
+		button.make_button(true)
+		var action: Callable = buttons[part][1]
+		button.pressed.connect(func() -> void:
+			cover.queue_free()
+			if action.is_valid():
+				action.call())
