@@ -325,7 +325,51 @@ Differences that stay:
 - The time under the start window is different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it are not at the same point at the start.
 - Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
 
-Not tested in this comparison: battles with orders on each island (only hard island 1 and troll island 1, above).
+Battles with an order on each island are in "Fourth comparison" below.
+
+### Fourth comparison: one order on each island
+
+All 28 islands were played again in the client in Ruffle and in the port, with the same village and the same team choices, now with one order: "select all" and a click on an enemy (an enemy unit where one shows on the screen, else the nearest wall or tower), at the same frame after the start. The client run moves the camera with a slow mouse drag when the enemy is not on the screen. The port runs at normal speed and gives the same order to the enemy nearest to the clicked tile. The results compare the gold and the experience counters and the screenshots at the same frames after the order.
+
+Two faults of the client in Ruffle, not of the port, changed the first runs:
+
+- The path search of the client stops after 50 ms of real time (`AStar.CANCEL_TIME`) and gives no path; the unit then waits 1 to 3 seconds. Ruffle is much slower than Flash Player, so on the Dune island the army did not move at all, and on other islands it walked late. With a clock that runs 10 times slower in the page (`performance.now` and `Date.now`), the search has time, and the client army walks the same path as in the port.
+- A click near the army selects an own unit instead of giving the order, and the map edge stops a drag, so the camera does not move as far as asked. These runs were made again with another target or with the click point read from the screenshot.
+
+Result (frames after the order; gold and experience of the quest):
+
+| Island | Target | Client | Port |
+|---|---|---|---|
+| `100000006` | Battle Troll (59,44) | 280: 374, 11 | 216 after a late order: 374, 11 |
+| `100000007` | Axethrower (53,35) | 237: 450, 9 | 235: 450, 9 |
+| `100000008` | Skeleton (28,44) | 306: 80, 12 | 297: 60, 9; 332: 80, 12 |
+| `100000012` | Boar Rider (32,41) | run in progress | run in progress |
+| `100000002` | Boar Rider (18,36), camera pan | 326: 528, 12 | 336: 528, 12 |
+| `100000003` | Battle Troll (70,40), drag pan, slow clock | 456: 543, 12 (3 kills) | 456: 543, 12 (3 kills) |
+| `100000011` | Axethrower (81,11), drag pan, slow clock, click point read from the screen | kills at 278, 311, 395, 417; 454: 832, 12 | kills at 235, 272, 331, 356, 410; 454: 1040, 15 |
+| `100000013` | Chinese Tower (55,59), drag pan | 373: tower under attack, not dead, 0 gold | 387: tower dies |
+| `100000014` | Aztec Warrior (55,74) | 274: 294, 18 (6 kills) | 267: 196, 12; 281: 6 kills (294, 18) |
+| `100000015` | Elite Knight (60,63) | 290: 90, 9 (3 kills) | 290: 120, 11 (4 kills) |
+| `100000018` | Ranger (62,86), drag pan | 228: army at the Ranger, not dead yet | 236: Ranger dies |
+| `100000019` | Wall IV (73,30), drag pan | 332: army attacks the wall, wall stands | 324: wall falls |
+| `100000020` | Wall IV (38,59) | 255: army fights at the wall (screenshot does not show if it is down) | 158: wall falls, then the Fire Tower hits kamikazes |
+| `100000021` | Viking Wall (63,53) | 452: army at the wall (screenshot does not show if it is down) | 354: wall falls |
+| `100000022` | Egyptian Wall (39,9) behind a palm forest | first run: army did not move (client path search stopped at its 50 ms limit in Ruffle); with a 10 times slower clock: 493: army walks south around the forest | 493: the same path around the forest |
+| `100000023` | Atlantis Warrior (80,90) among the army; client click selected an own unit, the fight starts by itself | 141: 84, 12 (4 kills) | 133: 105, 16 (5 kills) |
+| `100000028` | Huge Egg (45,56) | 475: the army goes north, not to the egg; nothing dies | the same: army goes north, nothing dies |
+| `100000033` | Golden Dragon Boss (16,79) | 332: army attacks the boss, boss alive, 0 gold | the same |
+| `100000041` | Celestial Tower (71,67) | 315: tower destroyed, 80, 0 | 283: tower destroyed; 299: one Lancer more (160, 4) |
+| `100000042` | Hermes Swordsman (64,47) | 316: 345, 12 | 310: 345, 12 |
+| `100000043` | Sword Skeleton (65,50) | 248: 192, 8 (2 kills) | 240: 96, 4; 251: 2 kills |
+| `100000044` | Draggy (80,57); client click selected an own unit, the enemies attack by themselves | at the order 192, 8; 122: 288, 11 | at the order 192, 8; 116: 288, 11 |
+| `100000045` | Tiger Spider (72,54) | 154: army fights the spiders, 0 gold | 148: the same, 0 gold, no kill |
+| `100000046` | Mini Anubis (15,69), team of 20 | 244: army at the target group, 0 gold | 219: first kill (35, 4); 234: 35, 4 |
+| `100000047` | Imperial Elf Sword (82,25), team of 20 | 304: 192, 12 (3 kills) | 299: 64, 4 (1 kill) |
+| `100000090` | Infernal Wall (16,75), team of 20 | 212: army attacks the wall, wall stands | 204: wall stands; 213: wall falls |
+| `100000091` | Infernal Warrior (32,9), team of 20, drag pan | 200: team fights the warriors, 0 gold | 200: the same, 0 gold; 221: first kill |
+| `100000092` | Infernal Demon (59,76), team of 17 | 187: 0, 4 (1 kill) | 180: 0, 8 (2 kills) |
+
+Conclusion: on every island the army goes the same way, attacks the same enemies, and each kill gives the same gold and experience in both games. The time of a kill differs by up to about 10 % in either direction, and so the number of kills at a given frame differs by one or two on the busy islands; the path search of the client in Ruffle (see above) and the random numbers of both games cause this. No difference in the rules was found.
 
 ### Stage 5 result
 
