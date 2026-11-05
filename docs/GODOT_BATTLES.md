@@ -285,7 +285,7 @@ After stage 6, a scratch script played all 28 islands through the game window (`
 - On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
 - The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
 
-Not tested: a play by a person, and a comparison with the client in Ruffle of each island (only hard island 1, below). A script, not a person, played all the runs above.
+Not tested: a play by a person. A script, not a person, played all the runs above. The comparison of each island with the client is in "Third comparison" below.
 
 ### Second comparison: hard island 1
 
@@ -298,6 +298,33 @@ Hard island 1 (Celestial Isle, `100000041`) was played in the client in Ruffle a
 | Enemies dead 845 frames after the start | 16 (1280 gold, 64 experience) | 15 (1200 gold, 60 experience) |
 
 The gold and the experience of each kill are the same (80 gold and 4 experience). The port kills one enemy fewer in this time, and its first kill comes later; the order of the army and the walk to the enemies 30 tiles away decide this time, and the path search of the client in Ruffle is not exact in time (see above). The client counts the frames of the page, so its numbers have an error of about 20 frames.
+
+### Third comparison: each island with no orders
+
+All 28 islands of the list were opened in the client in Ruffle and in the port, with the same village (the 38 units above, level 60). Hard island 1 and troll island 1 were compared before (see above); this comparison also opened them again.
+
+Method:
+
+- Client: a scratch script drives the client in Ruffle (headless Chromium, the frame clock of `tools/ruffle_quest.js`). It opens the island from the island map, chooses the team on the islands with teams (the first unit of the list, 20 times), waits under the start window, presses Start Battle with 1 star, zooms out three steps and takes screenshots at three times, about 300, 700 and 1100 frames after the start.
+- Port: a scratch script opens the same island through the game window (`main.tscn` with `--quest`), chooses the team in the same way, waits under the start window, starts with 1 star, sets the view of the client (760 / 0.15 map pixels wide, on the start tile) and takes screenshots at the same frames after the start. It prints the gold, the experience and each death.
+- No orders: a click on a far enemy did not work in the client (the camera stops at the map bounds, and a click on a key or on an own unit selects it). So the comparison shows the start window, the island, the enemies and what happens without orders: the enemies that attack the army, and the gold and experience.
+
+Result: on all islands, the start window (title, goal, picture), the land, the walls, the buildings, the enemies and their places, and the team rules are the same. Where the enemies attack the army at once (Atlantis, hard island 4, troll island 4), they do so in both games; elsewhere nobody fights. The gold of each kill is the same; a kill under the start window gives experience and no gold in both games.
+
+Differences found, now fixed:
+
+- The Desert island has no goal text; the client keeps the text of the window art ("Collect the 4 gems to discover the desert mistery!"), and the port wrote an empty text. Fixed in `quest/quest_start_window.gd`.
+- The port did not draw the Golden Dragon Bosses and the Huge Egg of the second dragon island, nor other units that bosses and abilities call: the importer took only the units on the maps, in the villages and in the store. The importer now takes all units and the Huge Egg. In the test data, the sprite folder grew from 1267 to 1334 graphics.
+- The alerts of the team window used the small general alert of the port, in which "- Colossus" did not show, and a second OK replaced Yes and No. The team window now uses the alert of the client for this window (`AlertTournamentMC`), with Yes and No.
+
+Differences that stay:
+
+- The client draws the land blocks without land on the second dragon island black; the port draws sea there. The client draws blue dotted lines on the borders of the land blocks; the port does not. Only the picture changes.
+- The order of the units in the team window: in quest mode the client sorts the list by `life`, but it does not put `life` into the list in this mode, so its order comes from the order of a Flash object. The port sorts by life (as the client does in the tournament mode).
+- The time under the start window is different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it are not at the same point at the start.
+- Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
+
+Not tested in this comparison: battles with orders on each island (only hard island 1 and troll island 1, above).
 
 ### Stage 5 result
 
