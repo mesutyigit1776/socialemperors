@@ -45,6 +45,7 @@ var _village: Village
 var _config: GameConfig
 var _sprites: SpriteLibrary
 var _nodes: Dictionary = {}  # Village.PlacedItem -> Sprite2D
+var _visitors: Array[Node2D] = []  # Units that are on the map but not in the save, see show_visitors().
 var _ready_marks: Dictionary = {}  # Village.PlacedItem -> Polygon2D, child of the item node
 
 # Placement mode. _placing_item is null when the mode is off. _moving is the
@@ -79,6 +80,7 @@ func show_village(village: Village, config: GameConfig, sprites: SpriteLibrary) 
 			child.queue_free()
 	_nodes.clear()
 	_ready_marks.clear()
+	_visitors.clear()
 	_village = village
 	_config = config
 	_sprites = sprites
@@ -127,6 +129,19 @@ func show_unit(placed: Village.PlacedItem, map_position: Vector2, direction: int
 	var node: UnitSprite = _nodes[placed]
 	node.position = map_position
 	node.show_action(UnitSprite.Action.WALKING if walking else UnitSprite.Action.IDLE, direction)
+
+
+## Draws units that stand on the map but are not items of the save, for
+## example the enemies of an attack that wait at the border (VillageAttacks).
+## units: [GameConfig.ItemDef, tile] for each unit; replaces the units of the last call.
+func show_visitors(units: Array) -> void:
+	for node in _visitors:
+		node.queue_free()
+	_visitors.clear()
+	for entry: Array in units:
+		var node := _place_unit(entry[0], entry[1])
+		if node != null:
+			_visitors.append(node)
 
 
 ## Hides or shows an item, for example a unit that works in a building.

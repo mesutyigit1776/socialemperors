@@ -65,6 +65,16 @@ func is_busy(unit: Village.PlacedItem) -> bool:
 	return _harvesting.has(unit)
 
 
+## A fight starts in the village (VillageBattle): the walking units stop on the
+## tile where they are, and the battle moves them from there. Harvests go on.
+func stop_walks() -> void:
+	for walk: Walk in _walks.values():
+		if walk.tile != walk.unit.tile and _village.is_free(walk.tile, walk.unit):
+			_village.move_unit(walk.unit, walk.tile, walk.direction)
+		_view.update_placed(walk.unit)
+	_walks.clear()
+
+
 ## Sends the unit to the tile, or into the building or to the resource target.
 ## Returns an empty text, or the reason why the unit cannot go.
 func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem) -> String:

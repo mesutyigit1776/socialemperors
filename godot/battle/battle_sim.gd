@@ -113,6 +113,8 @@ var frame := 0
 var player_level := 1
 ## The configuration, for the units that abilities bring; can be null.
 var config: GameConfig
+## The battle is in the village of the player (normal mode of the client).
+var in_own_village := false
 ## The casts of each spell of the player (spell id -> casts) and how the
 ## spell graphics play (see BattleSpell.read_graphics()), for the units that
 ## cast spells of the spell book, see cast_unit_spell().
@@ -244,15 +246,19 @@ func order_walk(unit: BattleFighter, tile: Vector2i) -> bool:
 	return walk(unit, tile)
 
 
-## An order of the player to units of the player, as the client gives it when
-## the player clicks tile: the units walk to tile in a formation, see
-## BattleFormation. They attack an enemy on tile, and they stand around an own
-## item or a tree or deposit on tile.
+## An order to units of one side, as the client gives it when the player
+## clicks tile (or a group AI orders its units, see CollectiveAI): the units
+## walk to tile in a formation, see BattleFormation. They attack an item of the
+## other side on tile, and they stand around an item of their side or a tree
+## or deposit on tile.
 func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 	var living: Array[BattleFighter] = units.filter(func(unit: BattleFighter) -> bool: return not unit.dead)
+	if living.is_empty():
+		return
+	var opponent := _opponent(living[0].team)
 	var item: BattleFighter = _tiles.get(tile)
 	var stands := {}
-	if item != null and (item.team == BattleFighter.Team.ENEMY or item.def.subcat_functional in RESOURCE_SUBCATS):
+	if item != null and (item.team == opponent or item.def.subcat_functional in RESOURCE_SUBCATS):
 		var can_stand := func(candidate: Vector2i) -> bool: return _is_standable(candidate) or _tiles.get(candidate) in living
 		stands = BattleFormation.attack_tiles(item, living, can_stand)
 	else:
@@ -261,7 +267,7 @@ func order(units: Array[BattleFighter], tile: Vector2i) -> void:
 		for i in tiles.size():
 			stands[living[i]] = tiles[i]
 	for unit: BattleFighter in stands:
-		if item != null and item.team == BattleFighter.Team.ENEMY:
+		if item != null and item.team == opponent:
 			unit.ai.state = BattleAI.State.FORCED_MOVE
 			unit.attacking = true
 			set_target(unit, item)
@@ -1207,12 +1213,15 @@ func _kill(item: BattleFighter, killer: BattleFighter) -> void:
 		item.walk_point = null
 		item.path.clear()
 		item.remove_frames = DEAD_UNIT_FRAMES
-	elif item.team != BattleFighter.Team.PLAYER or (item.def.cost_type != "c" and item.def.subcat_functional != SUBCAT_TOWN_HALL):
+	elif item.team != BattleFighter.Team.PLAYER or (not in_own_village and item.def.cost_type != "c" and item.def.subcat_functional != SUBCAT_TOWN_HALL):
 		# In battles away from the village, a destroyed building leaves the map;
-		# the town hall and buildings that cost cash stay as ruins.
+		# the town hall and buildings that cost cash stay as ruins. In the own
+		# village all buildings of the player stay: they burn until repaired.
 		_remove(item)
 	for other: BattleFighter in item.targeted_by.duplicate():
 		if other.is_unit() and other.target == item and not other.dead:
+			if other.ai.collective != null:
+				other.ai.collective.on_target_dead(self, other, item)
 			other.ai.on_target_dead(self, other, item.tile)
 
 

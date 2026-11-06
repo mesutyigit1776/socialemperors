@@ -52,6 +52,7 @@ const NOT_BURIED_SUBCATS: Array[int] = [74, 75, 88, 90]
 const HEROES: Array[int] = [535, 533, 534, 550, 554, 555, 556, 557]
 const GRAVEYARD_MAX_UNITS := 10000
 const GRAVEYARD_MAX_EACH := 100
+const KILL_GOLD := 5  ## The server gives this gold for each enemy unit that the player kills in the village.
 ## Units of these kinds stay in the village during a quest: villagers,
 ## settlers, cows, sheep, carts, horses and boars.
 const QUEST_HOME_SUBCATS: Array[int] = [71, 73, 74, 75, 76, 88, 90]
@@ -745,6 +746,42 @@ func use_spell(spell: GameConfig.SpellDef) -> int:
 	var count: int = uses[spell.id] + 1
 	_document["privateState"]["magics"][str(spell.id)] = count
 	return _config.spell_level(count)
+
+
+## A unit on the map that fights the player: not a unit of the player and not a wild animal.
+func is_enemy_unit(placed: PlacedItem) -> bool:
+	var item := _config.get_item(placed.item_id)
+	return item != null and item.is_unit() and not is_own_unit(placed) and not is_wild_animal(placed)
+
+
+## Puts an enemy unit on the map, as the client does when it spawns the idle
+## enemies around the village: the command "buy" without cost, for which the
+## server also gives the experience of the item and lists the unit as bought
+## when it is not of the other race of the player.
+func add_enemy(item: GameConfig.ItemDef, tile: Vector2i, now: int) -> PlacedItem:
+	_add_xp(item.xp)
+	_register_unit(item.id)
+	return _add_entry(item, tile, 0, now, {})
+
+
+## An enemy item died in a battle in the village: the client sends "kill". The
+## server removes the item from the map when the save has it (placed), and for
+## a unit it gives the collect_xp of the unit and KILL_GOLD gold, also when the
+## save does not have the unit.
+func kill_enemy(item: GameConfig.ItemDef, placed: PlacedItem = null) -> void:
+	if item.is_unit():
+		_add_xp(item.collect_xp)
+		_add_resource("g", KILL_GOLD)
+	if placed != null:
+		_remove(placed)
+
+
+## A unit of the player died in a battle in the village. The client sends
+## "sell" with the reason KILL: the unit leaves the map and the server puts it
+## in the graveyard, see _bury().
+func lose_unit(placed: PlacedItem) -> void:
+	_remove(placed)
+	_bury(placed.item_id)
 
 
 ## Puts a unit that died in the graveyard, as the server does after a battle:

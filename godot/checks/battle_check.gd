@@ -41,7 +41,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon, _check_village_attacks]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -647,6 +647,53 @@ func _run_until(sim: BattleSim, done: Callable, limit: int) -> int:
 		if done.call():
 			return sim.frame
 	return -1
+
+
+## The group AI of the attacks on the village (CollectiveAI): bandits wait,
+## attack a building and a unit, and retreat; the buildings of the player stay.
+## The siege engines of a siege attack the building nearest to the spawn tile.
+func _check_village_attacks() -> bool:
+	var sim := _sim(21)
+	sim.in_own_village = true
+	var mill := sim.add_item(_config.get_item(MILL), Vector2i(40, 40), PLAYER)
+	var villager := sim.add_item(_config.get_item(VILLAGER), Vector2i(44, 40), PLAYER)
+	villager.ai.condition = BattleAI.Condition.PASSIVE
+	var no_land: Array[int] = []
+	var bandits := CollectiveAI.new(CollectiveAI.Kind.BANDITS, Vector2i(40, 55), 1, 3, "h", no_land)
+	for x in [40, 41]:
+		bandits.add(sim.add_item(_config.get_item(WAR_TROLL), Vector2i(x, 55), ENEMY))
+	for i in 1800:
+		sim.step()
+	_check(bandits.step == CollectiveAI.WAIT and mill.health == mill.max_health, "the bandits wait one minute")
+	for i in 61:
+		sim.step()
+	_check(bandits.step == CollectiveAI.ATTACK, "then they attack")
+	var frames := 0
+	while bandits.step == CollectiveAI.ATTACK and frames < 6000:
+		sim.step()
+		frames += 1
+	_check(mill.dead and mill in sim.fighters and villager.dead, "they destroy a building and a unit; the building stays")
+	_check(bandits.step == CollectiveAI.BANDITS_RETREAT, "then they retreat")
+	frames = 0
+	while bandits.units.size() > 0 and frames < 3000:
+		sim.step()
+		frames += 1
+	_check(bandits.units.is_empty() and sim.fighters.filter(func(f: BattleFighter) -> bool: return f.is_unit() and f.team == ENEMY).is_empty(), "the bandits leave the map at the spawn tile")
+
+	sim = _sim(22)
+	sim.in_own_village = true
+	var near := sim.add_item(_config.get_item(MILL), Vector2i(47, 75), PLAYER)
+	sim.add_item(_config.get_item(MILL), Vector2i(20, 75), PLAYER)
+	var siege := CollectiveAI.new(CollectiveAI.Kind.SIEGE, Vector2i(47, 96), 1, 25, "h", no_land)
+	var engine := sim.add_item(_config.get_item(CATAPULT), Vector2i(50, 99), ENEMY)
+	siege.add(engine, siege.siege)
+	var captain := sim.add_item(_config.get_item(SPEARMAN), Vector2i(52, 94), ENEMY)
+	siege.add(captain)
+	siege.captain = captain
+	for i in 1891:
+		sim.step()
+	_check(siege.step == CollectiveAI.ATTACK_1 and engine.target == near, "after the wait the siege engine attacks the building nearest to the spawn tile")
+	return true
 
 
 func _sim(seed: int) -> BattleSim:

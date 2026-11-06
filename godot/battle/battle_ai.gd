@@ -39,6 +39,7 @@ const SURVIVE_UNITS: Array[int] = [604, 866, 886]  # Troll drummer and two heale
 var state := State.IDLE
 var condition: Condition
 var aggro_range := AGGRO_RANGE  ## Tiles in which the unit looks for an enemy.
+var collective: CollectiveAI  ## The group AI of the unit, or null.
 
 
 ## The AI of a unit: the special AI of a boss, or this one.
@@ -79,6 +80,8 @@ func _init(unit: GameConfig.ItemDef) -> void:
 func update(sim: BattleSim, unit: BattleFighter) -> void:
 	if not unit.moving and not unit.attacking:
 		_turn_now_and_then(sim, unit)
+	if collective != null and not collective.update(sim, unit):
+		return
 	match condition:
 		Condition.DEFENSIVE:
 			var away := (unit.origin - unit.tile).abs()
@@ -144,7 +147,9 @@ func on_enter_tile(_sim: BattleSim, _unit: BattleFighter) -> void:
 	pass
 
 
-func on_arrived(_sim: BattleSim, _unit: BattleFighter) -> void:
+func on_arrived(sim: BattleSim, unit: BattleFighter) -> void:
+	if collective != null:
+		collective.on_arrived(sim, unit)
 	if state == State.FORCED_MOVE:
 		state = State.IDLE
 

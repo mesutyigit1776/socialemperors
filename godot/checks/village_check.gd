@@ -84,6 +84,8 @@ const HOUSE_TILE := Vector2i(44, 50)
 const TOWER_TILE := Vector2i(51, 47)
 ## The time for the units that come out of sold buildings, where the time does not matter.
 const NOW := 1800000000
+const SMALL_TROLL := 525
+const MONK := 569
 
 var _config: GameConfig
 var _data_dir: String
@@ -111,7 +113,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_village_enemies]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1167,6 +1169,38 @@ func _buy_free(village: Village, item_id: int, area: Rect2i, expected: Village.P
 				_buy(village, item_id, Vector2i(x, y), expected)
 				return
 	_check(false, "item %d fits in %s" % [item_id, area])
+
+
+## The enemies of the village: the idle groups at the border, the attacks by
+## level, the reward for a killed enemy and the units that the player loses.
+func _check_village_enemies() -> bool:
+	var path := _write_fixture("enemies", 1, 4, 500)
+	var village := Village.load_from_file(path, _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var trolls := village.items.filter(village.is_enemy_unit)
+	_check(trolls.size() == 2 and trolls.all(func(placed: Village.PlacedItem) -> bool: return placed.item_id == SMALL_TROLL), "the two small trolls of the start village are enemies")
+	_check(VillageAttacks.enemy_ids(1, "h") == [SMALL_TROLL] and VillageAttacks.enemy_ids(30, "t").has(MONK), "the enemies depend on the level and the race")
+	var attacks := VillageAttacks.new(village, _config, rng)
+	_check(attacks.attacks().is_empty(), "no attacks come at level 1")
+	var placed := attacks.spawn_idle_enemies(NOW)
+	var size := placed.size() / VillageAttacks.IDLE_GROUPS
+	_check(placed.size() % VillageAttacks.IDLE_GROUPS == 0 and size >= 3 and size <= 4, "6 groups of 3 or 4 idle enemies come (%d)" % placed.size())
+	var at_border := func(item: Village.PlacedItem) -> bool: return IsoGrid.land_area_number(item.tile / IsoGrid.LAND_TILES) in VillageAttacks.BORDER_AREAS
+	_check(placed.all(at_border) and placed.all(village.is_enemy_unit), "the idle enemies stand on the land at the border")
+	_check(VillageAttacks.new(village, _config, rng).spawn_idle_enemies(NOW).is_empty(), "a full map gets no more idle enemies")
+	var troll: Village.PlacedItem = trolls[0]
+	village.kill_enemy(_config.get_item(SMALL_TROLL), troll)
+	_check(not troll in village.items, "a killed enemy leaves the map")
+	_expect("after the kill", village, {"xp": 4 + 1, "g": 500 + Village.KILL_GOLD})
+	var knight := village.item_at(KNIGHT_TILE)
+	village.lose_unit(knight)
+	_check(not knight in village.items and village.graveyard_units().get(knight.item_id, 0) == 1, "a lost unit goes to the graveyard")
+	var path_20 := _write_fixture("enemies_20", 20, 20000, 500)
+	var groups := VillageAttacks.new(Village.load_from_file(path_20, _config), _config, rng).attacks()
+	_check(groups.map(func(group: VillageAttacks.Group) -> int: return group.ai.wait_frames) == [7 * 1800, 14 * 1800, 21 * 1800], "at level 20 three bandit groups come and wait 7, 14 and 21 minutes")
+	_check(groups.all(func(group: VillageAttacks.Group) -> bool: return group.attackers.size() == 5), "each bandit group has a unit for each 4 levels")
+	return true
 
 
 ## Writes initial.json with a changed level, XP and gold, and other changed map
