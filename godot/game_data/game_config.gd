@@ -118,6 +118,9 @@ var soul_mixer_powerups: Array[Array] = []
 var soul_mixer_min_level: int  ## The client gives a free Soul Mixer from this level.
 ## collection_rewards[n] is the item that collection n gives; index 0 is not used.
 var collection_rewards: Array[int] = []
+## Survival: the cash for one more life, and the hours after which a used life comes back.
+var survival_life_cash: int
+var survival_life_hours: int
 ## The campaign quests, see QuestBook and QuestBattle. Quest ids are text, as
 ## in the configuration and the save.
 var quest_order: Array[String] = []  ## The islands in the order in which they open.
@@ -232,6 +235,12 @@ static func load_from_file(path: String) -> GameConfig:
 	if not _parse_quest_globals(config, globals):
 		push_error("Game configuration '%s' has no correct quest settings in globals (ISLE_ORDER, QUEST_GOLD_REWARD, HONOR_POINT_QUEST and others)." % path)
 		return null
+	var survival := [to_int(globals.get("SURVIVAL_BUY_LIVE_CASH")), to_int(globals.get("SURVIVAL_HOURS_LIVE_REGENERATE"))]
+	if null in survival:
+		push_error("Game configuration '%s' has no SURVIVAL_BUY_LIVE_CASH or SURVIVAL_HOURS_LIVE_REGENERATE in globals." % path)
+		return null
+	config.survival_life_cash = survival[0]
+	config.survival_life_hours = survival[1]
 	if not _parse_spells(config, data.get("magics"), globals):
 		push_error("Game configuration '%s' has no correct spells (magics) or mana settings in globals." % path)
 		return null

@@ -10,6 +10,8 @@ extends Node2D
 ##                         map, with the units of the village; see BattleScreen
 ##   --quest <id>          open the start window of the quest island, as a click
 ##                         in the island window does; used for checks
+##   --survival <map id>   go to a survival map, or with "window" open the
+##                         survival window; used for checks
 ##   --village-attack <kind>  an attack (siege, stampede, army or bandits) whose
 ##                         wait is over comes to the village; used for checks
 
@@ -17,6 +19,7 @@ extends Node2D
 ## spell book and its windows of the village are over the map, under them.
 const WINDOW_LAYER := 10
 const SPELL_LAYER := 5
+const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -43,6 +46,7 @@ var _spell_layer := CanvasLayer.new()
 var _spell_book: SpellBook
 var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
 var _quest_screen: QuestScreen
+var _survival_screen: SurvivalScreen
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
@@ -100,6 +104,7 @@ func _ready() -> void:
 		_hud.collections_requested.connect(func() -> void: _show_panel(SpecialActions.View.COLLECTIONS))
 		_hud.stored_items_requested.connect(func() -> void: _show_panel(SpecialActions.View.STORE))
 		_hud.quests_requested.connect(_open_quests)
+		_hud.survival_requested.connect(_open_survival)
 		add_child(_hud)
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
@@ -129,6 +134,11 @@ func _ready() -> void:
 
 	if _options.has("quest") and _village != null and _view != null:
 		_on_island_chosen(_options["quest"], null)
+	if _options.has("survival") and _village != null and _view != null and _load_quest_graphics():
+		if _options["survival"] == "window":
+			_open_survival()
+		else:
+			_start_survival(_options["survival"])
 	if _options.has("screenshot"):
 		await _save_screenshot(_options["screenshot"])
 		get_tree().quit()
@@ -184,6 +194,58 @@ func _open_quests() -> void:
 	window.closed.connect(window.queue_free)
 	window.island_chosen.connect(_on_island_chosen.bind(window))
 	_windows.add_child(window)
+
+
+## The survival window of the client, from SURVIVAL_LEVEL. The newest client
+## hides its button; older versions showed it in the world menu, and the
+## owner of the port decided to have survival.
+func _open_survival() -> void:
+	if not _load_quest_graphics():
+		return
+	if _village.get_level() < SURVIVAL_LEVEL:
+		_alert("%s %d" % [_config.text("UNLOCK_LEVEL"), SURVIVAL_LEVEL])
+		return
+	var window := SurvivalWindow.new(_ui, _config, _village, _now)
+	window.closed.connect(window.queue_free)
+	window.village_changed.connect(_save)
+	window.map_chosen.connect(func(map_id: String) -> void:
+		window.queue_free()
+		_start_survival(map_id))
+	_windows.add_child(window)
+
+
+## Goes to the survival map with the strongest units of the village.
+func _start_survival(map_id: String) -> void:
+	var map := Village.load_from_file(_data_dir.path_join("quests/%s.save.json" % map_id), _config)
+	if map == null:
+		_alert("Cannot read this survival map. Import the game files again.")
+		return
+	var army := SurvivalBattle.army(_village.quest_army(), _config)
+	var survival := SurvivalBattle.create(SurvivalMap.find(map_id), map, army, _config, _sprites, _rng, _village.get_level())
+	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_survival_screen.village_changed.connect(_save)
+	_survival_screen.started.connect(func() -> void:
+		_village.start_survival(_now())
+		_save())
+	_survival_screen.closed.connect(_on_survival_closed.bind(map_id))
+	_select(null)
+	_show_village(false)
+	add_child(_survival_screen)
+
+
+## The client gives the reward and the time to the server ("end_survival") and loads the village again.
+func _on_survival_closed(seconds: int, reward: int, map_id: String) -> void:
+	_village.end_survival(map_id, seconds, reward, _now())
+	_known_level = _village.get_level()
+	_enemies.on_map_loaded(_now())
+	_save()
+	_survival_screen.queue_free()
+	_survival_screen = null
+	_show_village(true)
+	_view.sync_items()
+	_update_store()
+	if reward != 0:
+		_hud.show_message("You got a %s. It is in the item store." % _config.get_item(reward).name)
 
 
 ## window: the island window, which closes when the quest starts; or null.
@@ -699,7 +761,7 @@ func _level_up_text(old_level: int) -> String:
 ## until the fight ends. unit: a unit of the player that attacks the enemy on
 ## target, when the player started the fight with a click.
 func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZERO) -> void:
-	if _village_fight != null or _quest_screen != null or not _load_quest_graphics():
+	if _village_fight != null or _quest_screen != null or _survival_screen != null or not _load_quest_graphics():
 		return
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)

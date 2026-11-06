@@ -33,6 +33,7 @@ signal action_requested(id: String)
 signal collections_requested
 signal stored_items_requested
 signal quests_requested
+signal survival_requested
 
 const PANEL_WIDTH := 340
 const PANEL_MARGIN := 10.0
@@ -106,7 +107,7 @@ func _init() -> void:
 	column.add_child(title)
 	column.add_child(_category)
 	var lists := HBoxContainer.new()
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested]]:
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested]]:
 		var button := Button.new()
 		button.text = pair[0]
 		var requested: Signal = pair[1]

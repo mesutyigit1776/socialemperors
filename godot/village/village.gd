@@ -53,6 +53,8 @@ const HEROES: Array[int] = [535, 533, 534, 550, 554, 555, 556, 557]
 const GRAVEYARD_MAX_UNITS := 10000
 const GRAVEYARD_MAX_EACH := 100
 const KILL_GOLD := 5  ## The server gives this gold for each enemy unit that the player kills in the village.
+const SURVIVAL_LIVES := 3
+const SURVIVAL_MAPS_OPEN := 3
 ## Units of these kinds stay in the village during a quest: villagers,
 ## settlers, cows, sheep, carts, horses and boars.
 const QUEST_HOME_SUBCATS: Array[int] = [71, 73, 74, 75, 76, 88, 90]
@@ -782,6 +784,93 @@ func kill_enemy(item: GameConfig.ItemDef, placed: PlacedItem = null) -> void:
 func lose_unit(placed: PlacedItem) -> void:
 	_remove(placed)
 	_bury(placed.item_id)
+
+
+## The lives for survival maps: SURVIVAL_LIVES, which come back
+## GameConfig.survival_life_hours after their use, and the lives that the
+## player bought. The save keeps the times of use in privateState
+## "survivalVidaTimeStamp" and the bought lives in "survivalVidasExtra".
+func survival_lives(now: int) -> int:
+	var lives := SURVIVAL_LIVES - _survival_uses().size() + _private_int("survivalVidasExtra")
+	for used in _survival_uses():
+		if used + _config.survival_life_hours * 3600 <= now:
+			lives += 1
+	return lives
+
+
+## Seconds until the next used life comes back, or -1 when no life is used.
+func survival_life_wait(now: int) -> int:
+	var wait := -1
+	for used in _survival_uses():
+		var back := used + _config.survival_life_hours * 3600 - now
+		if back > 0 and (wait < 0 or back < wait):
+			wait = back
+	return wait
+
+
+## Uses a life for a survival map, as the server command "start_survival"
+## does: a bought life first, else a life that is back. Returns false without
+## a life.
+func start_survival(now: int) -> bool:
+	var private: Dictionary = _document["privateState"]
+	if _private_int("survivalVidasExtra") > 0:
+		private["survivalVidasExtra"] = _private_int("survivalVidasExtra") - 1
+		return true
+	var uses := _survival_uses().filter(func(used: int) -> bool: return now - used < _config.survival_life_hours * 3600)
+	if SURVIVAL_LIVES - mini(uses.size(), SURVIVAL_LIVES) == 0:
+		return false
+	uses.append(now)
+	private["survivalVidaTimeStamp"] = uses
+	return true
+
+
+## Buys one more survival life with cash ("add_survival_vida_extra").
+func buy_survival_life() -> Placement:
+	if get_resource("c") < _config.survival_life_cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -_config.survival_life_cash)
+	_document["privateState"]["survivalVidasExtra"] = _private_int("survivalVidasExtra") + 1
+	return Placement.OK
+
+
+## The best time on a survival map in seconds, or -1 when the map is not open.
+## The server opens the first SURVIVAL_MAPS_OPEN maps when it loads a save.
+func survival_best_time(map_id: String) -> int:
+	var record: Variant = _survival_record(map_id)
+	return int(record.get("tp", 0)) if record is Dictionary else -1
+
+
+## The end of a survival, as the server command "end_survival" does: the time
+## of the last play and the best time of the map, and the reward unit
+## (0 for none) in the store.
+func end_survival(map_id: String, seconds: int, reward: int, now: int) -> void:
+	var record: Variant = _survival_record(map_id)
+	if not record is Dictionary:
+		return
+	record["ts"] = now
+	record["tp"] = maxi(seconds, int(record.get("tp", 0)))
+	if reward != 0:
+		_stored()[str(reward)] = int(_stored().get(str(reward), 0)) + 1
+
+
+func _survival_uses() -> Array[int]:
+	var uses: Array[int] = []
+	var saved: Variant = _document["privateState"].get("survivalVidaTimeStamp")
+	for used: Variant in saved if saved is Array else []:
+		if used is int or used is float:
+			uses.append(int(used))
+	return uses
+
+
+func _survival_record(map_id: String) -> Variant:
+	var private: Dictionary = _document["privateState"]
+	if not private.get("survivalMaps") is Dictionary:
+		private["survivalMaps"] = {}
+	var maps: Dictionary = private["survivalMaps"]
+	for open_id in SurvivalMap.IDS.slice(0, SURVIVAL_MAPS_OPEN):
+		if not maps.has(open_id):
+			maps[open_id] = {"ts": 0, "tp": 0}
+	return maps.get(map_id)
 
 
 ## Puts a unit that died in the graveyard, as the server does after a battle:

@@ -55,12 +55,20 @@ SYMBOLS = [
 	"SelectionTeamWindowMC",
 	# The alert of the team window (Alert of the client).
 	"AlertTournamentMC",
+	# Survival: the window of the maps, a map in it, the reward of a time, the
+	# window before the start and the result window.
+	"PopupSurvivalMC",
+	"SurvivalMapMC",
+	"SurvivalMinRewardMc",
+	"PopupLoadingSurvivalMC",
+	"PopupSurvivalResultsMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
 # show a book and a wizard; the pictures of the spells come with spell_images.
 # The alert with a picture tells the player about the spell book.
-IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"]
+IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"] \
+	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]

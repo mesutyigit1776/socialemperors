@@ -46,6 +46,10 @@ func show_frame(new_frame: int) -> void:
 	var shown := {}
 	for part: Dictionary in library.clip_frames(sprite_id)[frame]:
 		var key: String = part["name"] if part["name"] != null else "#%d" % int(part["depth"])
+		# Flash finds the first child with a name; a later part with the same
+		# name (for example a mask) gets a node of its own.
+		if shown.has(key):
+			key = "%s#%d" % [key, int(part["depth"])]
 		shown[key] = true
 		var node: Control = _parts.get(key)
 		if node == null:

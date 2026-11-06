@@ -30,6 +30,8 @@ const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 const NEUTRAL := BattleFighter.Team.NEUTRAL
 const NOW := 2000000000
+const SURVIVAL_1 := "100000035"
+const SMALL_TROLL_SURVIVAL := 593
 
 var _data: String
 var _config: GameConfig
@@ -51,7 +53,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start, _check_survival]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -421,6 +423,50 @@ func _quest(quest_id: String, army: Dictionary, rank: int) -> QuestBattle:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
 	return QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, rank, null, rng)
+
+
+## Survival: the army, the sides, the waves, the lives and the result in the save.
+func _check_survival() -> bool:
+	_check(SurvivalBattle.army({SPEARMAN: 40, LIGHT_ARCHER: 2, HEAVY_KNIGHT: 3}, _config) == {HEAVY_KNIGHT: 3, SPEARMAN: 27}, "the survival army is the 30 units with the strongest attack")
+	var map := Village.load_from_file(_data.path_join("quests/%s.save.json" % SURVIVAL_1), _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var survival := SurvivalBattle.create(SurvivalMap.find(SURVIVAL_1), map, {SPEARMAN: 4}, _config, null, rng)
+	_check(survival.relic != null and survival.relic.team == PLAYER, "the relic is on the side of the player")
+	_check(survival.sim.fighters.all(func(item: BattleFighter) -> bool: return item == survival.relic or item.is_unit() or item.team == NEUTRAL), "the walls and decorations are neutral")
+	survival.start()
+	var enemies := survival.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY)
+	_check(enemies.size() == 8 and enemies.all(func(item: BattleFighter) -> bool: return item.def.id == SMALL_TROLL_SURVIVAL), "the first wave is 8 small trolls")
+	_check(survival.info_text == "ENEMY WAVE 1 IS COMING!!!", "the bar shows the first wave")
+	for i in 61:
+		survival.sim.step()
+		survival.update()
+	_check(enemies.all(func(item: BattleFighter) -> bool: return item.target == survival.relic), "the enemies go for the relic")
+	for i in 540:
+		survival.sim.step()
+		survival.update()
+	_check(survival.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY and not item.dead).size() == 16, "the second wave comes after 20 seconds")
+	survival.sim.kill(survival.relic)
+	for i in SurvivalBattle.END_DELAY_FRAMES + 1:
+		survival.sim.step()
+		survival.update()
+	_check(survival.is_finished() and survival.seconds() == 20, "the survival ends when the relic is destroyed (%d seconds)" % survival.seconds())
+	var survival_map := SurvivalMap.find(SURVIVAL_1)
+	_check(survival_map.reward(300) == 0 and survival_map.reward(301) == 619 and survival_map.reward(16 * 60) == 629, "the reward depends on the time")
+
+	var village := _village()
+	_check(village.survival_lives(NOW) == 3 and village.start_survival(NOW) and village.survival_lives(NOW) == 2, "a survival uses one of 3 lives")
+	_check(village.survival_life_wait(NOW + 60) == _config.survival_life_hours * 3600 - 60 and village.survival_lives(NOW + _config.survival_life_hours * 3600) == 3, "the life comes back after %d hours" % _config.survival_life_hours)
+	var cash := village.get_resource("c")
+	_check(village.buy_survival_life() == Village.Placement.OK and village.get_resource("c") == cash - _config.survival_life_cash and village.survival_lives(NOW) == 3, "a bought life costs %d cash" % _config.survival_life_cash)
+	_check(village.start_survival(NOW) and village.survival_lives(NOW) == 2, "a survival uses the bought life first")
+	_check(village.survival_best_time(SURVIVAL_1) == 0 and village.survival_best_time("100000038") == -1, "the first maps are open")
+	village.end_survival(SURVIVAL_1, 400, 619, NOW)
+	village.end_survival(SURVIVAL_1, 100, 0, NOW + 10)
+	var saved := _saved(village)
+	_check(saved["privateState"]["survivalMaps"][SURVIVAL_1] == {"ts": float(NOW + 10), "tp": 400.0}, "the save keeps the best time and the time of the last play")
+	_check(village.stored_items().get(619, 0) == 1, "the reward unit goes to the item store")
+	return true
 
 
 ## The starting village, with extra items [item id, x, y] on its map.
