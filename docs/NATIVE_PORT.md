@@ -152,14 +152,14 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 2. An import that continues after a stop. Done. The port then draws the SWF art itself while it runs (the Rust extension `godot/flash_art`), so the import only copies the files and takes less than a minute. Done.
 3. The first comparison with the original game: the same quest in Ruffle and in the port, for targets, duration and losses. This also shows if Ruffle can run the game far enough to be the reference. Until now, the port is checked only against the rules in the client code, so this comparison comes before the quests of step 3. Done: Ruffle runs troll island 1 from the village to the end of the quest. The targets, the gold, the experience and the losses agree, and the fights take about as many frames; the client runs the battle while its start window is open; the port now does the same (`docs/GODOT_BATTLES.md`, "Comparison with the original client"). The pictures of the extension were also compared with Ruffle and changed where they differed (`docs/FLASH_ART.md`).
 
-**3. The campaign, one quest at a time**
+**3. The campaign, one quest at a time** (done)
 
-1. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). Done: all 28 islands of the island list are in the port (`docs/GODOT_BATTLES.md`, "Stage 5 result"). Survival, the tournament and the collection islands are not in the island list; they belong to step 4.
+1. For each quest: the quest script and the special abilities of the units and bosses on its map. Each quest is then complete (battle stage 5). Done: all 28 islands of the island list are in the port (`docs/GODOT_BATTLES.md`, "Stage 5 result"). Survival and the tournament are not in the island list; they are in step 4. The collection islands belong to the collect game, an event of the client, which is not in the port yet.
 2. The special abilities of the other units that a player can own: store, nests, Soul Mixer, riders (battle stage 6). Done: all delegates and special unit classes of the client that change a battle, the portrait buttons with their cast and cooldown times, the limit bars and the limit attacks, and the spell Instant Limit (`docs/GODOT_BATTLES.md`, "Stage 6 result").
 
 **4. The rest of the single-player game**
 
-1. Sieges on the own village, survival and tournament (battle stage 7).
+1. Sieges on the own village, survival and tournament (battle stage 7). Done: the idle enemies, bandits, sieges, stampedes, armies and the Evil Orc Dragon of the own village, survival, and the weekly tournament against its bots without a ranking and prizes, by the decision of the owner (`docs/GODOT_BATTLES.md`, "Stage 7 result"). The heavy siege is off in the client.
 2. The other special buildings: Time Machine, weather machine, Bahamut temple.
 3. Goals and the tutorial.
 4. Neighbours, if the owner decides on a form without a server, for example the neighbour villages in `villages/`.

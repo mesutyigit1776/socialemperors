@@ -1,6 +1,6 @@
 # Battles in the Godot port: plan
 
-Status: stages 1 to 6 done. Branch `godot-port`.
+Status: stages 1 to 7 done. Branch `godot-port`.
 
 ## How the original game does battles
 
@@ -373,7 +373,7 @@ Conclusion: on every island the army goes the same way, attacks the same enemies
 
 ### Stage 5 result
 
-All 28 islands of the island list are in the port. The "not in the port" sign shows on no island of the list. Survival (`100000035`, `100000036`), the tournament (`100000040`) and the collection islands (`100000051` to `100000055`) are not in the island list; they belong to stage 7.
+All 28 islands of the island list are in the port. The "not in the port" sign shows on no island of the list. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; they are in stage 7. The collection islands (`100000051` to `100000055`) are not in the list either: they belong to the collect game of the client (`CollectGameManager`), an event with its own dates, collection rules and prizes, and are not in the port yet.
 
 | File | Contents |
 |---|---|
@@ -441,6 +441,58 @@ Not in this stage, because they do not change the battle:
 
 Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.
 
+### Stage 7 result
+
+The single-player modes of the client are in the port: the enemies of the own village, survival, and the weekly tournament against its bots. The heavy siege of the client (dragons that attack the village and leave for cash) is off in the client (`Config.HEAVY_SIEGE` is false), so the port does not have it.
+
+| File | Contents |
+|---|---|
+| `village_attack/village_attacks.gd` | `VillageAttacks`: which enemies come to the village and where (`attacksInit`, `spawnRemainingIdleTrolls`, `spawnRemainingMenaces` and the sieges of `MapInitializer`). |
+| `battle/collective_ai.gd`, `battle/group_ai.gd` | `CollectiveAI`: the group AI of the attacks (`CollectiveIA`), with its steps. `GroupAI` is the base of the group AIs. |
+| `village_attack/village_battle.gd`, `village_battle_screen.gd`, `village_enemies.gd` | A fight in the village as a battle, its screen, and the attacks between fights. |
+| `survival/` | `SurvivalMap` (the five maps of `QuestSurvivalMap1` to 5 and the rewards of `PopupSurvival`), `SurvivalBattle` (`QuestSurvival`), the map window, the screen and its windows. `battle/ai/survival_ai.gd` is `IASurvival`. |
+| `tournament/` | `TournamentBattle` (the match and its score), the window of the bots and the screen of a match. `battle/tournament_ai.gd` is `TournamentIA`. |
+
+**Enemies of the village.** The client spawns them in its normal mode when the map loads (at the start, and after a quest, a survival or a match, because the client loads the village again) and when the player reaches a new level in the village:
+
+- Idle enemies: groups of 3 or 4 enemy units (6 or 8 for a troll player) on random land areas at the border, until the map has about 6 groups. They are items of the save (`buy` without cost, which also gives their experience).
+- Bandits: from level 10, 15 and 20, one group each, from a random point of the edge of the map, with one unit for each 4 levels (each 2 levels for a troll player). They wait 7, 14 or 21 minutes, then attack buildings and units of the player until they have destroyed 1 to 4 of each (by the level), and retreat.
+- From level 25 a siege, from 30 a stampede, from 35 an army, each in one of 10 loads or new levels. They wait one minute. The siege engines of a siege attack the building nearest to the spawn point, then the squads and the captain follow, and after two minutes all retreat. The stampede and the army do not retreat. The army comes with a villager of the player, who runs to the village and calls for help.
+- The Evil Orc Dragon: from level 25, at each fifth level, on a land area at the border; an item of the save.
+
+The client runs these fights in its normal village. The port turns the village into a battle while enemies fight in it (`VillageBattle`): the units and buildings of the player against the idle enemies and the attacks, with the AI of each group. A fight starts when a step of an attack is due (for example the end of a wait), when an enemy and the player are near enough to fight as the AI of the client finds it, or when the player clicks an enemy. It ends when it is calm for 4 seconds: no unit fights, no shot flies, no unit of an attack walks and no step is due. The result goes to the save as the commands of the client do: units of the player that die leave the map and go to the graveyard (`sell` with the reason KILL), and each enemy unit that dies gives its `collect_xp` and 5 gold (`kill`). The units of the player stay where the fight left them.
+
+Rules of the client that the port keeps:
+
+- The AI of the client takes a target only when its score is not below 0 (`getNearestTarget`). An item farther than about 33 tiles has a score below 0, so bandits that spawn at a far edge find no target and stand still. They count the targets that they destroyed once for each unit that had the target.
+- Destroyed buildings of the player stay on the map: in the normal mode the client only sets them on fire.
+- The army has no retreat step, and the stampede never reaches its retreat step.
+
+Differences from the client:
+
+- The port shows the village as a battle until the fight ends; the player cannot build during this time. The fight screen shows the number of enemies, which the client does not show.
+- The client clears the outer ring of land areas at each load (`cleanBorderTiles`) and places new trolls and trees there. The port does not clear it, because it does not place trees and deposits at the load yet; it keeps the trolls of the save and adds only the missing groups.
+- The server does not keep the life of buildings. The client keeps the damage until a villager repairs the building or the game loads again, and a burning building lowers the population; the port forgets the damage at the end of the fight.
+- The lines of the captains show as text over the unit; the client shows a speech bubble. A captain that waits stands still in the village between fights, and walks during a fight.
+
+**Survival.** From level 20. The newest client hides the button of this mode (older versions showed it in the world menu); the port shows it, by decision 3. As in the client, only the first two maps can be played and the others say "Coming soon"; this project also has only the maps of the first two. The army is the 30 units of the village with the strongest attack. Each play uses one of 3 lives, which come back after 3 hours; a life costs 3 cash. The enemies come in waves from 8 points and go for the relic in the middle (`IASurvival`): a unit that the player attacks fights back until its next update, a boss does not fight back. After each 4 waves a boss stage comes; while its bosses live, waves of 5 units come from all 8 points every 20 seconds, at most twice. In the last stage kamikazes come until 80 enemies are on the map. The play ends when the relic is destroyed; the player loses no units. The time, the best time and the reward unit (after 5, 8, 12 or 15 minutes) go to the save as `start_survival`, `add_survival_vida_extra` and `end_survival` do. The windows are those of the client. The client shows its help the first time that the player opens the window; the port shows it with the help button only.
+
+**Tournament.** The client plays tournaments against the teams of other players, which its server gives, and the server ranks the players. The weekly tournament also has 3 bots with fixed teams in the configuration. The owner decided (decision 10) that the port has the matches against these bots, without a ranking and without prizes. From level 15:
+
+- The team window of the client in its tournament mode: up to 20 units, without the units of `TOURNAMENT_UNITS_NOT_ALLOWED` and the villagers and animals, at most 10 dragons, gods and colossi, and one of four formations. As in the client, the team and the formation go to the save (`set_attack_team`); the quest team now goes there too.
+- The match (`TournamentBattle`) on map `100000040`: all items of the map are neutral. The bot's team forms (walks 20 tiles toward the player at the speed of its slowest unit, while the player's units walk 10 tiles), waits 10 seconds and attacks: each unit takes a unit of the player within its range plus 2, else the weakest one. The player controls their team. The match ends when one team has no units, or after Withdraw and Yes (a loss with 0 points).
+- The score is that of the client for the point type 0: 50 for a win, plus 25 times the part of the player's 20 places with a living unit, plus 25 times the part of the bot's 20 places without one.
+
+Differences from the client:
+
+- The configuration of this project has only the names and texts of the formations, not their layouts; the client cannot start a match with it. The port places the units by the texts and the pictures of the formation buttons, strongest (most life) first, 2 tiles apart, and gives the bots the regular formation.
+- No ranking, no prizes, no entry cost, and the scores stay only until the game closes. The window of the bots is the port's own, because the windows of the client show the data of the server.
+- The configuration has no texts for the help of the start window and for the title of a lost match; the port hides the help and uses "YOU LOST".
+
+**Windows.** `UiClip` gave two parts with the same name one node, so the mask of the relic picture in the survival bar hid it. Flash finds the first part with a name, and now the port does too. `UiClip.set_colour()` sets a colour as the colour of a Flash `ColorTransform` does, for the life bars of a match.
+
+Tests: `checks/village_check.gd` has the idle enemies, the attacks by level, the reward of a kill and the graveyard; `checks/battle_check.gd` has the bandits (wait, attack, retreat) and the target of a siege; `checks/quest_check.gd` has survival (army, sides, waves, lives, save) and the tournament (bots, formations, the steps of the bot's team, the score, the team in the save). Server replays of `buy`, `kill`, `sell` KILL, `start_survival`, `add_survival_vida_extra`, `end_survival` and `set_attack_team` give the same save as the port, except the level, which the port raises with the experience. Window runs showed the fight in the village, the survival windows and bar, and the tournament windows, bar and result.
+
 ## Decisions of the owner
 
 1. Campaign quests come before PvP. The port has no server, and no multiplayer is planned for now.
@@ -452,3 +504,4 @@ Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests r
 7. Instant Limit was locked with the "not in the port" sign until units had their limit bars. Since stage 6 it is in the port.
 8. The player can cast spells in the own village, as in the client.
 9. Sacred Rain heals the units of the player. In the client it heals nobody.
+10. The tournament has the matches of the weekly tournament against its 3 bots, scored as in the client, without a ranking and without prizes, because those came from the server and the other players. The formations are built from their texts, because their layouts are missing.
