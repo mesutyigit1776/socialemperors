@@ -63,6 +63,19 @@ var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## first start. The message of the change shows after the new start.
 static var _reload_message := ""
 static var _reloaded := false
+## The counts of the goals in this session, which stay when the scene starts again; see GoalBook.
+static var _goal_steps := {}
+var _goals: GoalBook
+var _tutorial: Tutorial
+var _tutorial_box: TutorialBox
+var _goal_window: GoalWindow
+var _goal_done := false  # A goal was completed since the last save, see _record().
+var _group: Array[Village.PlacedItem] = []  # Units of the player selected together (double click or box).
+var _last_click: Village.PlacedItem  # For the double click.
+var _last_click_msec := 0
+const DOUBLE_CLICK_MSEC := 1000
+const MAX_GROUP := 20  ## MAX_SELECTED_OBJECTS of the client.
+const GROUP_RINGS := 6
 
 
 func _ready() -> void:
@@ -94,13 +107,18 @@ func _ready() -> void:
 		_view.placement_confirmed.connect(_on_placement_confirmed)
 		_view.move_confirmed.connect(_on_move_confirmed)
 		_view.map_clicked.connect(_on_map_clicked)
+		_view.units_boxed.connect(_on_units_boxed)
 		_specials = SpecialActions.new(_village, _config, _rng)
+		_goals = GoalBook.new(_village, _config, _goal_steps)
+		_tutorial = Tutorial.new(_village, _config)
+		_village.happened.connect(_on_village_event)
 		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
 		add_child(_orders)
 		_camera = MapCamera.new()
 		_camera.position = _start_position(_village)
+		_camera.zoomed.connect(func() -> void: _record(VillageEvent.Kind.ZOOMED, {}))
 		add_child(_camera)
 		_hud = VillageHud.new()
 		_hud.item_selected.connect(_on_item_selected)
@@ -117,7 +135,14 @@ func _ready() -> void:
 		_hud.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
 		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
 		_hud.action_requested.connect(_on_action_requested)
-		_hud.collections_requested.connect(func() -> void: _show_panel(SpecialActions.View.COLLECTIONS))
+		_hud.collections_requested.connect(func() -> void:
+			_show_panel(SpecialActions.View.COLLECTIONS)
+			_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.popupCollections"}))
+		_hud.packs_requested.connect(func() -> void: _show_panel(SpecialActions.View.PACKS))
+		_hud.store_requested.connect(_on_store_requested)
+		_hud.rename_requested.connect(_on_rename_requested)
+		_hud.selection_tool_requested.connect(_start_selection_tool)
+		_hud.goal_requested.connect(func(id: int) -> void: _open_goal(id))
 		_hud.stored_items_requested.connect(func() -> void: _show_panel(SpecialActions.View.STORE))
 		_hud.quests_requested.connect(_open_quests)
 		_hud.survival_requested.connect(_open_survival)
@@ -142,6 +167,18 @@ func _ready() -> void:
 		var kinds := {"siege": CollectiveAI.Kind.SIEGE, "stampede": CollectiveAI.Kind.BIG_MOUNTS, "army": CollectiveAI.Kind.ARMY, "bandits": CollectiveAI.Kind.BANDITS}
 		if kinds.has(_options.get("village-attack", "")):
 			_enemies.add_due_attack(kinds[_options["village-attack"]])
+		_goals.goal_completed.connect(_on_goal_completed)
+		if _tutorial.is_active():
+			_tutorial_box = TutorialBox.new()
+			_tutorial_box.button_pressed.connect(func() -> void: _tutorial.handle(Tutorial.Action.BOX_BUTTON))
+			add_child(_tutorial_box)
+			_tutorial.step_changed.connect(func(_step: int) -> void:
+				_show_tutorial()
+				_save())
+			_tutorial.finished.connect(_on_tutorial_finished)
+			_show_tutorial()
+		if _goals.on_map_loaded():
+			_save()
 		_update_store()
 		var clock := Timer.new()
 		clock.timeout.connect(_on_clock)
@@ -215,6 +252,7 @@ func _open_quests() -> void:
 	if _village.quest_army().is_empty():
 		_alert(_config.text("AVISO_NAVEGAR_SIN_TROPAS").strip_edges())
 		return
+	_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupQuestsManager"})
 	var window := QuestListWindow.new(_ui, QuestBook.new(_village, _config), _config, _now)
 	window.closed.connect(window.queue_free)
 	window.island_chosen.connect(_on_island_chosen.bind(window))
@@ -248,6 +286,7 @@ func _start_survival(map_id: String) -> void:
 	var army := SurvivalBattle.army(_village.quest_army(), _config)
 	var survival := SurvivalBattle.create(SurvivalMap.find(map_id), map, army, _config, _sprites, _rng, _village.get_level())
 	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_goals.watch_battle(survival.sim)
 	_survival_screen.village_changed.connect(_save)
 	_survival_screen.started.connect(func() -> void:
 		_village.start_survival(_now())
@@ -263,6 +302,7 @@ func _on_survival_closed(seconds: int, reward: int, map_id: String) -> void:
 	_village.end_survival(map_id, seconds, reward, _now())
 	_known_level = _village.get_level()
 	_enemies.on_map_loaded(_now())
+	_goals.on_map_loaded()
 	_save()
 	_survival_screen.queue_free()
 	_survival_screen = null
@@ -321,11 +361,13 @@ func _start_tournament_match(bot_index: int) -> void:
 	var bot_places: Array[int] = bot["team"]
 	var match_battle := TournamentBattle.create(map, places, _village.tournament_formation(), bot_places, 0, _config, _sprites, _rng, _village.get_level())
 	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_goals.watch_battle(match_battle.sim)
 	_tournament_screen.village_changed.connect(_save)
 	_tournament_screen.closed.connect(func(score: int, won: bool) -> void:
 		_tournament_scores[bot_index] = [score, won]
 		_known_level = _village.get_level()
 		_enemies.on_map_loaded(_now())
+		_goals.on_map_loaded()
 		_save()
 		_tournament_screen.queue_free()
 		_tournament_screen = null
@@ -383,6 +425,7 @@ func _land(quest_id: String, army: Dictionary) -> void:
 		return
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
 	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_goals.watch_battle(quest.sim)
 	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
 		_village.start_quest(quest_id, _now())
@@ -403,6 +446,7 @@ func _on_quest_closed(result: Dictionary) -> void:
 	# of the quest brings no attacks of its own.
 	_known_level = _village.get_level()
 	_enemies.on_map_loaded(_now())
+	_goals.on_map_loaded()
 	_save()
 	_quest_screen.queue_free()
 	_quest_screen = null
@@ -446,6 +490,9 @@ func _alert(text: String) -> void:
 
 
 func _on_item_selected(item: GameConfig.ItemDef) -> void:
+	if not _tutorial.allows_build(item):
+		return
+	_tutorial.handle(Tutorial.Action.BUILD_ITEM_CHOSEN, item)
 	_select(null)
 	_placing_stored = false
 	_view.begin_placement(item)
@@ -457,28 +504,58 @@ func _on_item_selected(item: GameConfig.ItemDef) -> void:
 ## original game, and a click on an item selects it.
 func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
 	if (placed != null and _village.is_enemy_unit(placed)) or _enemies.has_attacker_at(tile):
-		_start_village_fight(_selected if _selected != null and _village.is_own_unit(_selected) else null, tile)
+		if not _tutorial.allows_orders():
+			return
+		var attacker := _selected if _selected != null and _village.is_own_unit(_selected) else null
+		_start_village_fight(attacker, tile)
+		if attacker != null:
+			_tutorial.handle(Tutorial.Action.ATTACK_ORDERED)
 		return
+	if not _group.is_empty() and not placed in _group:
+		_order_group(tile, placed)
+		return
+	if placed != null and placed == _last_click and placed == _selected and _village.is_own_unit(placed) \
+			and Time.get_ticks_msec() - _last_click_msec <= DOUBLE_CLICK_MSEC:
+		_select_kind(placed)
+		return
+	_last_click = placed
+	_last_click_msec = Time.get_ticks_msec()
 	if _selected != null and _village.is_own_unit(_selected) and placed != _selected \
-			and (placed == null or _village.can_enter(_selected, placed) or _village.can_harvest(_selected, placed)):
+			and (placed == null or _village.can_enter(_selected, placed) or _village.can_harvest(_selected, placed) or _village.can_repair(_selected, placed)):
+		if not _tutorial.allows_orders():
+			return
 		var error := _orders.order(_selected, tile, placed)
 		_hud.show_message(error)
 		if error.is_empty():
 			_select(null)
+			_tutorial.handle(Tutorial.Action.UNIT_ORDERED, _config.get_item(placed.item_id) if placed != null else null)
 		return
 	if placed != null and _village.seconds_to_ready(placed, _now()) == 0:
 		_collect(placed)
 		if placed not in _village.items:
 			return
+	var area := IsoGrid.land_area_number(tile / IsoGrid.LAND_TILES)
+	if placed == null and _village.can_buy_land(area) and _tutorial.allows_other():
+		_specials.land_area = area
+		_show_panel(SpecialActions.View.LAND)
+		return
+	var item := _config.get_item(placed.item_id) if placed != null else null
+	if placed != null and not _tutorial.allows_select(item, _village.is_enemy_unit(placed)):
+		return
 	_select(placed)
+	if placed != null:
+		_tutorial.handle(Tutorial.Action.SELECTED, item)
 
 
 func _select(placed: Village.PlacedItem) -> void:
 	_selected = placed
+	if not _group.is_empty():
+		_group.clear()
+		_view.show_group(_group)
 	_panel = SpecialActions.View.BUILDING if placed != null else SpecialActions.View.NONE
 	_view.show_selection(placed)
 	var item := _config.get_item(placed.item_id) if placed != null else null
-	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed))
+	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed), placed != null and _village.can_store(placed))
 	var names: Array[String] = []
 	if placed != null:
 		for id in _village.units_in(placed):
@@ -503,6 +580,8 @@ func _select(placed: Village.PlacedItem) -> void:
 func _on_clock() -> void:
 	var now := _now()
 	var changed := false
+	if _tutorial.is_active() and _tutorial.step == 26:
+		changed = _speed_up_tutorial_farm(now)
 	for placed in _village.items.duplicate():
 		changed = _complete_training(placed, now) or changed
 		var victim := _village.complete_sacrifice(placed, now)
@@ -547,6 +626,8 @@ func _on_train_requested() -> void:
 	if _selected == null:
 		return
 	var unit := _village.trained_unit(_selected)
+	if not _tutorial.allows_training(unit):
+		return
 	var result := _village.train(_selected, _now())
 	var texts := {
 		Village.Training.QUEUE_FULL: "The training queue is full (%d units)." % Village.MAX_QUEUE,
@@ -561,6 +642,7 @@ func _on_train_requested() -> void:
 	_update_production()
 	if _save():
 		_hud.show_message("%s is in training." % unit.name)
+	_tutorial.handle(Tutorial.Action.TRAINING_STARTED, unit)
 
 
 func _on_speed_up_requested() -> void:
@@ -610,8 +692,11 @@ func _update_store() -> void:
 	var key := [_village.get_level(), _store.rotation_end(now)]
 	if key != _store_key:
 		_store_key = key
-		# The client gives the free buildings when it loads the map and at a new level.
-		var free := _village.add_free_buildings(now)
+		# The client gives the free buildings when it loads the map and at a
+		# new level, but not during the tutorial, which gives a nest at its end.
+		var free: Array[Village.PlacedItem] = []
+		if not _tutorial.is_active():
+			free = _village.add_free_buildings(now)
 		for placed in free:
 			_view.add_placed(placed)
 		if not free.is_empty():
@@ -633,12 +718,14 @@ func _update_store() -> void:
 			categories.append([name, offered])
 		_hud.set_categories(categories)
 	_hud.refresh(_village)
+	_hud.show_goals(_goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> Array: return [goal.id, _goals.text(goal.title), _goals.progress_text(goal)]), _village.map_name())
 
 
 ## Updates the marks of the ready buildings and the production of the selected building.
 func _update_production() -> void:
 	var now := _now()
 	_view.update_production(now)
+	_view.update_damage()
 	if _selected == null or not _village.is_producer(_selected):
 		_hud.show_production(null, 0, "", 0, false, "")
 	else:
@@ -687,6 +774,9 @@ func _on_action_requested(id: String) -> void:
 		if outcome.reload:
 			_reload_map(outcome.text)
 			return
+		if outcome.redraw:
+			_view.show_village(_village, _config, _sprites)
+			_panel = SpecialActions.View.NONE
 	_update_production()
 	_hud.show_message(outcome.text)
 
@@ -833,6 +923,9 @@ func _on_warehouse_slot_requested() -> void:
 
 
 func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> void:
+	if not _placing_stored and not _tutorial.allows_place(tile):
+		_hud.show_message("Place it on the marked place.")
+		return
 	var old_level := _village.get_level()
 	var result := _village.place_stored(item, tile, _now(), frame) if _placing_stored else _village.buy(item, tile, _now(), frame)
 	if result != Village.Placement.OK:
@@ -845,6 +938,12 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_hud.show_message(("Placed %s from the item store." % item.name) if _placing_stored else "Built %s.%s" % [item.name, _level_up_text(old_level)])
 	_placing_stored = false
+	_tutorial.handle(Tutorial.Action.PLACED, item)
+	# After the house, the client moves the map to the knights and the trolls.
+	if _tutorial.is_active() and _tutorial.step == 11:
+		var knights := _tutorial.marked_items()
+		if not knights.is_empty():
+			_camera.position = IsoGrid.tile_to_map(knights[0].tile)
 
 
 ## The levels that the player reached since old_level, with their rewards.
@@ -867,6 +966,7 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 		return
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
+	_goals.watch_battle(battle.sim)
 	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position)
 	_village_fight.village_changed.connect(_save)
 	_village_fight.closed.connect(_on_village_fight_closed)
@@ -896,6 +996,229 @@ func _on_village_fight_closed() -> void:
 		_hud.show_message(text + _level_up_text(old_level))
 
 
+## Counts an event of the screens for the goals, and saves when a goal was
+## completed. The events of the village come from the village itself.
+func _record(kind: VillageEvent.Kind, data: Dictionary) -> void:
+	_goals.record(kind, data)
+	if _goal_done:
+		_save()
+
+
+## The events of the village that the tutorial waits for.
+func _on_village_event(kind: VillageEvent.Kind, data: Dictionary) -> void:
+	if not _tutorial.is_active():
+		return
+	var item := _config.get_item(int(data.get("item", data.get("unit", 0))))
+	match kind:
+		VillageEvent.Kind.COLLECTED:
+			if item.subcat_functional == Tutorial.SUBCAT_TREE:
+				_tutorial.handle(Tutorial.Action.HARVEST_DONE)
+				_tutorial.handle(Tutorial.Action.TREE_HARVESTED)
+			else:
+				_tutorial.handle(Tutorial.Action.COLLECTED, item)
+		VillageEvent.Kind.KILLED:
+			_tutorial.handle(Tutorial.Action.ENEMY_KILLED)
+
+
+func _show_tutorial() -> void:
+	if _tutorial_box == null:
+		return
+	_tutorial_box.show_step(_tutorial.box(), _tutorial.arrow_text())
+	var tiles: Array[Vector2i] = []
+	if _tutorial.marked_tile() != Village.ANY_TILE:
+		tiles.append(_tutorial.marked_tile())
+	_view.show_tutorial_marks(_tutorial.marked_items(), tiles)
+	_hud.set_locked(_tutorial.is_active())
+
+
+## The client gives a dragon nest at the end of the tutorial, and then the free buildings.
+func _on_tutorial_finished() -> void:
+	var nest := _village.add_tutorial_nest(_now())
+	_tutorial_box.queue_free()
+	_tutorial_box = null
+	_view.show_tutorial_marks([], [])
+	_hud.set_locked(false)
+	_store_key = []
+	_view.sync_items()
+	_update_store()
+	if _save():
+		_hud.show_message("The tutorial is over." + (" You got a %s." % _config.get_item(nest.item_id).name if nest != null else ""))
+
+
+func _on_goal_completed(goal: GameConfig.GoalDef) -> void:
+	_goal_done = true
+	if _hud != null:
+		_hud.show_message("%s %s. You get %d gold." % [_config.text("POPUP_GOAL_COMPLETED").strip_edges(), _goals.text(goal.title), goal.reward])
+	if _goal_window != null and is_instance_valid(_goal_window):
+		_goal_window.show_list()
+
+
+func _open_goal(id: int) -> void:
+	var tutorial_step := _tutorial.step if _tutorial.is_active() else -1
+	if tutorial_step >= 0:
+		# In the tutorial, the goal box opens only the goal of the step.
+		id = _tutorial.goal_for_box()
+		if id == 0:
+			return
+	if _goal_window != null and is_instance_valid(_goal_window):
+		_goal_window.queue_free()
+	_goal_window = GoalWindow.new(_goals, _config, _data_dir.path_join("ui/images"))
+	_goal_window.do_it.connect(_on_goal_do_it)
+	_goal_window.closed.connect(func() -> void: _tutorial.handle(Tutorial.Action.GOAL_WINDOW_CLOSED))
+	if tutorial_step >= 0:
+		_tutorial.handle(Tutorial.Action.GOAL_BOX)
+	_hud.add_child(_goal_window)
+	for goal in _goals.active_goals():
+		if goal.id == id:
+			_goal_window.show_goal(goal)
+			return
+	_goal_window.show_list()
+
+
+## The "DO IT" button of the client: it shows the player where to do the goal.
+func _on_goal_do_it(goal: GameConfig.GoalDef) -> void:
+	if not _tutorial.allows_other():
+		return
+	var hint := _goals.hint(goal)
+	_goal_window.queue_free()
+	_goal_window = null
+	if hint.has("build"):
+		_hud.show_build_item(hint["build"])
+		_hud.show_message("Build %s: click it in the build menu, then a place." % hint["build"].name)
+	elif hint.has("select"):
+		_select(hint["select"])
+		_camera.position = IsoGrid.tile_to_map(hint["select"].tile)
+	elif hint.get("open") == "quests":
+		_open_quests()
+	elif hint.get("open") == "collections":
+		_hud.collections_requested.emit()
+	elif hint.get("open") == "packs":
+		_show_panel(SpecialActions.View.PACKS)
+	elif hint.get("open") == "rename":
+		_hud.open_rename()
+	elif hint.has("text"):
+		_hud.show_message(hint["text"])
+
+
+func _on_store_requested() -> void:
+	if _selected == null:
+		return
+	var item := _config.get_item(_selected.item_id)
+	var result := _village.store_item(_selected, _now())
+	if result != Village.Placement.OK:
+		_hud.show_placement_result(result)
+		return
+	_select(null)
+	_view.sync_items()
+	_update_store()
+	if _save():
+		_hud.show_message("%s is in your item store." % item.name)
+
+
+func _on_rename_requested(new_name: String) -> void:
+	if _village.rename(new_name) != Village.Placement.OK:
+		_hud.show_message("Give your empire a name.")
+		return
+	_update_store()
+	if _save():
+		_hud.show_message("Your empire is now %s." % _village.map_name())
+
+
+## The selection tool of the client: the next drag selects the units in a box.
+func _start_selection_tool() -> void:
+	_select(null)
+	_view.selection_tool = true
+	_camera.panning = false
+	_hud.show_message("Drag a box over your units.")
+	_record(VillageEvent.Kind.SELECTION_TOOL_USED, {})
+
+
+func _on_units_boxed(units: Array[Village.PlacedItem]) -> void:
+	_camera.panning = true
+	var own: Array[Village.PlacedItem] = []
+	own.assign(units.filter(func(placed: Village.PlacedItem) -> bool: return _village.is_own_unit(placed) and not _orders.is_busy(placed)))
+	_select_group(own.slice(0, MAX_GROUP))
+
+
+## A double click on a unit of the player selects the units of its kind near
+## it, as the battle screen does (BattleScreen.kind_of()).
+func _select_kind(unit: Village.PlacedItem) -> void:
+	var kind := BattleScreen.kind_of_item(_config.get_item(unit.item_id))
+	if kind == BattleScreen.Kind.NONE:
+		return
+	var found := []
+	for placed in _village.items:
+		var item := _config.get_item(placed.item_id)
+		var squared := (placed.tile - unit.tile).length_squared()
+		if item != null and _village.is_own_unit(placed) and not _orders.is_busy(placed) and squared <= BattleScreen.SAME_KIND_RADIUS * BattleScreen.SAME_KIND_RADIUS \
+				and BattleScreen.kind_of_item(item) == kind:
+			found.append([squared, found.size(), placed])
+	found.sort()
+	var group: Array[Village.PlacedItem] = []
+	group.assign(found.slice(0, BattleScreen.SAME_KIND_MAX_UNITS).map(func(entry: Array) -> Village.PlacedItem: return entry[2]))
+	if group.size() > 1:
+		_record(VillageEvent.Kind.DOUBLE_CLICKED, {})
+	_select_group(group)
+
+
+func _select_group(units: Array[Village.PlacedItem]) -> void:
+	_select(null)
+	if units.size() == 1:
+		_select(units[0])
+		return
+	_group = units
+	_view.show_group(_group)
+	if not units.is_empty():
+		_hud.show_message("%d units selected. Click a place, a building or a resource." % units.size())
+
+
+## Each unit of the group goes to its own free tile near the clicked tile, or
+## to the clicked building or resource when it can.
+func _order_group(tile: Vector2i, target: Village.PlacedItem) -> void:
+	var taken: Array[Vector2i] = []
+	var sent := 0
+	for unit in _group:
+		if not unit in _village.items:
+			continue
+		var error := ""
+		if target != null and (_village.can_enter(unit, target) or _village.can_harvest(unit, target) or _village.can_repair(unit, target)):
+			error = _orders.order(unit, tile, target)
+		else:
+			var free := _group_tile(tile, taken, unit)
+			if free == Village.ANY_TILE:
+				continue
+			taken.append(free)
+			error = _orders.order(unit, free, null)
+		if error.is_empty():
+			sent += 1
+	_group.clear()
+	_view.show_group(_group)
+	_hud.show_message("" if sent > 0 else "The units cannot go there.")
+
+
+## The free tile nearest to tile that no other unit of the group takes.
+func _group_tile(tile: Vector2i, taken: Array[Vector2i], unit: Village.PlacedItem) -> Vector2i:
+	for ring in range(0, GROUP_RINGS):
+		for y in range(tile.y - ring, tile.y + ring + 1):
+			for x in range(tile.x - ring, tile.x + ring + 1):
+				var candidate := Vector2i(x, y)
+				if maxi(absi(x - tile.x), absi(y - tile.y)) == ring and not candidate in taken and _village.is_free(candidate, unit):
+					return candidate
+	return Village.ANY_TILE
+
+
+## In step 26 of the tutorial, the farm with the villager produces faster. Returns true when it changed.
+func _speed_up_tutorial_farm(now: int) -> bool:
+	for placed in _village.items:
+		var item := _config.get_item(placed.item_id)
+		if item.subcat_functional == Tutorial.SUBCAT_FARM and _village.seconds_to_ready(placed, now) > 0:
+			_village.advance_production(placed, Tutorial.FARM_SPEED - 1)
+			if _village.seconds_to_ready(placed, now) == 0:
+				_tutorial.handle(Tutorial.Action.FARM_READY)
+			return true
+	return false
+
+
 ## The server stores whole seconds.
 static func _now() -> int:
 	return int(Time.get_unix_time_from_system())
@@ -908,6 +1231,7 @@ func _save() -> bool:
 		_known_level += 1
 		if _enemies.on_level_up(_known_level, _now()):
 			_view.sync_items()
+	_goal_done = false
 	var error := _village.save_to_file(_village_path)
 	if error != OK:
 		var text := "Cannot save the village to %s: %s" % [_village_path, error_string(error)]

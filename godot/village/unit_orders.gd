@@ -1,11 +1,13 @@
 class_name UnitOrders
 extends Node
 ## Carries out the orders of the player to units: walk to a tile, go into a
-## building, or harvest a tree or a deposit. The unit walks along its path in
+## building, harvest a tree or a deposit, or repair a damaged building. The unit walks along its path in
 ## the view. The village changes when the unit arrives, because the client sends
 ## its commands then. Walks and harvests are not in the save: the client does not
 ## send them either. A unit of the player that comes near a wild animal
-## captures it, and the animal walks to its ranch by itself.
+## captures it, and the animal walks to its ranch by itself. A villager next
+## to a damaged building repairs Village.REPAIR_STEP of its life at each AI
+## run, and healing springs heal the damaged units of the player near them.
 ##
 ## Idle units do not walk by themselves. Like in the client, they now and then
 ## turn toward a neighbouring tile, which only the view shows, and a unit of the
@@ -23,7 +25,7 @@ const AI_INTERVAL := 61.0 / 30.0
 ## The chance at each AI run that an idle unit turns.
 const IDLE_TURN_CHANCE := 0.04
 
-enum Goal { TILE, ENTER, HARVEST }
+enum Goal { TILE, ENTER, HARVEST, REPAIR }
 
 
 class Walk:
@@ -49,6 +51,8 @@ var _config: GameConfig
 var _walks: Dictionary = {}  # Village.PlacedItem (unit) -> Walk
 var _harvests: Dictionary = {}  # Village.PlacedItem (resource) -> Harvest
 var _harvesting: Dictionary = {}  # Village.PlacedItem (unit) -> Village.PlacedItem (resource)
+var _repairs: Dictionary = {}  # Village.PlacedItem (villager) -> Village.PlacedItem (building)
+var _spring_times: Dictionary = {}  # Village.PlacedItem (healing spring) -> seconds since its last heal
 var _rng: RandomNumberGenerator
 var _ai_time := 0.0  # Seconds since the last AI run.
 var _frame_time := 0.0  # Seconds that the walks have not moved yet.
@@ -81,13 +85,16 @@ func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem)
 	var unit_item := _config.get_item(unit.item_id)
 	if is_busy(unit):
 		return "%s is harvesting." % unit_item.name
+	_repairs.erase(unit)
 	var walk := Walk.new()
 	walk.unit = unit
 	walk.goal = Goal.TILE
 	var is_goal := func(candidate: Vector2i) -> bool: return candidate == tile
 	if target != null and target != unit:
 		var target_item := _config.get_item(target.item_id)
-		if _village.can_harvest(unit, target):
+		if _village.can_repair(unit, target):
+			walk.goal = Goal.REPAIR
+		elif _village.can_harvest(unit, target):
 			if _harvests.has(target) and _harvests[target].units.size() >= target_item.unit_capacity:
 				return "%s has no room for more units." % target_item.name
 			walk.goal = Goal.HARVEST
@@ -121,6 +128,8 @@ func _process(delta: float) -> void:
 	if _ai_time >= AI_INTERVAL:
 		_ai_time = fmod(_ai_time, AI_INTERVAL)
 		_update_idle_units()
+		_update_repairs()
+	_update_springs(delta)
 	_frame_time += delta
 	while _frame_time >= FRAME_SECONDS:
 		_frame_time -= FRAME_SECONDS
@@ -167,10 +176,36 @@ func _update_idle_units() -> void:
 			var tile := _village.random_free_tile_near(placed.tile, Village.CROWD_SEARCH_RINGS, _rng)
 			if tile != Village.ANY_TILE:
 				order(placed, tile, null)
-		elif _rng.randf() < IDLE_TURN_CHANCE:
+		elif _rng.randf() < IDLE_TURN_CHANCE and not _repairs.has(placed):
 			var toward := placed.tile + Vector2i(roundi(_rng.randf() * 2) - 1, roundi(_rng.randf() * 2) - 1)
 			if toward != placed.tile:
 				_view.show_unit(placed, IsoGrid.tile_to_map(placed.tile), VillageView.unit_direction(placed.tile, toward), false)
+
+
+func _update_repairs() -> void:
+	for unit: Village.PlacedItem in _repairs.keys():
+		var building: Village.PlacedItem = _repairs[unit]
+		if not unit in _village.items or not building in _village.items:
+			_repairs.erase(unit)
+		elif _village.repair(building):
+			_repairs.erase(unit)
+			village_changed.emit("%s repaired %s." % [_config.get_item(unit.item_id).name, _config.get_item(building.item_id).name], _village.get_level())
+
+
+## Each healing spring heals one damaged unit after each attack interval of the spring.
+func _update_springs(delta: float) -> void:
+	for placed in _village.items:
+		var item := _config.get_item(placed.item_id)
+		if item == null or item.subcat_functional != Village.SUBCAT_HEALING or item.attack_interval <= 0:
+			continue
+		_spring_times[placed] = _spring_times.get(placed, 0.0) + delta
+		if _spring_times[placed] < item.attack_interval * FRAME_SECONDS:
+			continue
+		_spring_times[placed] = 0.0
+		var unit := _village.spring_target(placed)
+		if unit != null:
+			_village.heal(placed, unit)
+			village_changed.emit("", _village.get_level())
 
 
 ## A captured animal walks into the nearest building of its kind. When that
@@ -228,6 +263,9 @@ func _arrive(walk: Walk) -> void:
 	_view.update_placed(walk.unit)
 	if walk.goal == Goal.TILE:
 		village_changed.emit("", old_level)
+	elif walk.goal == Goal.REPAIR and target_exists and _village.can_repair(walk.unit, walk.target):
+		_repairs[walk.unit] = walk.target
+		village_changed.emit("%s repairs %s." % [unit_name, _config.get_item(walk.target.item_id).name], old_level)
 	elif walk.goal == Goal.HARVEST and target_exists and _village.can_harvest(walk.unit, walk.target) \
 			and (not _harvests.has(walk.target) or _harvests[walk.target].units.size() < _config.get_item(walk.target.item_id).unit_capacity):
 		if not _harvests.has(walk.target):

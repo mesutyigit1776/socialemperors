@@ -80,16 +80,17 @@ CAST_SYMBOLS = ["magic_cast"]
 WINDOWS_FILE = "windows.swf"
 
 
-def import_ui(source, out_dir, unit_thumbs, spell_images):
+def import_ui(source, out_dir, unit_thumbs, more_images):
 	"""unit_thumbs: the file names of the pictures in buildingthumbs that the
-	windows and the portrait buttons can show. spell_images: the pictures of the spells
-	("<img_name>.jpg" and "prev_<img_name>.jpg"). Returns the number of
-	imported sprites."""
+	windows and the portrait buttons can show. more_images: other pictures of
+	assets/images_new, for example of the spells ("<img_name>.jpg" and
+	"prev_<img_name>.jpg") and of the goals. Returns the number of imported
+	sprites."""
 	ui_dir = os.path.join(out_dir, "ui")
 	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
 	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
-	for image in IMAGES + spell_images:
+	for image in IMAGES + more_images:
 		shutil.copyfile(os.path.join(source, "assets", "images_new", image), os.path.join(ui_dir, "images", image))
 	os.makedirs(os.path.join(ui_dir, "thumbs"), exist_ok=True)
 	for thumb in unit_thumbs:

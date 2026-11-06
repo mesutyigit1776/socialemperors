@@ -1,10 +1,11 @@
 class_name SpecialActions
 extends RefCounted
 ## The action panel of VillageHud for the special buildings, the collections
-## and the item store: what the panel shows, and what each action does in the
-## village. The client shows a popup window for each of them.
+## the item store, the land for sale and the unit packs: what the panel shows,
+## and what each action does in the village. The client shows a popup window
+## for each of them.
 
-enum View { NONE, BUILDING, COLLECTIONS, STORE }
+enum View { NONE, BUILDING, COLLECTIONS, STORE, LAND, PACKS }
 
 ## Result of run(): the message for the player, whether the village changed (then
 ## the caller updates the view and saves), whether the client loads the map
@@ -14,8 +15,12 @@ class Outcome:
 	var text: String
 	var changed: bool
 	var reload: bool
+	var redraw: bool  ## The land changed: the caller draws the map again.
 	var place: GameConfig.ItemDef
 
+
+## The land area for View.LAND, see IsoGrid.land_area_number().
+var land_area := 0
 
 var _village: Village
 var _config: GameConfig
@@ -36,6 +41,10 @@ func describe(view: View, building: Village.PlacedItem, now: int) -> Array:
 			return _describe_collections()
 		View.STORE:
 			return _describe_store()
+		View.LAND:
+			return _describe_land()
+		View.PACKS:
+			return _describe_packs(now)
 		View.BUILDING:
 			if building != null:
 				return _describe_building(building, now)
@@ -149,6 +158,34 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.end_temple_wait(now)
 			if result == Village.Placement.OK:
 				outcome.text = "The wait is over."
+		"land":
+			result = _village.buy_land(argument, parts[2] == "cash", 0)
+			if result == Village.Placement.OK:
+				outcome.text = "The land is yours. Build on it."
+				outcome.redraw = true
+		"trade":
+			var amount := _village.market_amount()
+			var price := _village.market_price(parts[1], parts[2] == "sell")
+			result = _village.trade(parts[1], parts[2] == "sell", now)
+			if result == Village.Placement.OK:
+				outcome.text = "You %s %d %s for %d gold." % ["sold" if parts[2] == "sell" else "bought", amount, VillageHud.RESOURCE_NAMES[parts[1]], price]
+			elif result == Village.Placement.NO_TRADES_LEFT:
+				outcome.text = _config.text("AVISO_MERCADO_AGOTADO")
+				return outcome
+		"hire":
+			result = _village.hire_worker(building)
+			if result == Village.Placement.OK:
+				outcome.text = "A worker came to %s." % name
+		"open":
+			result = _village.open_building(building)
+			if result == Village.Placement.OK:
+				outcome.text = "%s is open." % name
+		"pack":
+			var pack := _pack(argument)
+			var units := _village.buy_unit_packs(pack, int(parts[2]), _rng)
+			result = Village.Placement.OK if not units.is_empty() else Village.Placement.NOT_ENOUGH_RESOURCES
+			if result == Village.Placement.OK:
+				outcome.text = "%s gave: %s. The units are in your item store." % [pack["name"], ", ".join(units.map(func(id: int) -> String: return _config.get_item(id).name))]
 		"temple_take":
 			result = _village.take_supreme_bahamut(building, now)
 			if result == Village.Placement.OK:
@@ -257,7 +294,64 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 			return ["%s: the village has the style %s." % [name, _skin_name(_village.skin)], actions]
 		Village.BAHAMUT_TEMPLE:
 			return _describe_temple(building, now)
+	if _village.is_being_built(building):
+		return _describe_workers(building)
+	if Village.MARKETS.has(building.item_id) and building == _village.market():
+		return _describe_market(now)
 	return ["", []]
+
+
+## A building with workers: hire them for cash, then open it.
+func _describe_workers(building: Village.PlacedItem) -> Array:
+	var name := _config.get_item(building.item_id).name
+	var counts := _village.workers(building)
+	var cost: int = _config.worker_item_ids[building.item_id][0]
+	if counts[0] >= counts[1]:
+		return ["%s has all %d workers." % [name, counts[1]], [["open", _config.text("POPUP_EDIFICIO_ABRIR").strip_edges(), true]]]
+	# The client asks neighbours for the other workers; the port has no neighbours yet.
+	return ["%s needs workers before it works: %d of %d." % [name, counts[0], counts[1]], [["hire", "Hire a worker for %d cash" % cost, _village.get_resource("c") >= cost]]]
+
+
+func _describe_market(now: int) -> Array:
+	var actions := []
+	var left := _village.market_trades_left(now)
+	for code: String in ["w", "s", "f"]:
+		var amount := _village.market_amount()
+		var resource: String = VillageHud.RESOURCE_NAMES[code]
+		actions.append(["trade:%s:buy" % code, "Buy %d %s for %d gold" % [amount, resource, _village.market_price(code, false)], left > 0])
+		actions.append(["trade:%s:sell" % code, "Sell %d %s for %d gold" % [amount, resource, _village.market_price(code, true)], left > 0])
+	return ["%s %d trades left." % [_config.text("POPUP_MARKET_FOOTER").strip_edges(), left], actions]
+
+
+func _describe_land() -> Array:
+	var price := _village.next_land_price()
+	if price.is_empty() or not _village.can_buy_land(land_area):
+		return ["", []]
+	var actions := [["land:%d:cash" % land_area, "Buy for %d cash" % price["cash"], _village.get_resource("c") >= int(price["cash"])]]
+	# The client sells land for gold only to players with this number of neighbours.
+	actions.append(["land:%d:gold" % land_area, "Buy for %d gold (needs %d neighbours)" % [price["coins"], price["neighbors"]], int(price["neighbors"]) == 0])
+	return ["This land area is for sale.", actions]
+
+
+func _describe_packs(now: int) -> Array:
+	var actions := []
+	for slot in range(1, Village.PACK_SLOTS + 1):
+		var pack := _village.unit_pack_for_slot(slot, now)
+		if pack.is_empty():
+			continue
+		var most := _village.max_unit_packs(pack)
+		for count: int in [1, 2, 8]:
+			if count == 1 or count <= most:
+				var cost := _village.unit_pack_cost(pack, count)
+				actions.append(["pack:%d:%d" % [int(pack["id"]), count], "%s: %d for %d %s" % [pack["name"], count, cost[1], VillageHud.RESOURCE_NAMES[cost[0]]], count <= most])
+	return ["Unit packs give random units, which go to the item store." if not actions.is_empty() else "No unit packs are for sale.", actions]
+
+
+func _pack(id: int) -> Dictionary:
+	for pack in _config.unit_packs:
+		if int(pack["id"]) == id:
+			return pack
+	return {}
 
 
 func _describe_temple(temple: Village.PlacedItem, now: int) -> Array:

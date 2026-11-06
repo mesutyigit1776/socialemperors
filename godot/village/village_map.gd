@@ -3,7 +3,9 @@ extends RefCounted
 ## The lowest layer of Village, which describes the save rules and the layers.
 ##
 ## This layer: the save document, the items and the land, resources and
-## experience, placement, buying, moving, turning and selling, and saving.
+## experience, placement, buying, moving, turning and selling, buying land,
+## the name of the map, the market, the workers of buildings, and saving. It
+## also sends the events of the goals (happened, see VillageEvent).
 
 enum Placement {
 	OK,
@@ -20,7 +22,12 @@ enum Placement {
 	NOT_ALLOWED,  ## The player cannot move, turn or sell this item.
 	POPULATION_FULL,
 	UNIT_LIMIT_REACHED,
+	NEIGHBOURS_NEEDED,  ## The client asks for neighbours, which the port does not have yet.
+	NO_TRADES_LEFT,
 }
+
+## What the player did, for the goals; see VillageEvent.
+signal happened(kind: VillageEvent.Kind, data: Dictionary)
 
 ## Buildings for which the server's "buy" hires no workers, in addition to
 ## GameConfig.allies_item_ids.
@@ -32,6 +39,24 @@ const GREAT_CHURCH := 470
 ## also a free Wizardry Academy, from which the player opens the spell window.
 const SPELL_BOOK_LEVEL := 15
 const WIZARDRY := 416
+
+## The client sells the land areas around the first area 13; the prices are
+## GameConfig.land_prices, by the number of areas that the map has.
+const LAND_FOR_SALE: Array[int] = [7, 8, 9, 12, 14, 17, 18, 19]
+## The market of the map trades 100, 200 or 300 of wood, stone or food for
+## gold. Its price starts at MARKET_BASE_COSTS for 100 and changes by
+## MARKET_INCREMENT for each trade of the resource ("resourcesTraded" of the
+## map). The player has MARKET_MAX_TRADES trades; the client counts them again
+## from 0 when it loads a map whose first trade was more than
+## MARKET_PERIOD_HOURS ago. The client contains these values.
+const MARKETS := {23: 100, 188: 200, 189: 300, 335: 100, 345: 200, 346: 300}
+const MARKET_BASE_COSTS := {"w": 100, "s": 150, "f": 100}
+const MARKET_INCREMENT := 0.02
+const MARKET_MAX_INCREMENTS := 200
+const MARKET_MAX_DECREMENTS := 25
+const MARKET_SELL_SHARE := 0.75
+const MARKET_MAX_TRADES := 20
+const MARKET_PERIOD_HOURS := 20
 
 ## For check_limits(): the location is not known yet.
 const ANY_TILE := Vector2i(-1, -1)
@@ -71,6 +96,8 @@ var race: String  ## "h" (human) or "t" (troll).
 
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
+var _map_index: int
+var _trades_done: Variant = null  # The trades that the client counts, see market_trades_left().
 var _config: GameConfig
 # Set when the player reaches SPELL_BOOK_LEVEL in the village; Village.add_free_buildings() then gives the Wizardry Academy.
 var _wizardry_due := false
@@ -181,11 +208,184 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 
 	if available < item.cost:
 		return Placement.NOT_ENOUGH_RESOURCES
 
-	_resource_holder(item.cost_type)[RESOURCE_KEYS[item.cost_type][1]] = available - item.cost
+	_add_resource(item.cost_type, -item.cost)
 	_add_xp(item.xp)
 	_register_unit(item.id)
 	_add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
+	if not item.is_unit():
+		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
 	return Placement.OK
+
+
+## The price of the next land area: {"coins", "cash", "neighbors"}, or {}
+## when the map has all areas that the client sells.
+func next_land_price() -> Dictionary:
+	var index := owned_land.size() - 1
+	if index < 0 or index >= _config.land_prices.size() or LAND_FOR_SALE.all(func(area: int) -> bool: return area in owned_land):
+		return {}
+	return _config.land_prices[index]
+
+
+func can_buy_land(area: int) -> bool:
+	return area in LAND_FOR_SALE and not area in owned_land and not next_land_price().is_empty()
+
+
+## Buys the land area for cash or gold, as the server command "expand" does.
+## For gold the client wants the number of neighbours of the price; the port
+## has no neighbours yet. Changes nothing when the result is not OK.
+func buy_land(area: int, with_cash: bool, neighbours: int) -> Placement:
+	if not can_buy_land(area):
+		return Placement.NOT_ALLOWED
+	var price := next_land_price()
+	if not with_cash and neighbours < int(price["neighbors"]):
+		return Placement.NEIGHBOURS_NEEDED
+	var code := "c" if with_cash else "g"
+	var cost := int(price["cash"] if with_cash else price["coins"])
+	if get_resource(code) < cost:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource(code, -cost)
+	owned_land.append(area)
+	if not _map.get("expansions") is Array:
+		_map["expansions"] = []
+	_map["expansions"].append(area)
+	happened.emit(VillageEvent.Kind.LAND_BOUGHT, {"amount": owned_land.size()})
+	return Placement.OK
+
+
+## The name of the map, which the player gives with rename().
+func map_name() -> String:
+	var names: Variant = _document["playerInfo"].get("map_names")
+	return str(names[_map_index]) if names is Array and _map_index < names.size() else ""
+
+
+## Names the map, as the server command "name_map" does.
+func rename(new_name: String) -> Placement:
+	new_name = new_name.strip_edges()
+	if new_name.is_empty():
+		return Placement.NOT_ALLOWED
+	var names: Variant = _document["playerInfo"].get("map_names")
+	if not names is Array:
+		names = []
+		_document["playerInfo"]["map_names"] = names
+	while names.size() <= _map_index:
+		names.append("")
+	names[_map_index] = new_name
+	happened.emit(VillageEvent.Kind.RENAMED, {})
+	return Placement.OK
+
+
+## The market of the map, or null. The client uses the first one, and trades
+## only when its workers opened it.
+func market() -> PlacedItem:
+	for placed in items:
+		if MARKETS.has(placed.item_id) and not is_being_built(placed):
+			return placed
+	return null
+
+
+## The amount of one trade, from the level of the market; 0 without a market.
+func market_amount() -> int:
+	return MARKETS[market().item_id] if market() != null else 0
+
+
+## The gold of a trade of market_amount() of the resource w, s or f, as the
+## server calculates it. A sale gives MARKET_SELL_SHARE of the price.
+func market_price(code: String, sell: bool) -> int:
+	var traded := clampi(int(_traded().get(code, 0)), -MARKET_MAX_DECREMENTS, MARKET_MAX_INCREMENTS)
+	var base: float = MARKET_BASE_COSTS[code] * (market_amount() / 100.0)
+	var cost := _round_half_even(base + base * traded * MARKET_INCREMENT)
+	return _round_half_even(cost * MARKET_SELL_SHARE) if sell else cost
+
+
+func market_trades_left(now: int) -> int:
+	if _trades_done == null:
+		var last := float(_map.get("timestampLastTrade", 0))
+		_trades_done = 0 if now - last > MARKET_PERIOD_HOURS * 3600 else int(_map.get("numTradesDone", 0))
+	return maxi(MARKET_MAX_TRADES - int(_trades_done), 0)
+
+
+## Buys or sells market_amount() of the resource w, s or f, as the server
+## command "trade_resource_b" does. A sale takes the gold price of the
+## resource, not the amount: the server does this, so the port does too.
+func trade(code: String, sell: bool, now: int) -> Placement:
+	if market() == null or not MARKET_BASE_COSTS.has(code):
+		return Placement.NOT_ALLOWED
+	if market_trades_left(now) == 0:
+		return Placement.NO_TRADES_LEFT
+	var price := market_price(code, sell)
+	var amount := market_amount()
+	# The client checks the amount of a sale, the server its price.
+	if get_resource(code if sell else "g") < (maxi(price, amount) if sell else price):
+		return Placement.NOT_ENOUGH_RESOURCES
+	if sell:
+		_add_resource(code, -price)
+		_add_resource("g", price)
+	else:
+		_add_resource("g", -price)
+		_add_resource(code, amount)
+	_traded()[code] = int(_traded().get(code, 0)) + (-1 if sell else 1)
+	if int(_map.get("numTradesDone", 0)) == 0:
+		_map["timestampLastTrade"] = now
+	_map["numTradesDone"] = int(_map.get("numTradesDone", 0)) + 1
+	_trades_done = int(_trades_done) + 1
+	happened.emit(VillageEvent.Kind.MARKET_TRADED, {"code": code, "amount": -amount if sell else amount})
+	return Placement.OK
+
+
+## A building with workers that the player did not open yet: it shows its
+## construction, takes no units and does not produce. Allies buildings,
+## which need neighbours, are not in this group.
+func is_being_built(placed: PlacedItem) -> bool:
+	return _config.worker_item_ids.has(placed.item_id) and placed._entry.size() > 7 and placed._entry[7] is Dictionary \
+			and placed._entry[7].get("si") is Array and not _needs_neighbours(placed.item_id)
+
+
+## The workers of the building: [hired, needed].
+func workers(placed: PlacedItem) -> Array[int]:
+	var hired: Variant = placed._entry[7].get("si") if is_being_built(placed) else null
+	return [hired.size() if hired is Array else 0, int(_config.worker_item_ids.get(placed.item_id, [0, 0])[1])]
+
+
+## Hires a worker for the worker cost in cash, as the server command
+## "buy_si_help" does.
+func hire_worker(placed: PlacedItem) -> Placement:
+	if not is_being_built(placed) or workers(placed)[0] >= workers(placed)[1]:
+		return Placement.NOT_ALLOWED
+	var cost := int(_config.worker_item_ids[placed.item_id][0])
+	if get_resource("c") < cost:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cost)
+	placed._entry[7]["si"].append("0")
+	return Placement.OK
+
+
+## Opens a building that has all its workers, as the server command
+## "finish_si" does.
+func open_building(placed: PlacedItem) -> Placement:
+	if not is_being_built(placed) or workers(placed)[0] < workers(placed)[1]:
+		return Placement.NOT_ALLOWED
+	placed._entry[7].erase("si")
+	happened.emit(VillageEvent.Kind.SOCIAL_BUILDING_OPENED, {"item": placed.item_id})
+	return Placement.OK
+
+
+func _needs_neighbours(item_id: int) -> bool:
+	return item_id == ROUND_TABLE or item_id == TROLL_ALLIES_BUILDING or item_id in _config.allies_item_ids
+
+
+func _traded() -> Dictionary:
+	if not _map.get("resourcesTraded") is Dictionary:
+		_map["resourcesTraded"] = {}
+	return _map["resourcesTraded"]
+
+
+## Python's round(), which the server uses: a half goes to the even number.
+static func _round_half_even(value: float) -> int:
+	var lower := floori(value)
+	var rest := value - lower
+	if is_equal_approx(rest, 0.5):
+		return lower if lower % 2 == 0 else lower + 1
+	return roundi(value)
 
 
 ## The item that covers the tile, or null. When items overlap, the item added last.
@@ -235,6 +435,7 @@ func _read(path: String, config: GameConfig, map_index: int) -> bool:
 
 	_document = data
 	_map = game_map
+	_map_index = map_index
 	_config = config
 	_occupied.resize(IsoGrid.MAP_TILES * IsoGrid.MAP_TILES)
 	skin = int(game_map.get("skin", 0))
@@ -296,6 +497,8 @@ func move(placed: PlacedItem, tile: Vector2i, frame: int = -1) -> Placement:
 	placed._entry[2] = tile.y
 	_set_frame(placed, frame)
 	_mark_occupied(placed, 1)
+	if not _config.get_item(placed.item_id).is_unit():
+		happened.emit(VillageEvent.Kind.MOVED, {"item": placed.item_id})
 	return Placement.OK
 
 
@@ -443,6 +646,8 @@ func _add_resource(code: String, amount: int) -> void:
 	var key: String = RESOURCE_KEYS[code][1]
 	var holder := _resource_holder(code)
 	holder[key] = int(holder.get(key, 0)) + amount
+	if amount != 0:
+		happened.emit(VillageEvent.Kind.RESOURCE_CHANGED, {"code": code, "amount": amount})
 
 
 func _resource_holder(code: String) -> Dictionary:
@@ -465,7 +670,7 @@ func _new_item_attributes(item: GameConfig.ItemDef) -> Dictionary:
 		return {}
 	if item.id == ROUND_TABLE:
 		return {"si": [], "sif": {}}
-	if item.id == TROLL_ALLIES_BUILDING or item.id in _config.allies_item_ids or item.id == GREAT_CHURCH:
+	if _needs_neighbours(item.id) or item.id == GREAT_CHURCH:
 		return {"si": []}
 	return {"si": ["0"]}
 

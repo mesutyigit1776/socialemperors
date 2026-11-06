@@ -188,7 +188,15 @@ func _same_kind_units(unit: BattleFighter) -> Array:
 
 
 static func kind_of(unit: BattleFighter) -> Kind:
-	var def := unit.def
+	return _kind(unit.def, unit.attack_range)
+
+
+## The kind of a unit outside a battle, for the double click in the village.
+static func kind_of_item(def: GameConfig.ItemDef) -> Kind:
+	return _kind(def, def.attack_range)
+
+
+static func _kind(def: GameConfig.ItemDef, attack_range: int) -> Kind:
 	var subcat := def.subcat_functional
 	if def.id in HEALERS:
 		return Kind.HEALER
@@ -196,11 +204,11 @@ static func kind_of(unit: BattleFighter) -> Kind:
 		return Kind.ENGINEER
 	if def.id == MONK:
 		return Kind.MONK
-	if subcat in MELEE_SUBCATS and unit.attack_range <= 1:
+	if subcat in MELEE_SUBCATS and attack_range <= 1:
 		return Kind.MELEE
 	if subcat == SUBCAT_PEASANT:
 		return Kind.WORKER
-	if subcat in RANGED_SUBCATS and unit.attack_range > 1:
+	if subcat in RANGED_SUBCATS and attack_range > 1:
 		return Kind.RANGED
 	if subcat == SUBCAT_SIEGE:
 		return Kind.SIEGE

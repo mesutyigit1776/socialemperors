@@ -15,7 +15,8 @@ extends VillageUnits
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
 ## graveyards, Soul Mixer, Time Machine, Weather Machine, Supreme Dragon
 ## Temple), the free buildings of the client, the collections,
-## the item store, and the save changes of the campaign quests and the spells.
+## the item store and unit packs, the save changes of the campaign quests and
+## the spells, the goals in the save and the tutorial step.
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
 const SUBCAT_DECORATION := 411
@@ -75,6 +76,7 @@ const SOUL_MIX_PROMOTION_UNITS: Array[int] = [2048, 2037, 777, 758]
 ## GameConfig.soul_mixer_min_level, at the free place nearest to these tiles.
 const FREE_BUILDING_TILES := {DRAGON_NEST: Vector2i(30, 59), SOUL_MIXER: Vector2i(59, 59)}
 const WIZARDRY_TILE := Vector2i(59, 59)
+const TUTORIAL_NEST_TILE := Vector2i(50, 60)
 ## The Time Machine sells packets of time (GameConfig.time_packets). A used
 ## packet moves the times of the save back, as the server command "time_ff"
 ## does; the save keeps the packets in privateState "countTimePacket".
@@ -101,6 +103,14 @@ const TEMPLE_HEART_COLLECTION := 23
 const TEMPLE_STEPS := 12
 const TEMPLE_STEP_SECONDS := 172800
 const TEMPLE_WAIT_CASH := 5
+
+const GOAL_KEYS := {"completed": "completedMissions", "rewarded": "rewardedMissions"}
+## The town hall cannot go into the item store.
+const SUBCAT_TOWN_HALL := 135
+## The store of the client shows one unit pack on each of PACK_SLOTS places.
+## Buying 2 or more packs, and 8 or more, gives the discounts of PACK_DISCOUNTS.
+const PACK_SLOTS := 8
+const PACK_DISCOUNTS: Array[Array] = [[8, 0.85], [2, 0.9]]
 
 # The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
 # {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
@@ -233,6 +243,7 @@ func place_stored(item: GameConfig.ItemDef, tile: Vector2i, now: int, frame: int
 		_add_player_unit(item, tile, frame, now)
 	else:
 		_add_entry(item, tile, frame, now, _new_item_attributes(item))
+		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
 	return Placement.OK
 
 
@@ -255,6 +266,7 @@ func add_free_buildings(now: int) -> Array[PlacedItem]:
 			continue
 		_add_xp(item.xp)
 		added.append(_add_entry(item, tile, 0, now, _new_item_attributes(item)))
+		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
 	# After the other buildings, whose experience can bring the level.
 	if _wizardry_due:
 		_wizardry_due = false
@@ -263,6 +275,7 @@ func add_free_buildings(now: int) -> Array[PlacedItem]:
 		if place != ANY_TILE:
 			_add_xp(wizardry.xp)
 			added.append(_add_entry(wizardry, place, 0, now, _new_item_attributes(wizardry)))
+			happened.emit(VillageEvent.Kind.BUILT, {"item": WIZARDRY})
 	return added
 
 
@@ -313,6 +326,8 @@ func care_for_nest(nest: PlacedItem, now: int) -> Placement:
 		return Placement.NOT_ALLOWED
 	var keys: Array = NESTS[nest.item_id]["keys"]
 	_set_private([keys[2], keys[3]], [_private_int(keys[2]) + 1, now])
+	if nest.item_id == DRAGON_NEST:
+		happened.emit(VillageEvent.Kind.NEST_FED, {})
 	return Placement.OK
 
 
@@ -593,6 +608,7 @@ func mix_souls(mixer: PlacedItem, now: int, rng: RandomNumberGenerator) -> Place
 	mixer._entry[7]["bq"] = id
 	_queues()[id] = {"ts": now, "amount": 1, "unit": result.id, "r": {"1": null}}
 	_soul_mixes.erase(mixer)
+	happened.emit(VillageEvent.Kind.SOULS_MIXED, {})
 	return Placement.OK
 
 
@@ -705,13 +721,15 @@ func end_quest(result: Dictionary) -> void:
 		if not _document["privateState"].get("questsRank") is Dictionary:
 			_document["privateState"]["questsRank"] = {}
 		_document["privateState"]["questsRank"][quest_id] = maxi(difficulty, rank)
+		happened.emit(VillageEvent.Kind.QUEST_WON, {"quest": quest_id, "stars": difficulty})
 	player["honor_points"] = int(player.get("honor_points", 0)) + honour
 	_add_resource("g", int(result["resources"]["g"]))
 	# The client adds this experience during the quest, outside its normal mode.
 	_add_xp(int(result["resources"]["x"]), false)
 	var rewards: Variant = result.get("item_rewards", {})
 	for key: Variant in rewards if rewards is Dictionary else {}:
-		_stored()[str(key)] = int(_stored().get(str(key), 0)) + int(rewards[key])
+		for i in int(rewards[key]):
+			_add_stored(int(key))
 	for entry: Array in result["units"]:
 		var lost := int(entry[2]) - int(entry[3])
 		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):
@@ -801,6 +819,7 @@ func kill_enemy(item: GameConfig.ItemDef, placed: PlacedItem = null) -> void:
 	if item.is_unit():
 		_add_xp(item.collect_xp)
 		_add_resource("g", KILL_GOLD)
+		happened.emit(VillageEvent.Kind.KILLED, {"unit": item.id})
 	if placed != null:
 		_remove(placed)
 
@@ -1052,6 +1071,207 @@ func take_supreme_bahamut(temple: PlacedItem, now: int) -> Placement:
 
 
 ## The unit of the player on the map that the sacrifice step needs, or null.
+## The player can put the own buildings and decorations into the item store,
+## except the town hall and a building that trains units.
+func can_store(placed: PlacedItem) -> bool:
+	return can_move(placed) and _config.get_item(placed.item_id).subcat_functional != SUBCAT_TOWN_HALL and queued_units(placed) == 0
+
+
+## Puts the item into the item store, as the server command "store_item"
+## does. Its units come out first.
+func store_item(placed: PlacedItem, now: int) -> Placement:
+	if not can_store(placed):
+		return Placement.NOT_ALLOWED
+	_pop_all(placed, now)
+	_remove(placed)
+	_add_stored(placed.item_id)
+	return Placement.OK
+
+
+## The unit pack on the place slot (1 to PACK_SLOTS) of the store, or {}.
+func unit_pack_for_slot(slot: int, now: int) -> Dictionary:
+	var packs := _config.unit_packs.filter(func(pack: Dictionary) -> bool:
+		var bought := unit_packs_bought([int(pack["id"])])
+		var start := int(GameConfig.to_int(pack.get("starts_at")) if GameConfig.to_int(pack.get("starts_at")) != null else 0)
+		var duration := int(GameConfig.to_int(pack.get("duration")) if GameConfig.to_int(pack.get("duration")) != null else 0)
+		var min_level := int(GameConfig.to_int(pack.get("min_level")) if GameConfig.to_int(pack.get("min_level")) != null else 0)
+		var max_level := int(GameConfig.to_int(pack.get("max_level")) if GameConfig.to_int(pack.get("max_level")) != null else 0)
+		return int(GameConfig.to_int(pack.get("in_store"))) == 1 and int(pack["store_order"]) == slot \
+				and (duration == 0 or (now >= start and now <= start + duration)) \
+				and (int(pack["max_purchable"]) == 0 or bought < int(pack["max_purchable"])) \
+				and (min_level == 0 or get_level() >= min_level) and (max_level == 0 or get_level() <= max_level))
+	packs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.get("slot_priority", 0)) < float(b.get("slot_priority", 0)))
+	return packs[0] if not packs.is_empty() else {}
+
+
+## The number of packs that the player can buy at once, as the client allows.
+func max_unit_packs(pack: Dictionary) -> int:
+	var code: String = unit_pack_cost(pack, 1)[0]
+	var price := int(unit_pack_cost(pack, 1)[1])
+	var count := mini(get_resource(code) / maxi(price, 1), _config.max_packs_per_purchase)
+	var limit := int(pack["max_purchable"])
+	return count if limit == 0 else clampi(mini(count, limit - unit_packs_bought([int(pack["id"])])), 0, count)
+
+
+## [resource code, amount] of count packs, with the discount, as the server takes it.
+func unit_pack_cost(pack: Dictionary, count: int) -> Array:
+	var code := "c" if pack["price"].has("c") else "g"
+	var discount := 1.0
+	for entry: Array in PACK_DISCOUNTS:
+		if count >= entry[0]:
+			discount = entry[1]
+			break
+	return [code, ceili(int(pack["price"][code]) * count * discount)]
+
+
+## Buys count unit packs, as the server command "buy_unit_pack" does, and
+## chooses their units as the client does with the random numbers of the
+## server. The units go to the item store ("store_add_items"). Returns the
+## units, or [] when the player cannot buy them.
+func buy_unit_packs(pack: Dictionary, count: int, rng: RandomNumberGenerator) -> Array[int]:
+	var units: Array[int] = []
+	if count < 1 or count > max_unit_packs(pack):
+		return units
+	var cost := unit_pack_cost(pack, count)
+	_add_resource(cost[0], -cost[1])
+	var bought: Variant = _document["privateState"].get("unitPacks")
+	if not bought is Dictionary:
+		bought = {}
+		_document["privateState"]["unitPacks"] = bought
+	var key := str(int(pack["id"]))
+	bought[key] = int(bought.get(key, 0)) + count
+	happened.emit(VillageEvent.Kind.PACK_BOUGHT, {"amount": unit_packs_bought([])})
+	for i in count * int(pack["units_given"]):
+		var unit := _pack_unit(pack, units, rng)
+		if unit != 0:
+			units.append(unit)
+			_register_unit(unit)
+			_add_stored(unit)
+	return units
+
+
+## One unit of a pack, which this purchase did not give yet: first the kind
+## of the pack (pack_num), then for kind 1 the category (pack_category, or
+## "custom" for the units of the pack), then a unit by its chance.
+func _pack_unit(pack: Dictionary, given: Array[int], rng: RandomNumberGenerator) -> int:
+	var kind := int(_weighted_key(pack["pack_num"], rng.randf() * 100))
+	var category := String(_weighted_key(pack["pack_category"], rng.randf() * 100)) if kind == 1 else ""
+	var chances := []  # [unit id, chance]
+	if category == "custom":
+		for entry: Variant in pack.get("custom", []) if pack.get("custom") is Array else []:
+			chances.append([int(entry["id"]), int(entry.get("chances", 0))])
+	else:
+		for item in _config.items():
+			if item.pack_num == kind and (kind != 1 or item.pack_category == category.to_int()):
+				chances.append([item.id, item.pack_chance])
+	var total: int = chances.reduce(func(sum: int, entry: Array) -> int: return sum + entry[1], 0)
+	var left := chances.filter(func(entry: Array) -> bool: return not entry[0] in given and entry[1] > 0)
+	if total <= 0 or left.is_empty():
+		return 0
+	# The client draws again until it finds a unit that this purchase did not give.
+	while true:
+		var winner: float = rng.randf() * total
+		var sum := 0
+		for entry: Array in chances:
+			sum += entry[1]
+			if sum >= winner:
+				if not entry[0] in given:
+					return entry[0]
+				break
+	return 0
+
+
+## The key whose share of the weights reaches value (0 to 100), in the order of the configuration.
+static func _weighted_key(weights: Dictionary, value: float) -> Variant:
+	var total := 0.0
+	for key: Variant in weights:
+		total += float(weights[key])
+	var sum := 0.0
+	for key: Variant in weights:
+		sum += float(weights[key]) * 100.0 / maxf(total, 0.001)
+		if value <= sum:
+			return key
+	return weights.keys().back()
+
+
+func _add_stored(item_id: int) -> void:
+	_stored()[str(item_id)] = int(_stored().get(str(item_id), 0)) + 1
+	happened.emit(VillageEvent.Kind.STORED, {"item": item_id})
+
+
+## The last tutorial step that the player reached (playerInfo
+## "completed_tutorial"). The tutorial runs while it is 0 on the first map.
+func tutorial_step() -> int:
+	var value: Variant = _document["playerInfo"].get("completed_tutorial", 0)
+	return GameConfig.to_int(value) if GameConfig.to_int(value) != null else 0
+
+
+## As the server command "complete_tutorial" does, which keeps the step as text.
+func set_tutorial_step(step: int) -> void:
+	_document["playerInfo"]["completed_tutorial"] = str(step)
+
+
+func is_first_map() -> bool:
+	return _map_index == 0
+
+
+## The dragon nest that the client gives at the end of the tutorial, at the
+## free place nearest to TUTORIAL_NEST_TILE, with "buy" without cost. The
+## client then sends 9 care steps, which the server refuses because the nest
+## is not active. Returns the nest, or null when no place is free.
+func add_tutorial_nest(now: int) -> PlacedItem:
+	var nest := _config.get_item(DRAGON_NEST)
+	var tile := _free_place_near(nest, TUTORIAL_NEST_TILE)
+	if tile == ANY_TILE:
+		return null
+	_add_xp(nest.xp)
+	var placed := _add_entry(nest, tile, 0, now, _new_item_attributes(nest))
+	happened.emit(VillageEvent.Kind.BUILT, {"item": DRAGON_NEST})
+	return placed
+
+
+## Moves the start of the production of the building back by seconds. In the
+## tutorial, the client makes the farm produce 11 times faster.
+func advance_production(placed: PlacedItem, seconds: int) -> void:
+	placed._entry[4] = float(placed._entry[4]) - seconds
+
+
+## The goals in privateState "completedMissions" (key "completed") or
+## "rewardedMissions" (key "rewarded").
+func goal_ids(key: String) -> Array[int]:
+	var ids: Array[int] = []
+	var list: Variant = _document["privateState"].get(GOAL_KEYS[key])
+	for id: Variant in list if list is Array else []:
+		if id is int or id is float:
+			ids.append(int(id))
+	return ids
+
+
+## The unit packs that the player bought (privateState "unitPacks"), of
+## these pack ids or, when ids is empty, of all packs.
+func unit_packs_bought(ids: Array[int]) -> int:
+	var bought: Variant = _document["privateState"].get("unitPacks")
+	var count := 0
+	for key: Variant in bought if bought is Dictionary else {}:
+		if str(key).is_valid_int() and (ids.is_empty() or str(key).to_int() in ids):
+			count += int(bought[key])
+	return count
+
+
+## Rewards and completes the goal, as the client's commands "reward_mission"
+## and "complete_mission" do on the server: the goal goes into both lists, and
+## its gold comes once.
+func reward_goal(goal: GameConfig.GoalDef) -> void:
+	var rewarded := goal.id in goal_ids("rewarded")
+	for key: String in ["rewarded", "completed"]:
+		if not _document["privateState"].get(GOAL_KEYS[key]) is Array:
+			_document["privateState"][GOAL_KEYS[key]] = []
+		if not goal.id in goal_ids(key):
+			_document["privateState"][GOAL_KEYS[key]].append(goal.id)
+	if not rewarded:
+		_add_resource("g", goal.reward)
+
+
 func _temple_sacrifice(step: int) -> PlacedItem:
 	var unit_id := TEMPLE_SACRIFICES[step - TEMPLE_OFFERINGS.size()]
 	for placed in items:

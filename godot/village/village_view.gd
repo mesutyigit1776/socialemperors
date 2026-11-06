@@ -12,6 +12,8 @@ signal move_confirmed(placed: Village.PlacedItem, tile: Vector2i, frame: int)
 ## The player clicked on the map outside placement mode. placed is the item on
 ## the tile, or null.
 signal map_clicked(tile: Vector2i, placed: Village.PlacedItem)
+## With selection_tool, the player dragged a box over these units.
+signal units_boxed(units: Array[Village.PlacedItem])
 
 const LAND_ITEM_BASE_ID := 1000
 ## The colour around the map for each map style (Village.skin), as in the client.
@@ -30,6 +32,8 @@ const UNIT_DIRECTIONS_BY_ANGLE: Array[int] = [3, 4, 5, 8, 7, 6, 1, 2]
 const PLACEMENT_VALID_COLOR := Color(0.5, 1.0, 0.5, 0.8)
 const PLACEMENT_INVALID_COLOR := Color(1.0, 0.4, 0.4, 0.8)
 const SELECTION_COLOR := Color(1.0, 1.0, 0.4, 0.35)
+const DAMAGED_COLOR := Color(1.0, 0.65, 0.5)
+const TUTORIAL_MARK_COLOR := Color(0.3, 0.6, 1.0, 0.5)
 const READY_MARK_COLORS := {
 	"g": Color(1.0, 0.85, 0.2), "w": Color(0.6, 0.4, 0.2), "s": Color(0.7, 0.7, 0.7),
 	"f": Color(1.0, 0.55, 0.15), "c": Color(0.3, 0.75, 0.3), "m": Color(0.4, 0.5, 1.0),
@@ -51,6 +55,7 @@ var _sprites: SpriteLibrary
 var _nodes: Dictionary = {}  # Village.PlacedItem -> Sprite2D
 var _visitors: Array[Node2D] = []  # Units that are on the map but not in the save, see show_visitors().
 var _ready_marks: Dictionary = {}  # Village.PlacedItem -> Polygon2D, child of the item node
+var _health_bars: Dictionary = {}  # Village.PlacedItem -> ColorRect, child of the item node, see update_damage()
 
 # Placement mode. _placing_item is null when the mode is off. _moving is the
 # item that moves, or null when the player builds a new item.
@@ -62,6 +67,13 @@ var _ghost: Sprite2D
 var _outline := Polygon2D.new()
 
 var _press_position := Vector2.INF  # Screen position of the last left button press.
+## The next drag selects the units in a box instead of moving the map; the
+## owner stops the camera while it is set.
+var selection_tool := false
+var _box_start := Vector2.INF  # Map position where the box started.
+var _box := Polygon2D.new()
+var _group_outlines := Node2D.new()
+var _tutorial_marks := Node2D.new()
 
 
 func _ready() -> void:
@@ -71,6 +83,10 @@ func _ready() -> void:
 	_selection.color = SELECTION_COLOR
 	_selection.visible = false
 	add_child(_selection)
+	add_child(_group_outlines)
+	add_child(_tutorial_marks)
+	_box.color = SELECTION_COLOR
+	add_child(_box)
 	_placement_layer.add_child(_outline)
 	_placement_layer.visible = false
 	add_child(_placement_layer)
@@ -175,12 +191,45 @@ func update_production(now: float) -> void:
 			_ready_marks.erase(placed)
 
 
+## Shows the life of the damaged items, see Village.health(), in the colours
+## of the battle screen. A damaged building also looks burnt; the port does
+## not have the fire graphics of the client yet.
+func update_damage() -> void:
+	for placed: Village.PlacedItem in _nodes:
+		var damaged := _village.is_damaged(placed)
+		var node: Sprite2D = _nodes[placed]
+		if not damaged:
+			if _health_bars.has(placed):
+				_health_bars[placed].queue_free()
+				_health_bars.erase(placed)
+				node.self_modulate = Color.WHITE
+			continue
+		if not _health_bars.has(placed):
+			var new_bar := ColorRect.new()
+			new_bar.color = BattleView.BAR_BORDER_COLOR
+			new_bar.size = BattleView.HEALTH_BAR_SIZE + Vector2(2, 2)
+			var filled := ColorRect.new()
+			filled.color = BattleView.HEALTH_COLOR
+			filled.position = Vector2.ONE
+			new_bar.add_child(filled)
+			node.add_child(new_bar)
+			_health_bars[placed] = new_bar
+		var bar: ColorRect = _health_bars[placed]
+		var top: float = (node as UnitSprite).map_rect().position.y - node.position.y if node is UnitSprite else node.offset.y
+		bar.position = Vector2(-bar.size.x / 2, top - BattleView.HEALTH_BAR_GAP - bar.size.y)
+		var share := clampf(float(_village.health(placed)) / maxf(_config.get_item(placed.item_id).life, 1), 0, 1)
+		(bar.get_child(0) as ColorRect).size = Vector2(BattleView.HEALTH_BAR_SIZE.x * share, BattleView.HEALTH_BAR_SIZE.y)
+		if not node is UnitSprite:
+			node.self_modulate = DAMAGED_COLOR
+
+
 ## Removes the item from the map after Village.sell().
 func remove_placed(placed: Village.PlacedItem) -> void:
 	if _nodes.has(placed):
 		_nodes[placed].queue_free()
 		_nodes.erase(placed)
 		_ready_marks.erase(placed)
+		_health_bars.erase(placed)
 
 
 ## Draws the items that the village gained and removes the items that it lost,
@@ -193,6 +242,55 @@ func sync_items() -> void:
 	for placed in _village.items:
 		if not _nodes.has(placed):
 			add_placed(placed)
+
+
+func _box_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		var point := make_input_local(event).position as Vector2
+		if event.pressed:
+			_box_start = point
+		elif _box_start != Vector2.INF:
+			var box := Rect2(_box_start, Vector2.ZERO).expand(point)
+			_box_start = Vector2.INF
+			_box.polygon = PackedVector2Array()
+			selection_tool = false
+			var units: Array[Village.PlacedItem] = []
+			for placed: Village.PlacedItem in _nodes:
+				if _nodes[placed] is UnitSprite and _nodes[placed].visible and (_nodes[placed] as UnitSprite).map_rect().intersects(box):
+					units.append(placed)
+			units_boxed.emit(units)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _box_start != Vector2.INF:
+		var box := Rect2(_box_start, Vector2.ZERO).expand(make_input_local(event).position)
+		_box.polygon = PackedVector2Array([box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)])
+
+
+## Marks what the tutorial asks for: the tiles of the items, and the tiles
+## where the player places a building. Empty lists remove the marks.
+func show_tutorial_marks(items: Array[Village.PlacedItem], tiles: Array[Vector2i]) -> void:
+	for child in _tutorial_marks.get_children():
+		child.queue_free()
+	var areas: Array[Rect2i] = []
+	for placed in items:
+		areas.append(Village.footprint(_config.get_item(placed.item_id), placed.tile))
+	for tile in tiles:
+		areas.append(Rect2i(tile, Vector2i.ONE))
+	for area in areas:
+		var outline := Polygon2D.new()
+		outline.color = TUTORIAL_MARK_COLOR
+		outline.polygon = IsoGrid.footprint_outline(area)
+		_tutorial_marks.add_child(outline)
+
+
+## Outlines the tiles of the units of a selected group; an empty list removes the outlines.
+func show_group(units: Array[Village.PlacedItem]) -> void:
+	for child in _group_outlines.get_children():
+		child.queue_free()
+	for placed in units:
+		var outline := Polygon2D.new()
+		outline.color = SELECTION_COLOR
+		outline.polygon = IsoGrid.footprint_outline(Village.footprint(_config.get_item(placed.item_id), placed.tile))
+		_group_outlines.add_child(outline)
 
 
 ## Outlines the tiles of the item, or removes the outline when placed is null.
@@ -250,6 +348,9 @@ func is_placing() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not is_placing() and selection_tool:
+		_box_input(event)
+		return
 	if not is_placing():
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:

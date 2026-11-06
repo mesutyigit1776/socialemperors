@@ -17,8 +17,8 @@ extends RefCounted
 ##   do: units of the player that died leave the map ("sell" with the reason
 ##   KILL), enemies that died give their reward ("kill"), and the units of the
 ##   player stay where the fight left them. The server does not keep the life
-##   of buildings, so the damage does not stay; the client keeps it until a
-##   villager repairs the building or the game loads again.
+##   of buildings; the village keeps the damage of the player's units and
+##   buildings for the session, as the client does (Village.health()).
 
 signal ended
 ## A unit says a line, for example a captain of a siege.
@@ -59,7 +59,10 @@ func _init(village: Village, attacks: Array[VillageAttacks.Group], config: GameC
 	for placed in village.items:
 		var def := config.get_item(placed.item_id)
 		if def != null and not is_busy.call(placed):
-			_placed[_add(def, placed.tile, _team_of(placed, def), placed.frame)] = placed
+			var fighter := _add(def, placed.tile, _team_of(placed, def), placed.frame)
+			# A building that burned down stays with a little life, see apply().
+			fighter.health = maxi(village.health(placed), 1)
+			_placed[fighter] = placed
 	for group in groups:
 		_add_group(group)
 	sim.died.connect(_on_died)
@@ -151,13 +154,17 @@ func apply() -> Array[VillageAttacks.Group]:
 	for fighter: BattleFighter in _placed:
 		var placed: Village.PlacedItem = _placed[fighter]
 		if not fighter.is_unit():
+			if fighter.team == BattleFighter.Team.PLAYER:
+				_village.set_health(placed, fighter.health if not fighter.dead else 0)
 			continue
 		if _village.is_own_unit(placed):
 			# A unit that a monk converted fought for the other side: the player lost it.
 			if fighter.dead or fighter.team != BattleFighter.Team.PLAYER:
 				_village.lose_unit(placed)
-			elif fighter.tile != placed.tile:
-				_village.move_unit(placed, fighter.tile, placed.frame)
+			else:
+				_village.set_health(placed, fighter.health)
+				if fighter.tile != placed.tile:
+					_village.move_unit(placed, fighter.tile, placed.frame)
 		elif fighter.dead and _team_of(placed, fighter.def) == BattleFighter.Team.ENEMY:
 			_village.kill_enemy(fighter.def, placed)
 	var staying: Array[VillageAttacks.Group] = []

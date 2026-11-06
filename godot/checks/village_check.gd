@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1145,6 +1145,208 @@ func _check_soul_mixer() -> bool:
 
 
 ## Sets privateState values and the cash of the fixture at path.
+## The goal list: the active goals, the counts of the session, the rewards
+## in the save, and the goals that read the save.
+func _check_goals() -> bool:
+	_check(_config.goals.size() == 205 and _config.goals[0].id == 1 and _config.goals[9].id == 9, "the configuration has 205 goals in its order, without goal 0")
+	var path := _write_fixture("goals", 1, 4, 1000)
+	var village := Village.load_from_file(path, _config)
+	var steps := {}
+	var goals := GoalBook.new(village, _config, steps)
+	var completed: Array[int] = []
+	goals.goal_completed.connect(func(goal: GameConfig.GoalDef) -> void: completed.append(goal.id))
+	_check(not goals.on_map_loaded() and goals.active_goals().size() == GoalBook.MAX_ACTIVE, "a new village has 15 active goals and none is complete")
+	_check(goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> int: return goal.id) == [1, 2], "the goal box shows the first two goals")
+	_check(goals.progress_text(_goal(8)) == "2/4", "the two houses of the map count for the house goal when the map loads")
+	var farm := _config.get_item(10)
+	_buy(village, 10, _free_tile(village, 10, Rect2i(40, 40, 20, 20)), Village.Placement.OK)
+	_check(completed == [1] and village.goal_ids("rewarded") == [1] and village.goal_ids("completed") == [1], "a farm completes the farm goal, which the save lists as completed and rewarded")
+	_expect("after the farm goal", village, {"g": 1000 - farm.cost * int(farm.cost_type == "g") + 10})
+	_check(goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> int: return goal.id) == [2, 3], "the next goal comes into the box")
+	_check(goals.steps_done(_goal(24)) == 1, "a goal that is not active yet counts too")
+	for i in 14:
+		goals.record(VillageEvent.Kind.ZOOMED, {})
+	_check(not 6 in completed, "14 steps of the mouse wheel do not complete the zoom goal")
+	goals.record(VillageEvent.Kind.ZOOMED, {})
+	_check(6 in completed, "the 15th step completes it")
+	_buy(village, 10, _free_tile(village, 10, Rect2i(40, 40, 20, 20)), Village.Placement.OK)
+	_check(7 in completed and not 24 in completed, "the second farm completes the goal of two farms, not the goal of five")
+	_check(goals.hint(_goal(10)).get("text") == _config.text("GOALS_BUILDING_NOT_FOUND").replace("#0#", _config.get_item(38).name), "the hint of a goal without its building is the alert of the client")
+	_check(goals.hint(_goal(9)).get("build") == _config.get_item(38), "the hint of a building goal opens the build menu with the building")
+	_check(goals.progress_text(_goal(98)) == "0/8", "a goal of work time shows hours")
+	village.reward_goal(_goal(2))
+	_check(village.goal_ids("rewarded").count(2) == 1 and village.goal_ids("completed").count(2) == 1, "a goal is rewarded once")
+	_check(village.save_to_file(path) == OK, "the village with goals saves")
+	village = Village.load_from_file(path, _config)
+	goals = GoalBook.new(village, _config, {})
+	goals.on_map_loaded()
+	_check(goals.shown_goals()[0].id == 3 and goals.steps_done(_goal(7)) == 2, "after a load the rewarded goals stay done and the farms count again")
+	# The server completes the land goals of a map that already has the land.
+	path = _write_fixture("goals_land", 10, _config.levels[9].exp_required, 1000, {"expansions": [13, 12, 14]})
+	village = Village.load_from_file(path, _config)
+	goals = GoalBook.new(village, _config, {})
+	_check(goals.on_map_loaded() and 73 in village.goal_ids("rewarded") and 171 in village.goal_ids("rewarded") and not 239 in village.goal_ids("rewarded"), "a map with 3 land areas completes the goals of 2 and 3 areas at the load")
+	return true
+
+
+func _goal(id: int) -> GameConfig.GoalDef:
+	for goal in _config.goals:
+		if goal.id == id:
+			return goal
+	return null
+
+
+## The actions of the village that the goals need: the item store, the name,
+## land, the market, workers, unit packs, repairs and the healing spring.
+func _check_village_actions() -> bool:
+	var path := _write_fixture("actions", 20, _config.levels[19].exp_required, 100000)
+	_patch_private(path, {}, 200)
+	var village := Village.load_from_file(path, _config)
+	var events := []
+	village.happened.connect(func(kind: VillageEvent.Kind, data: Dictionary) -> void: events.append([kind, data]))
+	var town_hall := village.item_at(TOWN_HALL_TILE)
+	_check(not village.can_store(town_hall), "the town hall cannot go into the item store")
+	var garden_tile := _free_tile(village, GREEN_TREE, Rect2i(40, 40, 20, 20))
+	_buy(village, GREEN_TREE, garden_tile, Village.Placement.OK)
+	var tree := village.item_at(garden_tile)
+	_check(village.store_item(tree, NOW) == Village.Placement.OK and village.item_at(garden_tile) == null and village.stored_items().get(GREEN_TREE) == 1, "a decoration goes into the item store")
+	_check(events.any(func(event: Array) -> bool: return event[0] == VillageEvent.Kind.STORED and event[1]["item"] == GREEN_TREE), "the store sends the event of the store goal")
+	_check(village.rename("  Camelot ") == Village.Placement.OK and village.map_name() == "Camelot" and village.rename(" ") == Village.Placement.NOT_ALLOWED, "the map gets a name; an empty name is refused")
+	# Land: the price of the second area, and gold only with neighbours.
+	_check(village.next_land_price() == {"coins": 4000, "cash": 20, "neighbors": 1}, "the second land area costs 4000 gold with 1 neighbour, or 20 cash")
+	_check(not village.can_buy_land(1) and village.buy_land(14, false, 0) == Village.Placement.NEIGHBOURS_NEEDED, "a far area cannot be bought, and gold needs a neighbour")
+	_check(village.buy_land(14, true, 0) == Village.Placement.OK and 14 in village.owned_land and village.next_land_price()["cash"] == 25, "the area is bought for cash, and the next costs 25 cash")
+	_expect("after the land", village, {"c": 180})
+	# The market: 100 of a resource at Market I.
+	var market_tile := _free_tile(village, MARKET, Rect2i(40, 40, 20, 20))
+	_buy(village, MARKET, market_tile, Village.Placement.OK)
+	var market := village.item_at(market_tile)
+	_check(village.market() == null and village.trade("w", false, NOW) == Village.Placement.NOT_ALLOWED, "the market trades only when its workers opened it")
+	while village.hire_worker(market) == Village.Placement.OK:
+		pass
+	village.open_building(market)
+	_check(village.market() == market and village.market_amount() == 100 and village.market_trades_left(NOW) == Village.MARKET_MAX_TRADES, "Market I trades 100 of a resource, 20 times")
+	_check(village.market_price("w", false) == 100 and village.market_price("s", true) == 112, "100 wood costs 100 gold; 100 stone sells for 112 gold, as the server rounds")
+	var gold := village.get_resource("g")
+	var wood := village.get_resource("w")
+	_check(village.trade("w", false, NOW) == Village.Placement.OK and village.get_resource("w") == wood + 100 and village.get_resource("g") == gold - 100, "buying wood gives 100 wood for 100 gold")
+	_check(village.market_price("w", false) == 102 and village.market_trades_left(NOW) == Village.MARKET_MAX_TRADES - 1, "the next wood costs 2% more, and one trade is used")
+	var stone := village.get_resource("s")
+	_check(village.trade("s", true, NOW) == Village.Placement.OK and village.get_resource("s") == stone - 112 and village.get_resource("g") == gold - 100 + 112, "a sale takes the price in stone, as the server does, and gives it in gold")
+	# A building with workers.
+	var mill_tile := _free_tile(village, 6, Rect2i(40, 40, 20, 20))
+	_buy(village, 6, mill_tile, Village.Placement.OK)
+	var mill := village.item_at(mill_tile)
+	_check(village.is_being_built(mill) and village.workers(mill) == [1, 6] and not village.is_producer(mill), "Mill II needs 6 workers, has the player's villager, and does not work yet")
+	_check(village.open_building(mill) == Village.Placement.NOT_ALLOWED, "it cannot open without its workers")
+	for i in 5:
+		village.hire_worker(mill)
+	_check(village.workers(mill) == [6, 6] and village.hire_worker(mill) == Village.Placement.NOT_ALLOWED, "5 workers are hired, and no more")
+	_check(village.open_building(mill) == Village.Placement.OK and not village.is_being_built(mill) and village.is_producer(mill) and not mill._entry[7].has("si"), "the mill opens and works")
+	_check(events.any(func(event: Array) -> bool: return event[0] == VillageEvent.Kind.SOCIAL_BUILDING_OPENED and event[1]["item"] == 6), "the opening sends the event of its goal")
+	_expect("after the workers", village, {"c": 166})
+	# Unit packs: the first pack is one Guardian for 50 gold, once.
+	var pack := village.unit_pack_for_slot(1, NOW)
+	_check(int(pack.get("id", 0)) == 1 and village.max_unit_packs(pack) == 1 and village.unit_pack_cost(pack, 1) == ["g", 50], "the first place of the store has the Guardian pack for 50 gold, once")
+	_check(village.unit_pack_cost(_config.unit_packs[2], 8) == ["c", 41], "8 packs of 6 cash cost 15% less, rounded up as the server does")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var stored := village.stored_items().size()
+	var units := village.buy_unit_packs(pack, 1, rng)
+	_check(units.size() == 1 and units[0] in pack["custom"].map(func(entry: Dictionary) -> int: return int(entry["id"])) and village.stored_items().size() == stored + 1, "the pack gives one of its units, which goes into the item store")
+	_check(village.unit_packs_bought([1]) == 1 and village.unit_pack_for_slot(1, NOW).get("id", 0) != 1, "the pack is bought out")
+	# Damage, repairs and the healing spring.
+	var house := village.item_at(HOUSE_TILE)
+	village.set_health(house, 10)
+	village._stored()[str(VILLAGER)] = 1
+	_check(village.place_stored(_config.get_item(VILLAGER), _free_tile(village, VILLAGER, Rect2i(44, 46, 8, 8)), NOW) == Village.Placement.OK, "a villager comes out of the item store")
+	var villager := village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == VILLAGER and village.is_own_unit(placed))
+	_check(not villager.is_empty() and village.can_repair(villager[0], house), "a villager can repair a damaged house")
+	var repairs := 0
+	while not village.repair(house):
+		repairs += 1
+	_check(repairs == ceili((_config.get_item(HOUSE).life - 10) / float(Village.REPAIR_STEP)) - 1 and not village.is_damaged(house), "each repair step gives 25 life until the house is whole")
+	_check(events.any(func(event: Array) -> bool: return event[0] == VillageEvent.Kind.FIRE_PUT_OUT), "the repair sends the event of its goal")
+	var spring_id: int = _config.items().filter(func(item: GameConfig.ItemDef) -> bool: return item.subcat_functional == Village.SUBCAT_HEALING)[0].id
+	var spring_tile := _free_tile(village, spring_id, Rect2i(44, 44, 12, 12))
+	_check(village.place_stored(_config.get_item(spring_id), spring_tile, NOW) == Village.Placement.NOT_ALLOWED, "a spring that the store does not have cannot be placed")
+	village._stored()[str(spring_id)] = 1
+	_check(village.place_stored(_config.get_item(spring_id), spring_tile, NOW) == Village.Placement.OK, "a healing spring is placed")
+	var spring := village.item_at(spring_tile)
+	village.set_health(villager[0], 5)
+	var target := village.spring_target(spring)
+	if target == villager[0]:
+		village.heal(spring, villager[0])
+		_check(village.health(villager[0]) == mini(5 + _config.get_item(spring_id).attack, _config.get_item(VILLAGER).life), "the spring heals the damaged villager near it by its attack")
+	else:
+		_check(Vector2(villager[0].tile).distance_to(Vector2(Village.footprint(_config.get_item(spring_id), spring_tile).get_center())) > _config.get_item(spring_id).attack_range, "the spring heals only units in its range")
+	_check(village.save_to_file(path) == OK, "the village after the actions saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var game_map: Dictionary = saved["maps"][0]
+	_check(saved["playerInfo"]["map_names"][0] == "Camelot" and game_map["expansions"].has(14.0) and game_map["numTradesDone"] == 2 and game_map["resourcesTraded"] == {"w": 1.0, "s": -1.0} and saved["privateState"]["unitPacks"] == {"1": 1.0}, "the save has the name, the land, the trades and the pack as the server writes them")
+	return true
+
+
+## The tutorial of a new empire: the steps, what they allow, and the save.
+func _check_tutorial() -> bool:
+	var path := _write_fixture("tutorial", 1, 4, 250)
+	var village := Village.load_from_file(path, _config)
+	var tutorial := Tutorial.new(village, _config)
+	_check(tutorial.is_active() and tutorial.step == 0 and tutorial.box()[0] == _config.text("TUTORIAL_INTRO_TITULO") and tutorial.box()[3] == true, "a new empire starts the tutorial with the welcome box and its button")
+	_check(_config.text("TUTORIAL_INTRO_LECCION").contains("#0#") and tutorial.box()[1].contains(_config.text("TUTORIAL_HOST_NAME_MALE")), "the lesson names the host")
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(TOWN_HALL))
+	_check(tutorial.step == 0, "a step goes on only with its own action")
+	tutorial.handle(Tutorial.Action.BOX_BUTTON)
+	_check(tutorial.step == 1 and village.tutorial_step() == 1 and tutorial.box()[2] == _config.text("POPUP_TUTORIAL_PAGINA").replace("#0#", "1").replace("#1#", "7"), "the button goes to step 1, page 1 of 7, and the save has the step")
+	_check(not tutorial.allows_select(_config.get_item(KNIGHT), false) and tutorial.allows_select(_config.get_item(TOWN_HALL), false), "at step 1 only the town hall can be selected")
+	_check(not tutorial.allows_build(_config.get_item(HOUSE)) and not tutorial.allows_orders() and not tutorial.allows_training(_config.get_item(VILLAGER)), "at step 1 the player cannot build, move units or train")
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(TOWN_HALL))
+	_check(tutorial.allows_training(_config.get_item(VILLAGER)) and not tutorial.allows_training(_config.get_item(SPEARMAN)), "at step 2 only villagers train")
+	tutorial.handle(Tutorial.Action.TRAINING_STARTED, _config.get_item(VILLAGER))
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(VILLAGER))
+	tutorial.handle(Tutorial.Action.UNIT_ORDERED)
+	tutorial.handle(Tutorial.Action.UNIT_ORDERED, _config.get_item(19))
+	tutorial.handle(Tutorial.Action.HARVEST_DONE)
+	_check(tutorial.step == 8 and village.tutorial_step() == 8, "a harvest goes past the step of the wood, because the port has no wood to pick up")
+	_check(tutorial.allows_build(_config.get_item(HOUSE)) and not tutorial.allows_build(_config.get_item(10)), "the build menu offers only House I")
+	tutorial.handle(Tutorial.Action.BUILD_ITEM_CHOSEN, _config.get_item(HOUSE))
+	_check(tutorial.step == 10 and not tutorial.allows_place(Vector2i(54, 55)) and tutorial.allows_place(Vector2i(55, 55)), "House I goes only on tile 55, 55")
+	tutorial.handle(Tutorial.Action.PLACED, _config.get_item(HOUSE))
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(KNIGHT))
+	tutorial.handle(Tutorial.Action.ATTACK_ORDERED)
+	tutorial.handle(Tutorial.Action.ENEMY_KILLED)
+	_check(tutorial.step == 15 and village.tutorial_step() == 15 and tutorial.box().is_empty() and tutorial.goal_for_box() == 1, "the dead troll goes to step 15, past the congratulations, with the goal box")
+	tutorial.handle(Tutorial.Action.GOAL_BOX)
+	tutorial.handle(Tutorial.Action.BUILD_ITEM_CHOSEN, _config.get_item(10))
+	_check(tutorial.step == 19 and tutorial.allows_place(Vector2i(52, 44)) and not tutorial.allows_place(Vector2i(52, 45)), "the farm goes only on tile 52, 44")
+	for action: Tutorial.Action in [Tutorial.Action.PLACED, Tutorial.Action.GOAL_BOX, Tutorial.Action.GOAL_WINDOW_CLOSED]:
+		tutorial.handle(action, _config.get_item(10))
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(TOWN_HALL))
+	tutorial.handle(Tutorial.Action.TRAINING_STARTED, _config.get_item(VILLAGER))
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(VILLAGER))
+	tutorial.handle(Tutorial.Action.UNIT_ORDERED, _config.get_item(10))
+	tutorial.handle(Tutorial.Action.FARM_READY)
+	tutorial.handle(Tutorial.Action.COLLECTED, _config.get_item(10))
+	tutorial.handle(Tutorial.Action.GOAL_BOX)
+	tutorial.handle(Tutorial.Action.GOAL_WINDOW_CLOSED)
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(VILLAGER))
+	_check(tutorial.step == Tutorial.LAST_STEP and village.tutorial_step() == 31, "the farm, the food and the goal window lead to the last step")
+	var finished := [false]
+	tutorial.finished.connect(func() -> void: finished[0] = true)
+	tutorial.handle(Tutorial.Action.TREE_HARVESTED)
+	tutorial.handle(Tutorial.Action.TREE_HARVESTED)
+	_check(tutorial.is_active(), "two trees do not end the tutorial")
+	tutorial.handle(Tutorial.Action.TREE_HARVESTED)
+	_check(finished[0] and not tutorial.is_active() and tutorial.allows_other(), "the third tree ends it")
+	var nest := village.add_tutorial_nest(NOW)
+	_check(nest != null and nest.item_id == DRAGON_NEST and (nest.tile - Village.TUTORIAL_NEST_TILE).length() < 5, "the client gives a dragon nest near tile 50, 60 at the end")
+	_check(village.save_to_file(path) == OK, "the village after the tutorial saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["playerInfo"]["completed_tutorial"] == "31", "the save has the last step as text, as the server writes it")
+	_check(not Tutorial.new(Village.load_from_file(path, _config), _config).is_active(), "a village after the tutorial does not start it again")
+	return true
+
+
 func _patch_private(path: String, values: Dictionary, cash: int) -> void:
 	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	document["privateState"].merge(values, true)

@@ -1,8 +1,9 @@
 class_name VillageUnits
 extends VillageMap
 ## The production of buildings, the units, the wild animals, the buildings that
-## take units, the unit warehouse, harvests and training. The middle layer of
-## Village; see Village.
+## take units, the unit warehouse, harvests and training, and the damage of
+## the session with repairs and healing springs. The middle layer of Village;
+## see Village.
 
 enum Training {
 	OK,
@@ -84,6 +85,11 @@ const SUBCAT_UNIVERSITY := 134
 const BLACKSMITH_UNIT_SUBCATS: Array[int] = [78, 79, 80]
 const UNIVERSITY_UNIT_SUBCATS: Array[int] = [81]
 const SUBCAT_SIEGE := 81
+## The healing spring heals units of the player near it.
+const SUBCAT_HEALING := 137
+## A villager repairs this life of a building each time the client runs the
+## AI of the units (UnitOrders.AI_INTERVAL).
+const REPAIR_STEP := 25
 ## Cash for each started hour of training time that is left in a queue. The
 ## client and the server both have this value; the configuration does not.
 const SPEED_UP_COST_PER_HOUR := 1
@@ -139,6 +145,9 @@ const SOUL_MIXER := 1529
 # land when it loads the map, the animals that units capture, and the animals
 # that come out of buildings.
 var _captured: Dictionary = {}
+var _health: Dictionary = {}  # PlacedItem -> life below the full life, see health().
+
+
 ## Wild animals on the owned land belong to the player when the client loads the map.
 func _read(path: String, config: GameConfig, map_index: int) -> bool:
 	if not super(path, config, map_index):
@@ -158,7 +167,73 @@ func sell(placed: PlacedItem, now: int) -> Placement:
 
 func _remove(placed: PlacedItem) -> void:
 	_captured.erase(placed)
+	_health.erase(placed)
 	super(placed)
+
+
+## The life of an item of the map. Fights in the village damage units and
+## buildings; the client keeps the damage until a villager repairs the
+## building, a healing spring heals the unit, or the game loads again. The
+## save does not have it.
+func health(placed: PlacedItem) -> int:
+	return _health.get(placed, _config.get_item(placed.item_id).life)
+
+
+func set_health(placed: PlacedItem, value: int) -> void:
+	var life := _config.get_item(placed.item_id).life
+	if value >= life:
+		_health.erase(placed)
+	else:
+		_health[placed] = maxi(value, 0)
+
+
+func is_damaged(placed: PlacedItem) -> bool:
+	return _health.has(placed)
+
+
+## A villager of the player repairs a damaged building of the player; the
+## client shows the damage as fire.
+func can_repair(unit: PlacedItem, building: PlacedItem) -> bool:
+	var unit_item := _config.get_item(unit.item_id)
+	var building_item := _config.get_item(building.item_id)
+	return is_own_unit(unit) and unit_item.subcat_functional == SUBCAT_PEASANT and building_item != null \
+			and not building_item.is_unit() and can_move(building) and is_damaged(building)
+
+
+## One repair step of a villager: REPAIR_STEP more life. Returns true when the
+## building has all its life again.
+func repair(building: PlacedItem) -> bool:
+	if not is_damaged(building):
+		return true
+	set_health(building, health(building) + REPAIR_STEP)
+	if is_damaged(building):
+		return false
+	happened.emit(VillageEvent.Kind.FIRE_PUT_OUT, {"item": building.item_id})
+	return true
+
+
+## The damaged unit of the player that the healing spring heals next: the
+## nearest in its attack range, not in a building and not a siege unit. Or null.
+func spring_target(spring: PlacedItem) -> PlacedItem:
+	var spring_item := _config.get_item(spring.item_id)
+	var center := Vector2(Village.footprint(spring_item, spring.tile).get_center())
+	var best: PlacedItem = null
+	var best_distance := INF
+	for placed: PlacedItem in _health:
+		var item := _config.get_item(placed.item_id)
+		if not item.is_unit() or not is_own_unit(placed) or item.subcat_functional == SUBCAT_SIEGE:
+			continue
+		var distance := center.distance_to(Vector2(placed.tile))
+		if distance <= spring_item.attack_range and distance < best_distance:
+			best = placed
+			best_distance = distance
+	return best
+
+
+## The healing spring gives its attack as life to the unit.
+func heal(spring: PlacedItem, unit: PlacedItem) -> void:
+	set_health(unit, health(unit) + _config.get_item(spring.item_id).attack)
+	happened.emit(VillageEvent.Kind.HEALED, {"unit": unit.item_id})
 
 
 ## Buildings that produce a resource for the player, the nursery, which
@@ -168,7 +243,7 @@ func is_producer(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and not item.is_unit() and item.activation > 0 and item.collect > 0 \
 			and (RESOURCE_KEYS.has(item.collect_type) or placed.item_id in [NURSERY, TREASURE_MINE]) \
-			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
+			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS and not is_being_built(placed)
 
 
 ## A mill or mine that works only after the player chooses a work time.
@@ -222,6 +297,7 @@ func start_work(placed: PlacedItem, work_time: int, now: int) -> Production:
 		return Production.ALREADY_STARTED
 	placed._entry[7]["cp"] = work_time + 1
 	placed._entry[4] = now
+	happened.emit(VillageEvent.Kind.TIME_SELECTED, {"building": placed.item_id, "amount": WORK_MINUTES[work_time]})
 	return Production.OK
 
 
@@ -296,6 +372,7 @@ func _collect_now(placed: PlacedItem, now: int) -> Production:
 	# without a tile, and the animal goes away.
 	if item.subcat_functional == SUBCAT_RANCH and placed.item_id != NURSERY:
 		_take_unit(placed, 0)
+	happened.emit(VillageEvent.Kind.COLLECTED, {"item": placed.item_id})
 	return Production.OK
 
 
@@ -364,6 +441,7 @@ func can_capture(unit: PlacedItem, unit_tile: Vector2i, animal: PlacedItem) -> b
 func capture(animal: PlacedItem) -> void:
 	if is_wild_animal(animal):
 		_captured[animal] = true
+		happened.emit(VillageEvent.Kind.CAPTURED, {"unit": animal.item_id})
 
 
 ## The building nearest to the animal that animals of its kind go into, or null.
@@ -461,7 +539,7 @@ func move_unit(unit: PlacedItem, tile: Vector2i, frame: int) -> Placement:
 func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
 	var unit_item := _config.get_item(unit.item_id)
 	var building_item := _config.get_item(building.item_id)
-	if not is_own_unit(unit) or building_item == null or building_item.is_unit():
+	if not is_own_unit(unit) or building_item == null or building_item.is_unit() or is_being_built(building):
 		return false
 	if can_mount(unit, building):
 		return true
@@ -509,6 +587,7 @@ func push_unit(unit: PlacedItem, building: PlacedItem, now: int) -> Placement:
 		building._entry[4] = now
 	building._entry[6].append(unit.item_id)
 	_remove(unit)
+	happened.emit(VillageEvent.Kind.PUSHED, {"building": building.item_id, "unit": unit.item_id})
 	return Placement.OK
 
 
@@ -530,7 +609,10 @@ func mount(unit: PlacedItem, stables: PlacedItem, tile: Vector2i, now: int) -> P
 	_remove(unit)
 	var mounted := _config.get_item(MOUNTED_UNITS[unit.item_id])
 	_add_xp(mounted.xp)
-	return _add_player_unit(mounted, tile, 1, now)
+	var placed := _add_player_unit(mounted, tile, 1, now)
+	# The client counts the mounted unit as trained by the stables.
+	happened.emit(VillageEvent.Kind.TRAINED, {"building": stables.item_id, "unit": mounted.id})
+	return placed
 
 
 ## Takes the unit units_in(building)[index] out of the building to the nearest
@@ -545,7 +627,9 @@ func pop_unit(building: PlacedItem, index: int, now: int) -> PlacedItem:
 	if units_in(building).is_empty() and _work_time(building) > 0:
 		building._entry[7].erase("cp")
 		building._entry[4] = now
-	return _add_player_unit(_config.get_item(unit_id), tile, 0, now)
+	var unit := _add_player_unit(_config.get_item(unit_id), tile, 0, now)
+	happened.emit(VillageEvent.Kind.PULLED, {"building": building.item_id, "unit": unit_id})
+	return unit
 
 
 ## The animal that the nursery breeds when it is ready, or null for other buildings.
@@ -565,6 +649,7 @@ func complete_sacrifice(altar: PlacedItem, now: int) -> GameConfig.ItemDef:
 	var refund := sell_refund(unit)
 	if refund > 0:
 		_add_resource(unit.cost_type, refund)
+	happened.emit(VillageEvent.Kind.SACRIFICED, {"unit": unit.id})
 	return unit
 
 
@@ -671,6 +756,7 @@ func harvest(resource: PlacedItem, harvesters: int, now: int) -> PlacedItem:
 	_add_resource(item.collect_type, harvest_amount(resource, harvesters))
 	_add_xp(item.collect_xp)
 	_remove(resource)
+	happened.emit(VillageEvent.Kind.COLLECTED, {"item": item.id})
 	if not REGROWTH.has(item.subcat_functional):
 		return null
 	# The client sends "buy" with direction 1 for the new item.
@@ -858,7 +944,9 @@ func complete_training(building: PlacedItem, now: int) -> PlacedItem:
 	queue["ts"] = float(queue["ts"]) + _unit_seconds(building)
 	_drop_last_queued(building)
 	_add_xp(unit.xp)
-	return _add_player_unit(unit, tile, 0, now)
+	var placed := _add_player_unit(unit, tile, 0, now)
+	happened.emit(VillageEvent.Kind.TRAINED, {"building": building.item_id, "unit": unit.id})
+	return placed
 
 
 ## The production time of the building in seconds, or -1 when it does not produce.

@@ -48,6 +48,11 @@ class ItemDef:
 	var potion: int  ## Potions that bring this unit back from the graveyard.
 	var cost_unit_cash: int  ## The Heroes Grave brings a hero back for this value times Village.RESURRECT_GOLD_PER_CASH gold.
 	var groups: String  ## The group of a unit, for example "god" or "dragon"; some quests ask for units of a group.
+	## Unit packs choose units by these values, see Village.buy_unit_packs():
+	## the kind of pack, the category in it and the chance in the category.
+	var pack_num: int
+	var pack_category: int
+	var pack_chance: int
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -78,6 +83,18 @@ class SpellDef:
 	var target: int  ## The side that the area marks: 0 none, 1 the player, 2 the enemy.
 
 
+## A goal of the goal list ("goals" of the configuration). See GoalBook.
+class GoalDef:
+	var id: int
+	var type: String  ## For example "built_id"; GoalBook knows the types of the configuration.
+	var reward: int  ## Gold.
+	var title: String  ## "#0#" in the texts is the name of the host, see GoalBook.text().
+	var description: String
+	var image: String  ## Pictures in assets/images_new, or "none".
+	var character: String
+	var params: Dictionary  ## The values of the type, for example {"ids": [38], "ammount": 1}.
+
+
 class LevelDef:
 	var name: String
 	var exp_required: int  ## Total experience that the player needs for this level.
@@ -89,7 +106,18 @@ var levels: Array[LevelDef] = []  ## levels[n - 1] is level n.
 var start_level_mana_reward: int  ## From this level, each new level also gives mana.
 var mana_reward_per_level: int
 var townhall_house_limit: Dictionary = {}  ## Town hall item id -> number of houses that it allows.
-var worker_item_ids: Dictionary = {}  ## Item id -> true for the buildings that need workers ("social items").
+## The buildings that need workers ("social items"): item id -> [cash for one
+## worker, number of workers].
+var worker_item_ids: Dictionary = {}
+## The prices of land ("expansion_prices"), for a map with 1, 2, ... areas:
+## {"coins", "cash", "neighbors"}.
+var land_prices: Array[Dictionary] = []
+## The unit packs ("unit_packs") as the configuration has them: id, price
+## ({"g": gold} or {"c": cash}), store_order (the place in the store, 1 to 8),
+## slot_priority, in_store, min_level, max_level, starts_at, duration,
+## max_purchable, units_given, pack_num, pack_category, custom.
+var unit_packs: Array[Dictionary] = []
+var max_packs_per_purchase: int  ## MAX_PACKS_ALLOWED_TO_BUY
 var allies_item_ids: Array[int] = []  ## Allies buildings and markets, and the recruitment prize.
 var category_names: Dictionary = {}  ## Store category id -> name.
 ## Buildings that work only after the player chooses a work time, see Village.WORK_MINUTES.
@@ -150,6 +178,9 @@ var quest_honour: Array[int] = []  ## For a win with 1, 2 and 3 stars.
 var quest_honour_first: Array[int] = []  ## For the first win with these stars.
 var quest_honour_lost: int
 var spells: Array[SpellDef] = []  ## In configuration order.
+## The goals in configuration order. The client sorts them by their order
+## value, which is 1 for all of them, and leaves out the goals of order 0.
+var goals: Array[GoalDef] = []
 ## The mana that the player buys: mana_per_purchase for mana_price_gold gold or mana_price_cash cash.
 var mana_per_purchase: int
 var mana_price_gold: int
@@ -217,10 +248,17 @@ static func load_from_file(path: String) -> GameConfig:
 		config.allies_item_ids.append(id)
 	for entry: Variant in data.get("social_items", []):
 		var id: Variant = to_int(entry.get("id")) if entry is Dictionary else null
-		if id == null:
+		var cost: Variant = to_int(entry.get("worker_cost")) if entry is Dictionary else null
+		if id == null or cost == null:
 			push_error("Game configuration '%s' has an incorrect social item: %s" % [path, str(entry).left(200)])
 			return null
-		config.worker_item_ids[id] = true
+		config.worker_item_ids[id] = [cost, str(entry.get("workers", "")).split(",", false).size()]
+	for entry: Variant in data.get("expansion_prices", []):
+		var numbers := [to_int(entry.get("coins")), to_int(entry.get("cash")), to_int(entry.get("neighbors"))] if entry is Dictionary else [null]
+		if null in numbers:
+			push_error("Game configuration '%s' has an incorrect land price: %s" % [path, str(entry).left(200)])
+			return null
+		config.land_prices.append({"coins": numbers[0], "cash": numbers[1], "neighbors": numbers[2]})
 	var variable_ids: Variant = globals.get("COLLECT_VARIABLE_IDS")
 	if not variable_ids is Array:
 		push_error("Game configuration '%s' has no COLLECT_VARIABLE_IDS in globals." % path)
@@ -262,6 +300,13 @@ static func load_from_file(path: String) -> GameConfig:
 		return null
 	if not _parse_spells(config, data.get("magics"), globals):
 		push_error("Game configuration '%s' has no correct spells (magics) or mana settings in globals." % path)
+		return null
+	config.unit_packs.assign(data.get("unit_packs", []).filter(func(pack: Variant) -> bool:
+		return pack is Dictionary and pack.get("price") is Dictionary and pack.get("pack_num") is Dictionary and pack.get("pack_category") is Dictionary \
+				and [pack.get("id"), pack.get("store_order"), pack.get("units_given"), pack.get("max_purchable")].all(func(value: Variant) -> bool: return to_int(value) != null)))
+	config.max_packs_per_purchase = maxi(int(to_int(globals.get("MAX_PACKS_ALLOWED_TO_BUY")) if to_int(globals.get("MAX_PACKS_ALLOWED_TO_BUY")) != null else 1), 1)
+	if not _parse_goals(config, data.get("goals")):
+		push_error("Game configuration '%s' has no correct goal list (goals)." % path)
 		return null
 	for entry: Variant in data.get("localization_strings", []):
 		if entry is Dictionary and entry.get("name") is String:
@@ -358,6 +403,10 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.sm_training_time = numbers["sm_training_time"]
 	item.potion = numbers["potion"]
 	item.cost_unit_cash = numbers["cost_unit_cash"]
+	# Most items do not have these values, or have them empty.
+	for key: String in ["pack_num", "pack_category", "pack_chance"]:
+		var value: Variant = to_int(entry.get(key))
+		item.set(key, value if value != null else 0)
 	return item
 
 
@@ -568,6 +617,31 @@ static func _parse_time_packets(config: GameConfig, packets: Variant) -> bool:
 		if not (hours is float or hours is int) or hours <= 0 or price == null:
 			return false
 		config.time_packets.append([float(hours), price])
+	return true
+
+
+static func _parse_goals(config: GameConfig, entries: Variant) -> bool:
+	if not entries is Array:
+		return false
+	for entry: Variant in entries:
+		if not entry is Dictionary:
+			return false
+		var numbers := [to_int(entry.get("id")), to_int(entry.get("orders")), to_int(entry.get("reward"))]
+		var params: Variant = JSON.parse_string(str(entry.get("params", "{}")))
+		if null in numbers or not params is Dictionary:
+			return false
+		if numbers[1] == 0:
+			continue
+		var goal := GoalDef.new()
+		goal.id = numbers[0]
+		goal.reward = numbers[2]
+		goal.type = str(entry.get("types", ""))
+		goal.title = str(entry.get("title", ""))
+		goal.description = str(entry.get("description", ""))
+		goal.image = str(entry.get("image", "none"))
+		goal.character = str(entry.get("characters", "none"))
+		goal.params = params
+		config.goals.append(goal)
 	return true
 
 

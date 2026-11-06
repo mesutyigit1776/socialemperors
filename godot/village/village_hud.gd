@@ -35,10 +35,20 @@ signal stored_items_requested
 signal quests_requested
 signal survival_requested
 signal tournament_requested
+signal packs_requested
+## The player wants to put the selected item into the item store.
+signal store_requested
+## The player gave the map a new name.
+signal rename_requested(new_name: String)
+## The next drag on the map selects the units in a box.
+signal selection_tool_requested
+## The player clicked a goal of the goal box: its id.
+signal goal_requested(goal_id: int)
 
 const PANEL_WIDTH := 340
 const PANEL_MARGIN := 10.0
 const ACTIONS_MAX_HEIGHT := 220  ## More actions than fit scroll.
+const GOAL_BOX_WIDTH := 260
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash", "p": "potions"}
 const PLACEMENT_MESSAGES := {
 	Village.Placement.OUTSIDE_MAP: "The item does not fit on the map.",
@@ -54,6 +64,8 @@ const PLACEMENT_MESSAGES := {
 	Village.Placement.NOT_ALLOWED: "You cannot do this with this item.",
 	Village.Placement.POPULATION_FULL: "The population is full. Build houses for more population.",
 	Village.Placement.UNIT_LIMIT_REACHED: "You have the maximum number of this unit.",
+	Village.Placement.NEIGHBOURS_NEEDED: "This needs more neighbours. The port does not have neighbours yet.",
+	Village.Placement.NO_TRADES_LEFT: "The market has no trades left.",
 }
 
 var _resources := Label.new()
@@ -66,6 +78,11 @@ var _selection := HBoxContainer.new()
 var _selection_name := Label.new()
 var _move_button := Button.new()
 var _sell_button := Button.new()
+var _store_button := Button.new()
+var _rename_dialog := AcceptDialog.new()
+var _rename_edit := LineEdit.new()
+var _goal_box := VBoxContainer.new()
+var _lists := HFlowContainer.new()  # The buttons of the windows and lists.
 var _sell_dialog := ConfirmationDialog.new()
 var _action_dialog := ConfirmationDialog.new()  # The question of an action, see show_actions().
 var _asked_action := ""
@@ -109,13 +126,17 @@ func _init() -> void:
 	column.add_child(_resources)
 	column.add_child(title)
 	column.add_child(_category)
-	var lists := HBoxContainer.new()
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested]]:
+	var lists := _lists
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
 		var button := Button.new()
 		button.text = pair[0]
 		var requested: Signal = pair[1]
 		button.pressed.connect(func() -> void: requested.emit())
 		lists.add_child(button)
+	var rename := Button.new()
+	rename.text = "Rename"
+	rename.pressed.connect(_rename_dialog.popup_centered)
+	lists.add_child(rename)
 	column.add_child(lists)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420)
@@ -128,10 +149,12 @@ func _init() -> void:
 	_move_button.pressed.connect(func() -> void: move_requested.emit())
 	_rotate_button.text = "Turn"
 	_rotate_button.pressed.connect(func() -> void: rotate_requested.emit())
+	_store_button.text = "Store"
+	_store_button.pressed.connect(func() -> void: store_requested.emit())
 	_sell_button.pressed.connect(_sell_dialog.popup_centered)
 	_sell_dialog.confirmed.connect(func() -> void: sell_confirmed.emit())
 	_action_dialog.confirmed.connect(func() -> void: action_requested.emit(_asked_action))
-	for control: Control in [_selection_name, _move_button, _rotate_button, _sell_button]:
+	for control: Control in [_selection_name, _move_button, _rotate_button, _store_button, _sell_button]:
 		_selection.add_child(control)
 	_selection.visible = false
 	column.add_child(_selection)
@@ -185,7 +208,18 @@ func _init() -> void:
 	column.add_child(_actions)
 	add_child(_sell_dialog)
 	add_child(_action_dialog)
+	_rename_dialog.title = "Name of your empire"
+	_rename_dialog.add_child(_rename_edit)
+	_rename_dialog.confirmed.connect(func() -> void: rename_requested.emit(_rename_edit.text))
+	add_child(_rename_dialog)
 	add_child(panel)
+	# The goal box of the client is at the left, over its bottom bar; the
+	# spell book is there in the port, so the goals are at the top left.
+	var goals := PanelContainer.new()
+	goals.position = Vector2(PANEL_MARGIN, PANEL_MARGIN)
+	goals.custom_minimum_size.x = GOAL_BOX_WIDTH
+	goals.add_child(_goal_box)
+	add_child(goals)
 	_category.item_selected.connect(_show_category)
 
 
@@ -239,11 +273,12 @@ func _show_category(index: int) -> void:
 
 
 ## Shows the item that the player clicked on the map, or hides the section when item is null.
-func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, can_rotate: bool) -> void:
+func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, can_rotate: bool, can_store: bool = false) -> void:
 	_selection.visible = item != null
 	if item == null:
 		return
 	_selection_name.text = item.name
+	_store_button.disabled = not can_store
 	_move_button.disabled = not can_move
 	_rotate_button.disabled = not can_rotate
 	_sell_button.disabled = not can_sell
@@ -380,6 +415,45 @@ static func duration(seconds: float) -> String:
 	if total >= 60:
 		return "%dm %02ds" % [total / 60, total % 60]
 	return "%ds" % total
+
+
+## Shows the goals of the goal box: [id, title, progress] for each, and the
+## map name for the rename dialog.
+## Shows the category of the build menu with the item, as the client opens its store for a goal.
+func show_build_item(item: GameConfig.ItemDef) -> void:
+	if _button_category.has(item):
+		_category.select(_button_category[item])
+		_show_category(_button_category[item])
+		_buttons[item].grab_focus()
+
+
+## During the tutorial, the client hides or blocks its other buttons.
+func set_locked(locked: bool) -> void:
+	for button in _lists.get_children():
+		(button as Button).disabled = locked
+	for button: Button in [_move_button, _rotate_button, _store_button, _sell_button]:
+		button.visible = not locked
+
+
+func open_rename() -> void:
+	_rename_dialog.popup_centered()
+
+
+func show_goals(goals: Array, map_name: String) -> void:
+	_rename_edit.text = map_name
+	for child in _goal_box.get_children():
+		child.queue_free()
+	var title := Label.new()
+	title.text = "Goals"
+	_goal_box.add_child(title)
+	for entry: Array in goals:
+		var button := Button.new()
+		button.text = "%s  %s" % [entry[1], entry[2]]
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var id: int = entry[0]
+		button.pressed.connect(func() -> void: goal_requested.emit(id))
+		_goal_box.add_child(button)
 
 
 func show_message(text: String) -> void:
