@@ -493,6 +493,18 @@ Differences from the client:
 
 Tests: `checks/village_check.gd` has the idle enemies, the attacks by level, the reward of a kill and the graveyard; `checks/battle_check.gd` has the bandits (wait, attack, retreat) and the target of a siege; `checks/quest_check.gd` has survival (army, sides, waves, lives, save) and the tournament (bots, formations, the steps of the bot's team, the score, the team in the save). Server replays of `buy`, `kill`, `sell` KILL, `start_survival`, `add_survival_vida_extra`, `end_survival` and `set_attack_team` give the same save as the port, except the level, which the port raises with the experience. Window runs showed the fight in the village, the survival windows and bar, and the tournament windows, bar and result.
 
+Comparison with the original client: the test save of the Ruffle runs (level 60, one land area, 43 units, 20 idle trolls) ran 16,532 game frames in the client, and 16,500 frames in the port with 3 seeds. The first bandits attack after 12,600 frames.
+
+| | Client | Port |
+|---|---|---|
+| Idle enemies at the load | 18 trolls at the border removed, 6 groups of 4 placed (26 in all) | the 20 kept, 1 group of 3 or 4 placed (23 or 24) |
+| Trees and deposits at the border at the load | 108 removed, 101 placed | unchanged |
+| Siege, stampede or army | none in this load | the army in 1 of 3 runs (32 kills, no losses) |
+| Bandits | 3 groups; no save change after their wait | 3 groups of 15 from the edge; no target in range, no fight |
+| Units lost, kills, experience, gold | none | none, except the army run |
+
+The rules of the attacks agree. The difference at the load is the border refresh of the client, see "Differences from the client" above. Survival cannot be compared: the newest client has no button for it. The tournament cannot be compared: the server of this project has no tournament services, and the configuration has no formation layouts.
+
 ## Decisions of the owner
 
 1. Campaign quests come before PvP. The port has no server, and no multiplayer is planned for now.
