@@ -160,7 +160,7 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 **4. The rest of the single-player game**
 
 1. Sieges on the own village, survival and tournament (battle stage 7). Done: the idle enemies, bandits, sieges, stampedes, armies and the Evil Orc Dragon of the own village, survival, and the weekly tournament against its bots without a ranking and prizes, by the decision of the owner (`docs/GODOT_BATTLES.md`, "Stage 7 result"). The heavy siege is off in the client.
-2. The other special buildings: Time Machine, weather machine, Bahamut temple.
+2. The other special buildings: Time Machine, weather machine, Bahamut temple. Done: the Time Machine moves the times of the save back as the server does, the Weather Machine changes the style of the map (land, trees and background), and the Supreme Dragon Temple gives the Supreme Bahamut Dragon after its 12 steps. A replay of the 44 commands on the server gives the same save. After a use of a machine, the port loads the village again, as the client does. In Ruffle, the original client shows the same snow land and snow trees for the snow style.
 3. Goals and the tutorial.
 4. Neighbours, if the owner decides on a form without a server, for example the neighbour villages in `villages/`.
 

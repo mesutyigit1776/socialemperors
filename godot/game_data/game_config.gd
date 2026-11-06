@@ -121,6 +121,9 @@ var collection_rewards: Array[int] = []
 ## Survival: the cash for one more life, and the hours after which a used life comes back.
 var survival_life_cash: int
 var survival_life_hours: int
+## The packets of the Time Machine, in the order of the client: [hours, cash price].
+var time_packets: Array[Array] = []
+var unlock_skin_cash: int  ## The cash that unlocks a style of the map in the Weather Machine.
 ## The weekly tournament: its map, its bots ({"id", "name", "picture", "team"}
 ## with the 20 places of the team), the units that cannot take part, the
 ## number of dragons, gods and colossi that a team can have, and the texts of
@@ -250,6 +253,10 @@ static func load_from_file(path: String) -> GameConfig:
 		return null
 	config.survival_life_cash = survival[0]
 	config.survival_life_hours = survival[1]
+	if not _parse_time_packets(config, globals.get("TIME_MACHINE")) or to_int(globals.get("COST_UNLOCK_SKIN")) == null:
+		push_error("Game configuration '%s' has no correct TIME_MACHINE or COST_UNLOCK_SKIN in globals." % path)
+		return null
+	config.unlock_skin_cash = to_int(globals["COST_UNLOCK_SKIN"])
 	if not _parse_tournament(config, data, globals):
 		push_error("Game configuration '%s' has no correct weekly tournament (tournament_type, tournament_formations, TOURNAMENT_UNITS_NOT_ALLOWED)." % path)
 		return null
@@ -552,6 +559,18 @@ static func _parse_level(entry: Variant) -> LevelDef:
 
 ## The configuration stores most numbers as strings, but patches add JSON numbers,
 ## which Godot reads as floats. Returns null when the value is not a whole number.
+static func _parse_time_packets(config: GameConfig, packets: Variant) -> bool:
+	if not packets is Array or packets.is_empty():
+		return false
+	for packet: Variant in packets:
+		var hours: Variant = packet.get("hours") if packet is Dictionary else null
+		var price: Variant = to_int(packet.get("price")) if packet is Dictionary else null
+		if not (hours is float or hours is int) or hours <= 0 or price == null:
+			return false
+		config.time_packets.append([float(hours), price])
+	return true
+
+
 static func to_int(value: Variant) -> Variant:
 	if value is String and value.is_valid_int():
 		return value.to_int()

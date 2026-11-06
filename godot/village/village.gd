@@ -13,7 +13,8 @@ extends VillageUnits
 ## (special buildings and collections). Other code uses Village.
 ##
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
-## graveyards, Soul Mixer), the free buildings of the client, the collections,
+## graveyards, Soul Mixer, Time Machine, Weather Machine, Supreme Dragon
+## Temple), the free buildings of the client, the collections,
 ## the item store, and the save changes of the campaign quests and the spells.
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
@@ -74,6 +75,32 @@ const SOUL_MIX_PROMOTION_UNITS: Array[int] = [2048, 2037, 777, 758]
 ## GameConfig.soul_mixer_min_level, at the free place nearest to these tiles.
 const FREE_BUILDING_TILES := {DRAGON_NEST: Vector2i(30, 59), SOUL_MIXER: Vector2i(59, 59)}
 const WIZARDRY_TILE := Vector2i(59, 59)
+## The Time Machine sells packets of time (GameConfig.time_packets). A used
+## packet moves the times of the save back, as the server command "time_ff"
+## does; the save keeps the packets in privateState "countTimePacket".
+const TIME_MACHINE := 1463
+## The Weather Machine changes the style of the map (the save's "skin"), in the
+## order of its window. Style 0 is free; the others need an unlock for
+## GameConfig.unlock_skin_cash cash, which privateState "unlockedSkins" keeps.
+const WEATHER_MACHINE := 373
+const SKINS: Array[int] = [0, 1, 2, 4, 5, 6]
+const SKIN_TEXTS: Array[String] = ["POPUP_METEO_PRADERA", "POPUP_METEO_DESIERTO", "POPUP_METEO_ESTEPA", "POPUP_METEO_MONTANYA", "POPUP_METEO_JUNGLA", "POPUP_METEO_NUBES"]
+## The Supreme Dragon Temple gives the Supreme Bahamut Dragon after
+## TEMPLE_STEPS steps, in any order. After each step the player waits
+## TEMPLE_STEP_SECONDS or pays TEMPLE_WAIT_CASH cash. Steps 0 to 5 offer
+## TEMPLE_OFFERINGS, steps 6 to 10 sacrifice a unit of TEMPLE_SACRIFICES from
+## the map, and the last step offers the reward of the collection
+## TEMPLE_HEART_COLLECTION, which stays in the item store until the dragon
+## comes. privateState keeps the done steps in "templeStep" and the time of
+## the last step in "timeStampTemple". The client contains these values.
+const BAHAMUT_TEMPLE := 1394
+const SUPREME_BAHAMUT := 2003
+const TEMPLE_OFFERINGS: Array[Array] = [["g", 100000], ["s", 100000], ["w", 100000], ["f", 100000], ["m", 50], ["c", 50]]
+const TEMPLE_SACRIFICES: Array[int] = [649, 684, 695, 853, 875]
+const TEMPLE_HEART_COLLECTION := 23
+const TEMPLE_STEPS := 12
+const TEMPLE_STEP_SECONDS := 172800
+const TEMPLE_WAIT_CASH := 5
 
 # The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
 # {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
@@ -884,6 +911,221 @@ func end_survival(map_id: String, seconds: int, reward: int, now: int) -> void:
 	record["tp"] = maxi(seconds, int(record.get("tp", 0)))
 	if reward != 0:
 		_stored()[str(reward)] = int(_stored().get(str(reward), 0)) + 1
+
+
+## The packets of each size that the player has, in the order of
+## GameConfig.time_packets.
+func time_packets() -> Array[int]:
+	var counts: Array[int] = []
+	var saved: Variant = _document["privateState"].get("countTimePacket")
+	for i in _config.time_packets.size():
+		var count: Variant = saved[i] if saved is Array and i < saved.size() else 0
+		counts.append(int(count) if count is int or count is float else 0)
+	return counts
+
+
+## Buys a packet of the Time Machine for its cash price ("buy_time_packet").
+func buy_time_packet(index: int) -> Placement:
+	if index < 0 or index >= _config.time_packets.size():
+		return Placement.NOT_ALLOWED
+	var price: int = _config.time_packets[index][1]
+	if get_resource("c") < price:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -price)
+	_set_time_packets(index, 1)
+	return Placement.OK
+
+
+## Uses a packet of the Time Machine ("time_ff"): all times of the save move
+## back by the hours of the packet, see _fast_forward(). The client then loads
+## the map again.
+func use_time_packet(index: int) -> Placement:
+	if index < 0 or index >= _config.time_packets.size() or time_packets()[index] <= 0:
+		return Placement.NOT_ALLOWED
+	_set_time_packets(index, -1)
+	_fast_forward(int(_config.time_packets[index][0] * 3600))
+	return Placement.OK
+
+
+func is_skin_unlocked(new_skin: int) -> bool:
+	var unlocked: Variant = _document["privateState"].get("unlockedSkins")
+	# The server writes true; the client compares the value with "true".
+	return new_skin == 0 or (unlocked is Dictionary and unlocked.get(str(new_skin)) in [true, "true"])
+
+
+## Unlocks a style of the map for GameConfig.unlock_skin_cash cash
+## ("unlock_skin") and uses it, as the client does after the unlock.
+func unlock_skin(new_skin: int) -> Placement:
+	if not new_skin in SKINS or is_skin_unlocked(new_skin):
+		return Placement.NOT_ALLOWED
+	if get_resource("c") < _config.unlock_skin_cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -_config.unlock_skin_cash)
+	if not _document["privateState"].get("unlockedSkins") is Dictionary:
+		_document["privateState"]["unlockedSkins"] = {}
+	_document["privateState"]["unlockedSkins"][str(new_skin)] = true
+	return set_skin(new_skin)
+
+
+## Uses an unlocked style of the map ("set_skin"). The client then loads the map again.
+func set_skin(new_skin: int) -> Placement:
+	if not new_skin in SKINS or new_skin == skin or not is_skin_unlocked(new_skin):
+		return Placement.NOT_ALLOWED
+	# The server stores the style as text.
+	_map["skin"] = str(new_skin)
+	skin = new_skin
+	return Placement.OK
+
+
+## The steps of the temple that the player did, from 0 to TEMPLE_STEPS - 1.
+func temple_steps_done() -> Array[int]:
+	var steps: Array[int] = []
+	var saved: Variant = _document["privateState"].get("templeStep")
+	for step: Variant in saved if saved is Array else []:
+		if (step is int or step is float) and not int(step) in steps:
+			steps.append(int(step))
+	return steps
+
+
+## Seconds until the player can do the next step of the temple, or 0.
+func temple_wait_seconds(now: int) -> int:
+	var last_step := _private_int("timeStampTemple")
+	return maxi(last_step + TEMPLE_STEP_SECONDS - now, 0) if last_step > 0 else 0
+
+
+## True when the player has what the step needs: the resources, the unit on
+## the map or the reward of the heart collection in the item store.
+func has_temple_offering(step: int) -> bool:
+	if step < TEMPLE_OFFERINGS.size():
+		return get_resource(TEMPLE_OFFERINGS[step][0]) >= TEMPLE_OFFERINGS[step][1]
+	if step < TEMPLE_OFFERINGS.size() + TEMPLE_SACRIFICES.size():
+		return _temple_sacrifice(step) != null
+	return stored_items().has(_config.collection_rewards[TEMPLE_HEART_COLLECTION])
+
+
+## Does a step of the temple ("next_temple_step"): it pays the resources, or
+## removes the unit from the map without the graveyard (the client sends
+## "sell" without resources), or keeps the heart. Then the wait starts.
+func do_temple_step(step: int, now: int) -> Placement:
+	if step < 0 or step >= TEMPLE_STEPS or step in temple_steps_done() or temple_wait_seconds(now) > 0:
+		return Placement.NOT_ALLOWED
+	if not has_temple_offering(step):
+		return Placement.NOT_ENOUGH_RESOURCES if step < TEMPLE_OFFERINGS.size() else Placement.NOT_ALLOWED
+	if step < TEMPLE_OFFERINGS.size():
+		_add_resource(TEMPLE_OFFERINGS[step][0], -TEMPLE_OFFERINGS[step][1])
+	elif step < TEMPLE_OFFERINGS.size() + TEMPLE_SACRIFICES.size():
+		_remove(_temple_sacrifice(step))
+	var steps: Array = temple_steps_done()
+	steps.append(step)
+	_set_private(["templeStep", "timeStampTemple"], [steps, now])
+	return Placement.OK
+
+
+## Pays TEMPLE_WAIT_CASH to end the wait of the temple ("buy_temple_step_cash").
+func end_temple_wait(now: int) -> Placement:
+	if temple_wait_seconds(now) == 0:
+		return Placement.NOT_ALLOWED
+	if get_resource("c") < TEMPLE_WAIT_CASH:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -TEMPLE_WAIT_CASH)
+	_set_private(["timeStampTemple"], [0])
+	return Placement.OK
+
+
+## After all steps and the last wait, the Supreme Bahamut Dragon comes to the
+## free tile nearest to the temple, with "buy" without cost. The client then
+## sells the heart from the item store and starts the temple again ("reset_temple").
+func take_supreme_bahamut(temple: PlacedItem, now: int) -> Placement:
+	if temple_steps_done().size() < TEMPLE_STEPS or temple_wait_seconds(now) > 0:
+		return Placement.NOT_ALLOWED
+	var tile := free_tile_around(_covered_tiles(temple))
+	if tile == ANY_TILE:
+		return Placement.OCCUPIED
+	var dragon := _config.get_item(SUPREME_BAHAMUT)
+	_add_xp(dragon.xp)
+	_add_player_unit(dragon, tile, 0, now)
+	var heart := _config.get_item(_config.collection_rewards[TEMPLE_HEART_COLLECTION])
+	if stored_items().has(heart.id):
+		_sell_stored(heart)
+	_set_private(["templeStep", "timeStampTemple"], [[], 0])
+	return Placement.OK
+
+
+## The unit of the player on the map that the sacrifice step needs, or null.
+func _temple_sacrifice(step: int) -> PlacedItem:
+	var unit_id := TEMPLE_SACRIFICES[step - TEMPLE_OFFERINGS.size()]
+	for placed in items:
+		if placed.item_id == unit_id and is_own_unit(placed):
+			return placed
+	return null
+
+
+## Sells one item from the item store, as the server command
+## "sell_stored_item" does: it gives back sell_refund() of the cost.
+func _sell_stored(item: GameConfig.ItemDef) -> void:
+	var stored := _stored()
+	for key: Variant in stored.keys():
+		if str(key) == str(item.id):
+			stored[key] = int(stored[key]) - 1
+			if int(stored[key]) <= 0:
+				stored.erase(key)
+			break
+	var refund := sell_refund(item)
+	if refund > 0:
+		_add_resource(item.cost_type, refund)
+
+
+func _set_time_packets(index: int, change: int) -> void:
+	var counts := time_packets()
+	counts[index] += change
+	_document["privateState"]["countTimePacket"] = counts
+
+
+## Moves the times of the save back by seconds, as the server function
+## player_fast_forward() does for the Time Machine: the quests, the items, the
+## market, the nests, the Rider Academy, the temple, survival, the training
+## queues and the events. The shields, the help of the neighbours and the
+## daily bonus keep their times. A missing time becomes 0, as on the server.
+func _fast_forward(seconds: int) -> void:
+	var private: Dictionary = _document["privateState"]
+	for game_map: Variant in _document["maps"]:
+		if not game_map is Dictionary:
+			continue
+		var quest_times: Variant = game_map.get("questTimes")
+		for quest: Variant in quest_times if quest_times is Dictionary else {}:
+			_move_time(quest_times, quest, seconds)
+		var last_times: Variant = game_map.get("lastQuestTimes")
+		for i in last_times.size() if last_times is Array else 0:
+			_move_time(last_times, i, seconds)
+		for entry: Variant in game_map.get("items", []):
+			if not entry is Array or entry.size() < 8:
+				continue
+			_move_time(entry, 4, seconds)
+			var sif: Variant = entry[7].get("sif") if int(entry[0]) == ROUND_TABLE and entry[7] is Dictionary else null
+			for user: Variant in sif if sif is Dictionary else {}:
+				_move_time(sif, user, seconds)
+		_move_time(game_map, "timestampLastTrade", seconds)
+		_move_time(game_map, "timestampLastTreasure", seconds)
+	for key in ["kompuLastTimeStamp", "timestampLastBonus", "timeStampHeavySiegePeriod", "timeStampHeavySiegeAttack", "timeStampDartsReset", "timeStampDartsNewFree"]:
+		_move_time(private, key, seconds)
+	for nest: Dictionary in NESTS.values():
+		_move_time(private, nest["keys"][3], seconds)
+	_move_time(private, RIDER_KEYS[2], seconds)
+	_move_time(private, "timeStampTemple", seconds)
+	var uses: Variant = private.get("survivalVidaTimeStamp")
+	for i in uses.size() if uses is Array else 0:
+		_move_time(uses, i, seconds)
+	for holder_key: String in ["survivalMaps", "barracksQueues", "collectGame"]:
+		var holders: Variant = private.get(holder_key)
+		for key: Variant in holders if holders is Dictionary else {}:
+			if holders[key] is Dictionary:
+				_move_time(holders[key], "timestamp" if holder_key == "collectGame" else "ts", seconds)
+
+
+## One time of _fast_forward(): never below 0. A missing value or null becomes 0.
+static func _move_time(holder: Variant, key: Variant, seconds: int) -> void:
+	var value: Variant = holder.get(key) if holder is Dictionary else holder[key]
+	holder[key] = maxf(value - seconds, 0) if value is int or value is float else 0
 
 
 func _survival_uses() -> Array[int]:

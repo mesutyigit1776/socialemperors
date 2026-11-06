@@ -14,6 +14,10 @@ signal move_confirmed(placed: Village.PlacedItem, tile: Vector2i, frame: int)
 signal map_clicked(tile: Vector2i, placed: Village.PlacedItem)
 
 const LAND_ITEM_BASE_ID := 1000
+## The colour around the map for each map style (Village.skin), as in the client.
+const BACKGROUND_COLORS: Array[Color] = [Color8(0x66, 0x9C, 0x2C), Color8(0xEA, 0xBC, 0x4C), Color8(0xDF, 0xEC, 0xF2), Color8(0x2E, 0x94, 0xE6), Color8(0x86, 0x38, 0x14), Color8(0x39, 0x8A, 0x00), Color8(0xFF, 0xFF, 0xFF)]
+## The graphic of a tree has a clip with a tree for each map style.
+const SUBCAT_TREE := 125
 const LAND_FRAME_WILD := 0
 const LAND_FRAME_OWNED := 3
 
@@ -85,6 +89,7 @@ func show_village(village: Village, config: GameConfig, sprites: SpriteLibrary) 
 	_config = config
 	_sprites = sprites
 
+	RenderingServer.set_default_clear_color(BACKGROUND_COLORS[clampi(village.skin, 0, BACKGROUND_COLORS.size() - 1)])
 	place_land(_land_layer, config, sprites, LAND_ITEM_BASE_ID + village.skin, village_land_frames(village.owned_land))
 	for placed in village.items:
 		add_placed(placed)
@@ -100,6 +105,8 @@ func add_placed(placed: Village.PlacedItem) -> void:
 		node = _place_unit(item, placed.tile)
 	else:
 		node = place_sprite(_item_layer, _sprites, item, placed.tile, placed.frame)
+		if node != null:
+			_show_style(node, item, placed.frame)
 	if node != null:
 		_nodes[placed] = node
 
@@ -117,6 +124,7 @@ func update_placed(placed: Village.PlacedItem) -> void:
 	node.position = IsoGrid.tile_to_map(placed.tile)
 	node.texture = sprite.get_frame(placed.frame)
 	node.offset = building_offset(sprite, placed.frame)
+	_show_style(node, item, placed.frame)
 	if _ready_marks.has(placed):
 		_ready_marks[placed].position = _mark_position(node)
 
@@ -366,6 +374,28 @@ func _place_unit(item: GameConfig.ItemDef, tile: Vector2i) -> Sprite2D:
 	node.show_action(UnitSprite.Action.IDLE, direction)
 	_item_layer.add_child(node)
 	return node
+
+
+## A tree shows the frame of its clip for the map style, as the client does;
+## the first frame is style 0, which the graphic of the item already shows.
+func _show_style(node: Sprite2D, item: GameConfig.ItemDef, frame: int) -> void:
+	if item.subcat_functional != SUBCAT_TREE or _village.skin == 0:
+		return
+	var sprite := _sprites.get_sprite(item.img_name)
+	var frame_clip := sprite.still_clip(frame)
+	if frame_clip == null or frame_clip.clip.frame_count() <= _village.skin:
+		return
+	var tree: Sprite2D = node.get_node_or_null("Style")
+	if tree == null:
+		tree = Sprite2D.new()
+		tree.name = "Style"
+		tree.centered = false
+		node.add_child(tree)
+	node.texture = null
+	# The node draws the frame image at its offset; the registration point is sprite.origin inside it.
+	tree.transform = Transform2D(0, node.offset - sprite.origin) * frame_clip.transform
+	tree.offset = frame_clip.clip.origin
+	tree.texture = frame_clip.clip.get_frame(_village.skin)
 
 
 static func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:

@@ -76,6 +76,25 @@ class ItemSprite:
 	var origin: Vector2  ## Top-left of each frame image relative to the symbol registration point.
 	## For each frame of a unit graphic, the FrameClip that it plays, or null.
 	var frame_clips: Array = []
+	var _art: FlashArt
+	var _id: int
+	var _cache: FrameCache
+	var _still_clips: Array = []  # The FrameClip of each frame of a still graphic, see still_clip().
+
+	## The clip in frame of a graphic that does not play its clips, or null.
+	## The client shows another frame of such a clip for some items, for
+	## example the tree of each map style.
+	func still_clip(frame: int) -> FrameClip:
+		if _still_clips.is_empty() and _art != null:
+			for entry: Variant in _art.frame_clips(_id):
+				var frame_clip: FrameClip = null
+				if entry != null:
+					frame_clip = FrameClip.new()
+					frame_clip.clip = Clip.new(Frames.new(_art, entry[0], _art.frame_count(entry[0]), _cache, true))
+					frame_clip.transform = entry[1]
+				_still_clips.append(frame_clip)
+		frame = _index(frame)
+		return _still_clips[frame] if frame < _still_clips.size() else null
 
 	## The clip of frame, or null when the frame is a still image.
 	func get_frame_clip(frame: int) -> FrameClip:
@@ -167,6 +186,9 @@ func _load(img_name: String) -> ItemSprite:
 		sprite.frame_sizes.append(rect.size)
 		sprite.frame_origins.append(rect.position)
 	sprite.shot_points = art.shot_points(id)
+	sprite._art = art
+	sprite._id = id
+	sprite._cache = _frames
 	if meta["animated"]:
 		var clips := {}
 		for entry: Variant in art.frame_clips(id):

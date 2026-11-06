@@ -67,6 +67,8 @@ var _selection_name := Label.new()
 var _move_button := Button.new()
 var _sell_button := Button.new()
 var _sell_dialog := ConfirmationDialog.new()
+var _action_dialog := ConfirmationDialog.new()  # The question of an action, see show_actions().
+var _asked_action := ""
 var _rotate_button := Button.new()
 var _production := HBoxContainer.new()
 var _production_text := Label.new()
@@ -128,6 +130,7 @@ func _init() -> void:
 	_rotate_button.pressed.connect(func() -> void: rotate_requested.emit())
 	_sell_button.pressed.connect(_sell_dialog.popup_centered)
 	_sell_dialog.confirmed.connect(func() -> void: sell_confirmed.emit())
+	_action_dialog.confirmed.connect(func() -> void: action_requested.emit(_asked_action))
 	for control: Control in [_selection_name, _move_button, _rotate_button, _sell_button]:
 		_selection.add_child(control)
 	_selection.visible = false
@@ -181,6 +184,7 @@ func _init() -> void:
 	_actions.visible = false
 	column.add_child(_actions)
 	add_child(_sell_dialog)
+	add_child(_action_dialog)
 	add_child(panel)
 	_category.item_selected.connect(_show_category)
 
@@ -325,8 +329,9 @@ func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, sec
 
 
 ## Shows a text and a button for each action, for example of a special
-## building. actions is a list of [id, label, enabled]; a button press emits
-## action_requested(id). An empty text and list hides the panel.
+## building. actions is a list of [id, label, enabled], or [id, label,
+## enabled, question] for an action that asks the question first; a button
+## press emits action_requested(id). An empty text and list hides the panel.
 func show_actions(text: String, actions: Array) -> void:
 	_actions.visible = not text.is_empty() or not actions.is_empty()
 	_actions_text.text = text
@@ -343,7 +348,14 @@ func show_actions(text: String, actions: Array) -> void:
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var id: String = action[0]
-		button.pressed.connect(func() -> void: action_requested.emit(id))
+		var question: String = action[3] if action.size() > 3 else ""
+		button.pressed.connect(func() -> void:
+			if question.is_empty():
+				action_requested.emit(id)
+				return
+			_asked_action = id
+			_action_dialog.dialog_text = question
+			_action_dialog.popup_centered())
 		_action_buttons.add_child(button)
 	_fit_actions()
 
@@ -353,8 +365,11 @@ func show_actions(text: String, actions: Array) -> void:
 func _fit_actions() -> void:
 	var scroll: ScrollContainer = _action_buttons.get_parent()
 	scroll.custom_minimum_size.y = ACTIONS_MAX_HEIGHT
-	await get_tree().process_frame
-	await get_tree().process_frame
+	for i in 2:
+		# The village can start again between the frames, see main.gd _reload_map().
+		if not is_inside_tree():
+			return
+		await get_tree().process_frame
 	scroll.custom_minimum_size.y = minf(_action_buttons.get_combined_minimum_size().y, ACTIONS_MAX_HEIGHT)
 
 

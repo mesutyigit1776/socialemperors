@@ -7,11 +7,13 @@ extends RefCounted
 enum View { NONE, BUILDING, COLLECTIONS, STORE }
 
 ## Result of run(): the message for the player, whether the village changed (then
-## the caller updates the view and saves), and the stored item that the player
-## wants to place, or null.
+## the caller updates the view and saves), whether the client loads the map
+## again after the change (the Time Machine and the Weather Machine), and the
+## stored item that the player wants to place, or null.
 class Outcome:
 	var text: String
 	var changed: bool
+	var reload: bool
 	var place: GameConfig.ItemDef
 
 
@@ -125,6 +127,32 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.take_soul_mix(building, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s came out of %s." % [unit.name, name]
+		"time_buy":
+			result = _village.buy_time_packet(argument)
+			if result == Village.Placement.OK:
+				outcome.text = "You bought a packet of %s." % _hours_text(_config.time_packets[argument][0])
+		"time_use":
+			result = _village.use_time_packet(argument)
+			if result == Village.Placement.OK:
+				outcome.text = "The village moved %s forwards in time." % _hours_text(_config.time_packets[argument][0])
+				outcome.reload = true
+		"skin", "skin_unlock":
+			result = _village.set_skin(argument) if parts[0] == "skin" else _village.unlock_skin(argument)
+			if result == Village.Placement.OK:
+				outcome.text = "The village now has the style %s." % _skin_name(argument)
+				outcome.reload = true
+		"temple":
+			result = _village.do_temple_step(argument, now)
+			if result == Village.Placement.OK:
+				outcome.text = "%s: step %d of %d is done." % [name, _village.temple_steps_done().size(), Village.TEMPLE_STEPS]
+		"temple_wait":
+			result = _village.end_temple_wait(now)
+			if result == Village.Placement.OK:
+				outcome.text = "The wait is over."
+		"temple_take":
+			result = _village.take_supreme_bahamut(building, now)
+			if result == Village.Placement.OK:
+				outcome.text = "%s came out of %s." % [_config.get_item(Village.SUPREME_BAHAMUT).name, name]
 	outcome.changed = result == Village.Placement.OK
 	if not outcome.changed:
 		outcome.text = "There is no free place next to %s." % name if result == Village.Placement.OCCUPIED \
@@ -210,7 +238,73 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 			actions.append(["power_up", "Power up for %d cash" % _village.soul_power_up_cash(building), true])
 			actions.append(["mix", "Mix" if cash == 0 else "Mix and pay %d cash for the power-ups" % cash, true])
 			return ["Result: %s (power %d, %s to make)." % [result.name, result.breeding_order, VillageHud.duration(result.sm_training_time)], actions]
+		Village.TIME_MACHINE:
+			var counts := _village.time_packets()
+			for i in _config.time_packets.size():
+				var packet: Array = _config.time_packets[i]
+				var hours := _hours_text(packet[0])
+				actions.append(["time_buy:%d" % i, "Buy %s for %d cash" % [hours, packet[1]], _village.get_resource("c") >= packet[1]])
+				actions.append(["time_use:%d" % i, "Use %s (you have %d)" % [hours, counts[i]], counts[i] > 0])
+			return ["%s: %s Each packet moves the times of the village forwards." % [_config.text("POPUP_TIME_TITLE"), _config.text("POPUP_TIME_HEADER")], actions]
+		Village.WEATHER_MACHINE:
+			for skin: int in Village.SKINS:
+				if skin == _village.skin:
+					continue
+				if _village.is_skin_unlocked(skin):
+					actions.append(["skin:%d" % skin, "Use %s" % _skin_name(skin), true])
+				else:
+					actions.append(["skin_unlock:%d" % skin, "Unlock %s for %d cash" % [_skin_name(skin), _config.unlock_skin_cash], _village.get_resource("c") >= _config.unlock_skin_cash])
+			return ["%s: the village has the style %s." % [name, _skin_name(_village.skin)], actions]
+		Village.BAHAMUT_TEMPLE:
+			return _describe_temple(building, now)
 	return ["", []]
+
+
+func _describe_temple(temple: Village.PlacedItem, now: int) -> Array:
+	var actions := []
+	var done := _village.temple_steps_done()
+	var text := "%s: %s %d/%d." % [_config.text("TEMPLE_SUPREME_BAHAMUT_TITLE"), _config.text("TEMPLE_SUPREME_BAHAMUT_PROGRESS"), done.size(), Village.TEMPLE_STEPS]
+	var wait := _village.temple_wait_seconds(now)
+	if wait > 0:
+		text += " %s %s." % [_config.text("TEMPLE_SUPREME_BAHAMUT_WAIT_NEXT_STEP"), VillageHud.duration(wait)]
+		actions.append(["temple_wait", "End the wait for %d cash" % Village.TEMPLE_WAIT_CASH, _village.get_resource("c") >= Village.TEMPLE_WAIT_CASH])
+		return [text, actions]
+	if done.size() == Village.TEMPLE_STEPS:
+		actions.append(["temple_take", _config.text("TEMPLE_SUPREME_BAHAMUT_GET_FINAL_DRAGON_BTN"), true])
+		return [text + " " + _config.text("TEMPLE_SUPREME_BAHAMUT_GET_FINAL_DRAGON_INFO"), actions]
+	for step in Village.TEMPLE_STEPS:
+		if not step in done:
+			var action := ["temple:%d" % step, _temple_step_label(step), _village.has_temple_offering(step)]
+			if step >= Village.TEMPLE_OFFERINGS.size() and step < Village.TEMPLE_OFFERINGS.size() + Village.TEMPLE_SACRIFICES.size():
+				var unit := _config.get_item(Village.TEMPLE_SACRIFICES[step - Village.TEMPLE_OFFERINGS.size()])
+				action.append(_config.text("POPUP_BAHAMUT_SUPREME_TEMPLE_SURE_TO_SACRIFICE").replace("#0#", unit.name))
+			actions.append(action)
+	return [text + " The steps can come in any order.", actions]
+
+
+## The button text of a step of the temple, for example "Offering: 100000 gold".
+func _temple_step_label(step: int) -> String:
+	var offerings := Village.TEMPLE_OFFERINGS
+	if step < offerings.size():
+		return "%s: %d %s" % [_config.text("TEMPLE_SUPREME_BAHAMUT_DONATE_BTN"), offerings[step][1], VillageHud.RESOURCE_NAMES.merged({"m": "mana"})[offerings[step][0]]]
+	if step < offerings.size() + Village.TEMPLE_SACRIFICES.size():
+		return "%s: %s" % [_config.text("TEMPLE_SUPREME_BAHAMUT_SACRIFICE_BTN"), _config.get_item(Village.TEMPLE_SACRIFICES[step - offerings.size()]).name]
+	return "%s: %s" % [_config.text("TEMPLE_SUPREME_BAHAMUT_COLLECT_BTN"), _config.text(Collections.text_name(Village.TEMPLE_HEART_COLLECTION))]
+
+
+## The time of a packet of the Time Machine, as the client writes it: "30
+## mins", "1 hour", "4 hours", "1 day".
+static func _hours_text(hours: float) -> String:
+	if hours < 1:
+		return "%d mins" % int(hours * 60)
+	if hours >= 24:
+		var days := int(hours / 24)
+		return "%d day%s" % [days, "s" if days > 1 else ""]
+	return "%s hour%s" % [str(hours) if hours != floorf(hours) else str(int(hours)), "s" if hours > 1 else ""]
+
+
+func _skin_name(skin: int) -> String:
+	return _config.text(Village.SKIN_TEXTS[Village.SKINS.find(skin)]) if skin in Village.SKINS else str(skin)
 
 
 func _describe_collections() -> Array:

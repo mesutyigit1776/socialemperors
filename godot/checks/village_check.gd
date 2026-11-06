@@ -85,6 +85,9 @@ const TOWER_TILE := Vector2i(51, 47)
 ## The time for the units that come out of sold buildings, where the time does not matter.
 const NOW := 1800000000
 const SMALL_TROLL := 525
+const SUPREME_TEMPLE := 1394  # 4x4, from level 40
+const SUPREME_BAHAMUT := 2003  # 1 XP
+const BAHAMUT_HEART := 1410  # the reward of the Supreme Heart collection; costs 0 cash
 const MONK := 569
 
 var _config: GameConfig
@@ -113,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_village_enemies]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1158,6 +1161,98 @@ func _free_tile(village: Village, item_id: int, area: Rect2i) -> Vector2i:
 			if village.check_location(_config.get_item(item_id), Vector2i(x, y)) == Village.Placement.OK:
 				return Vector2i(x, y)
 	return Village.ANY_TILE
+
+
+## The Time Machine: a packet costs cash, and its use moves the times of the
+## save back as the server does, except the shield.
+func _check_time_machine() -> bool:
+	const T := 1800000000
+	var path := _write_fixture("time_machine", 5, _config.levels[4].exp_required, 1000, {"questTimes": {"100000006": T}, "lastQuestTimes": [T, 600]})
+	_patch_private(path, {"timeStampTakeCare": T, "shieldEndTime": T, "timeStampTemple": 100, "survivalVidaTimeStamp": [T], "barracksQueues": {"1": {"ts": T}}}, 100)
+	var village := Village.load_from_file(path, _config)
+	_check(_config.time_packets.size() == 6 and _config.time_packets[0] == [0.5, 2] and _config.time_packets[5] == [24.0, 75], "the configuration has 6 packets, from 30 minutes for 2 cash to 24 hours for 75 cash")
+	_check(village.time_packets() == [0, 0, 0, 0, 0, 0] and village.use_time_packet(0) == Village.Placement.NOT_ALLOWED, "without a packet the Time Machine does nothing")
+	_check(village.buy_time_packet(0) == Village.Placement.OK and village.time_packets()[0] == 1, "a packet of 30 minutes is bought")
+	_expect("after the packet", village, {"c": 98})
+	var item_times: Array = village.items.map(func(placed: Village.PlacedItem) -> float: return placed._entry[4])
+	_check(village.use_time_packet(0) == Village.Placement.OK and village.time_packets()[0] == 0, "the packet is used")
+	var moved := true
+	for i in village.items.size():
+		moved = moved and village.items[i]._entry[4] == maxf(item_times[i] - 1800, 0)
+	_check(moved, "the times of the items are 30 minutes earlier")
+	_check(village.save_to_file(path) == OK, "the village after the Time Machine saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var state: Dictionary = saved["privateState"]
+	var game_map: Dictionary = saved["maps"][0]
+	_check(game_map["questTimes"]["100000006"] == T - 1800 and game_map["lastQuestTimes"] == [float(T - 1800), 0.0], "the quest times move back, not below 0")
+	_check(state["timeStampTakeCare"] == T - 1800 and state["survivalVidaTimeStamp"] == [float(T - 1800)] and state["barracksQueues"]["1"]["ts"] == T - 1800, "the nest, survival and the training queues move back")
+	_check(state["timeStampTemple"] == 0 and state["kompuLastTimeStamp"] == 0 and game_map["timestampLastTrade"] == 0, "a time below 0 and a missing time become 0, as on the server")
+	_check(state["shieldEndTime"] == T and state["countTimePacket"] == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "the shield keeps its time, and the save has the packets")
+	return true
+
+
+## The Weather Machine: the free style, the unlock for cash and the saved style.
+func _check_weather_machine() -> bool:
+	var path := _write_fixture("weather", 5, _config.levels[4].exp_required, 1000)
+	_patch_private(path, {}, 30)
+	var village := Village.load_from_file(path, _config)
+	_check(village.skin == 0 and village.set_skin(1) == Village.Placement.NOT_ALLOWED and village.unlock_skin(3) == Village.Placement.NOT_ALLOWED, "a locked style, and style 3, which the window does not have, cannot be used")
+	_check(_config.unlock_skin_cash == 20 and village.unlock_skin(1) == Village.Placement.OK and village.skin == 1, "style 1 is unlocked for 20 cash and used")
+	_expect("after the unlock", village, {"c": 10})
+	_check(village.unlock_skin(2) == Village.Placement.NOT_ENOUGH_RESOURCES and village.unlock_skin(1) == Village.Placement.NOT_ALLOWED, "an unlock needs the cash, and only once")
+	_check(village.set_skin(0) == Village.Placement.OK and village.set_skin(1) == Village.Placement.OK and village.set_skin(1) == Village.Placement.NOT_ALLOWED, "the free style and the unlocked style can be used again without cash")
+	_expect("after the changes", village, {"c": 10})
+	_check(village.save_to_file(path) == OK, "the village with the new style saves")
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved["maps"][0]["skin"] == "1" and saved["privateState"]["unlockedSkins"].get("1") == true, "the save has the style as text and the unlocked style, as the server writes them")
+	_check(Village.load_from_file(path, _config).skin == 1, "the saved style loads")
+	return true
+
+
+## The Supreme Dragon Temple: 12 steps in any order with a wait after each,
+## the sacrifices, the heart and the Supreme Bahamut Dragon.
+func _check_temple() -> bool:
+	const T := 1800000000
+	var level := mini(60, _config.levels.size())
+	var dragons: Array[int] = Village.TEMPLE_SACRIFICES
+	var store := {str(SUPREME_TEMPLE): 1}
+	for id in dragons:
+		store[str(id)] = 1
+	var path := _write_fixture("temple", level, _config.levels[level - 1].exp_required, 200000, {"expansions": [13, 12], "wood": 100000, "stone": 100000, "food": 99999, "store": store})
+	_patch_private(path, {"mana": 50, "templeStep": [], "timeStampTemple": 0}, 100)
+	var village := Village.load_from_file(path, _config)
+	var temple_tile := _free_tile(village, SUPREME_TEMPLE, Rect2i(40, 40, 30, 30))
+	_check(village.place_stored(_config.get_item(SUPREME_TEMPLE), temple_tile, T) == Village.Placement.OK, "the temple is placed")
+	var temple: Village.PlacedItem = village.items.back()
+	for i in dragons.size():
+		_check(village.place_stored(_config.get_item(dragons[i]), UNIT_TILES[i], T) == Village.Placement.OK, "dragon %d is placed" % dragons[i])
+	var now := T
+	_check(village.do_temple_step(11, now) == Village.Placement.NOT_ALLOWED and village.do_temple_step(3, now) == Village.Placement.NOT_ENOUGH_RESOURCES, "the heart step needs the heart, and the food step 100000 food")
+	_check(village.do_temple_step(6, now) == Village.Placement.OK and not village.items.any(func(placed: Village.PlacedItem) -> bool: return placed.item_id == dragons[0]), "the Furious Dragon is sacrificed and leaves the map")
+	_check(not village.graveyard_units().has(dragons[0]), "a sacrificed dragon does not go to the graveyard")
+	_check(village.temple_wait_seconds(now) == Village.TEMPLE_STEP_SECONDS and village.do_temple_step(0, now) == Village.Placement.NOT_ALLOWED, "after a step the player waits 48 hours")
+	_check(village.end_temple_wait(now) == Village.Placement.OK and village.temple_wait_seconds(now) == 0, "5 cash ends the wait")
+	_expect("after the wait with cash", village, {"c": 95})
+	for step: int in [0, 1, 2, 4, 5]:
+		_check(village.do_temple_step(step, now) == Village.Placement.OK, "offering step %d" % step)
+		now += Village.TEMPLE_STEP_SECONDS
+	_expect("after the offerings", village, {"g": 100000, "s": 0, "w": 0, "m": 0, "c": 45})
+	_check(village.do_temple_step(0, now) == Village.Placement.NOT_ALLOWED, "a step is done only once")
+	for step in range(7, 11):
+		_check(village.do_temple_step(step, now) == Village.Placement.OK, "sacrifice step %d" % step)
+		now += Village.TEMPLE_STEP_SECONDS
+	village._stored()[str(BAHAMUT_HEART)] = 1
+	village._map["food"] = 100000
+	_check(village.do_temple_step(3, now) == Village.Placement.OK, "the food step")
+	now += Village.TEMPLE_STEP_SECONDS
+	_check(village.do_temple_step(11, now) == Village.Placement.OK and village.stored_items().has(BAHAMUT_HEART), "the heart is offered and stays in the item store")
+	_check(village.temple_steps_done().size() == Village.TEMPLE_STEPS and village.take_supreme_bahamut(temple, now) == Village.Placement.NOT_ALLOWED, "after the last step the dragon comes only after the wait")
+	now += Village.TEMPLE_STEP_SECONDS
+	var xp := village.get_xp()
+	_check(village.take_supreme_bahamut(temple, now) == Village.Placement.OK and village.items.back().item_id == SUPREME_BAHAMUT, "the Supreme Bahamut Dragon comes")
+	_expect("after the dragon", village, {"xp": xp + _config.get_item(SUPREME_BAHAMUT).xp})
+	_check(not village.stored_items().has(BAHAMUT_HEART) and village.temple_steps_done().is_empty() and village.temple_wait_seconds(now) == 0, "the heart is sold, and the temple starts again")
+	return true
 
 
 ## Buys the item on the first tile in area where it fits.

@@ -26,6 +26,7 @@ const RELIC_BAR := "mcVida/barVida/barraRoja"
 const LOST_PICTURE_SCALE := 0.7
 
 var battle: SurvivalBattle
+var _village_color: Color  # The colour around the map before this screen.
 var _village: Village
 var _ui: UiLibrary
 var _config: GameConfig
@@ -73,11 +74,13 @@ func _ready() -> void:
 
 
 func _enter_tree() -> void:
+	_village_color = RenderingServer.get_default_clear_color()
 	RenderingServer.set_default_clear_color(QuestScreen.SEA_COLOR)
 
 
+## The village has the colour of its map style, see VillageView.
 func _exit_tree() -> void:
-	RenderingServer.set_default_clear_color(ProjectSettings.get_setting("rendering/environment/defaults/default_clear_color"))
+	RenderingServer.set_default_clear_color(_village_color)
 
 
 func _add_start_window() -> void:

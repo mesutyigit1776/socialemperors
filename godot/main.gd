@@ -57,10 +57,20 @@ var _enemies: VillageEnemies  # The idle enemies and the attacks of the village,
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
 var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
+## The client loads the map again after a use of the Time Machine or the
+## Weather Machine; the port then starts this scene again (_reload_map()).
+## The options that open a quest, a battle or a screenshot apply only to the
+## first start. The message of the change shows after the new start.
+static var _reload_message := ""
+static var _reloaded := false
 
 
 func _ready() -> void:
 	_options = _parse_options(OS.get_cmdline_user_args())
+	if _reloaded:
+		for key: String in _options.keys():
+			if not key in ["data", "village"]:
+				_options.erase(key)
 	var data_dir: String = _options.get("data", OS.get_environment("SE_DATA_DIR"))
 	if data_dir.is_empty():
 		data_dir = "user://imported"
@@ -138,6 +148,9 @@ func _ready() -> void:
 		add_child(clock)
 		clock.start(1.0)
 		_update_production()
+		if not _reload_message.is_empty():
+			_hud.show_message(_reload_message)
+			_reload_message = ""
 
 	if _options.has("quest") and _village != null and _view != null:
 		_on_island_chosen(_options["quest"], null)
@@ -671,8 +684,18 @@ func _on_action_requested(id: String) -> void:
 			_select(_selected)
 		if not _save():
 			return
+		if outcome.reload:
+			_reload_map(outcome.text)
+			return
 	_update_production()
 	_hud.show_message(outcome.text)
+
+
+## Loads the saved village again, as the client does with loadMap().
+func _reload_map(message: String) -> void:
+	_reload_message = message
+	_reloaded = true
+	get_tree().reload_current_scene.call_deferred()
 
 
 ## What a collection from the producing building gives, for example "250 food" or "1 Sheep".
