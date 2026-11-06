@@ -121,6 +121,15 @@ var collection_rewards: Array[int] = []
 ## Survival: the cash for one more life, and the hours after which a used life comes back.
 var survival_life_cash: int
 var survival_life_hours: int
+## The weekly tournament: its map, its bots ({"id", "name", "picture", "team"}
+## with the 20 places of the team), the units that cannot take part, the
+## number of dragons, gods and colossi that a team can have, and the texts of
+## the formations ([tip, description] text keys).
+var tournament_map := ""
+var tournament_bots: Array[Dictionary] = []
+var tournament_units_not_allowed: Array[int] = []
+var tournament_max_complex_units := 0
+var tournament_formations: Array[Array] = []
 ## The campaign quests, see QuestBook and QuestBattle. Quest ids are text, as
 ## in the configuration and the save.
 var quest_order: Array[String] = []  ## The islands in the order in which they open.
@@ -241,6 +250,9 @@ static func load_from_file(path: String) -> GameConfig:
 		return null
 	config.survival_life_cash = survival[0]
 	config.survival_life_hours = survival[1]
+	if not _parse_tournament(config, data, globals):
+		push_error("Game configuration '%s' has no correct weekly tournament (tournament_type, tournament_formations, TOURNAMENT_UNITS_NOT_ALLOWED)." % path)
+		return null
 	if not _parse_spells(config, data.get("magics"), globals):
 		push_error("Game configuration '%s' has no correct spells (magics) or mana settings in globals." % path)
 		return null
@@ -390,6 +402,47 @@ static func _parse_special_globals(config: GameConfig, globals: Dictionary) -> b
 			return false
 		config.collection_rewards.append(to_int(reward))
 	return config.collection_rewards.size() > Collections.count()
+
+
+## Reads the first weekly tournament of tournament_type and the tournament
+## settings. Returns false when one is missing or not correct.
+static func _parse_tournament(config: GameConfig, data: Dictionary, globals: Dictionary) -> bool:
+	var types: Variant = data.get("tournament_type")
+	var formations: Variant = data.get("tournament_formations")
+	var not_allowed: Variant = globals.get("TOURNAMENT_UNITS_NOT_ALLOWED")
+	var complex: Variant = to_int(globals.get("TOURNAMENT_MAX_NUMBER_COMPLEX_UNITS"))
+	if not (types is Dictionary and formations is Array and not_allowed is Array) or complex == null:
+		return false
+	config.tournament_max_complex_units = complex
+	for id: Variant in not_allowed:
+		if to_int(id) == null:
+			return false
+		config.tournament_units_not_allowed.append(to_int(id))
+	for formation: Variant in formations:
+		if not formation is Dictionary:
+			return false
+		config.tournament_formations.append([str(formation.get("tip", "")), str(formation.get("description", ""))])
+	var keys: Array = types.keys()
+	keys.sort_custom(func(a: Variant, b: Variant) -> bool: return int(str(a)) < int(str(b)))
+	for key: Variant in keys:
+		var type: Variant = types[key]
+		if not type is Dictionary or to_int(type.get("weekly_tournaments", 0)) < 1 or not type.get("weekly_opponent") is Dictionary:
+			continue
+		config.tournament_map = str(to_int(type.get("map_id")))
+		var bot_ids: Array = type["weekly_opponent"].keys()
+		bot_ids.sort()
+		for bot_id: Variant in bot_ids:
+			var bot: Variant = type["weekly_opponent"][bot_id]
+			var team: Array[int] = []
+			for id: Variant in bot.get("team", []) if bot is Dictionary else []:
+				if to_int(id) == null:
+					return false
+				team.append(to_int(id))
+			if team.is_empty():
+				return false
+			config.tournament_bots.append({"id": str(bot_id), "name": str(bot.get("user_name", "")), "picture": str(bot.get("picture", "")), "team": team})
+		return true
+	return false
 
 
 ## Reads the globals of the campaign quests. The server adds some of them with

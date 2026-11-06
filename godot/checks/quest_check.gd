@@ -53,7 +53,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start, _check_survival]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start, _check_survival, _check_tournament]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -466,6 +466,49 @@ func _check_survival() -> bool:
 	var saved := _saved(village)
 	_check(saved["privateState"]["survivalMaps"][SURVIVAL_1] == {"ts": float(NOW + 10), "tp": 400.0}, "the save keeps the best time and the time of the last play")
 	_check(village.stored_items().get(619, 0) == 1, "the reward unit goes to the item store")
+	return true
+
+
+## The weekly tournament: the bots, the formations, the match and its score, and the team in the save.
+func _check_tournament() -> bool:
+	_check(_config.tournament_map == "100000040" and _config.tournament_bots.size() == 3 and _config.tournament_bots.all(func(bot: Dictionary) -> bool: return bot["team"].size() == QuestBattle.TEAM_SIZE), "the weekly tournament has 3 bots with teams of 20 units")
+	_check(_config.tournament_formations.size() == TournamentBattle.FORMATIONS, "the configuration has 4 formations")
+	var regular := TournamentBattle.formation_cells(0).slice(0, TournamentBattle.ROWS)
+	var aggressive := TournamentBattle.formation_cells(3).slice(0, TournamentBattle.ROWS)
+	_check(regular.all(func(cell: Vector2i) -> bool: return cell.y == 0) and aggressive.all(func(cell: Vector2i) -> bool: return cell.y == TournamentBattle.COLUMNS - 1), "the strongest units stand in the back in the regular formation and in the front in the aggressive one")
+	var map := Village.load_from_file(_data.path_join("quests/%s.save.json" % _config.tournament_map), _config)
+	var places: Array[int] = []
+	for i in QuestBattle.TEAM_SIZE:
+		places.append(HEAVY_KNIGHT if i < 5 else SPEARMAN)
+	var bot_places: Array[int] = _config.tournament_bots[0]["team"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var match_battle := TournamentBattle.create(map, places, 0, bot_places, 0, _config, null, rng)
+	_check(match_battle.sim.fighters.all(func(item: BattleFighter) -> bool: return item.is_unit() or item.team == NEUTRAL), "all items of the map are neutral")
+	_check(match_battle.player_team.size() == 20 and match_battle.bot_team.size() == 20 and match_battle.bot_team.all(func(unit: BattleFighter) -> bool: return unit.tile.x >= TournamentBattle.BOT_ORIGIN.x - 2), "both teams stand on their sides")
+	var knights := match_battle.player_team.filter(func(unit: BattleFighter) -> bool: return unit.def.id == HEAVY_KNIGHT)
+	_check(knights.all(func(unit: BattleFighter) -> bool: return unit.tile.x <= TournamentBattle.PLAYER_ORIGIN.x + 1), "the regular formation puts the strongest units in the back")
+	match_battle.start()
+	var states: Array = []
+	for i in 900:
+		match_battle.sim.step()
+		match_battle.update()
+		if not match_battle.ai.state in states:
+			states.append(match_battle.ai.state)
+	_check(states == [TournamentAI.State.FORMING, TournamentAI.State.WAITING, TournamentAI.State.BATTLE], "the bot's team forms, waits and attacks: %s" % [states])
+	for unit in match_battle.bot_team.duplicate():
+		match_battle.sim.kill(unit)
+	_check(match_battle.won and match_battle.score() == 100 - roundi(25.0 * (20 - match_battle.units_left(match_battle.player_team)) / 20), "a win scores 50 and up to 25 for each team (%d)" % match_battle.score())
+	var withdrawn := TournamentBattle.create(map, places, 0, bot_places, 0, _config, null, rng)
+	withdrawn.start()
+	withdrawn.withdraw()
+	_check(withdrawn.is_finished() and not withdrawn.won and withdrawn.score() == 0, "withdrawing is a loss with 0 points")
+
+	var village := _village()
+	village.set_attack_team("tournament", places, 2)
+	village.set_attack_team("quest", places, 0)
+	var saved := _saved(village)
+	_check(village.attack_team("tournament") == places and saved["privateState"]["tournamentFormation"] == 2.0, "the save keeps the team and the formation")
 	return true
 
 

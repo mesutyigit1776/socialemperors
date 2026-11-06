@@ -1,5 +1,5 @@
 class_name CollectiveAI
-extends RefCounted
+extends GroupAI
 ## The group AI of the enemies that attack the own village (CollectiveIA of the
 ## client). The group goes through steps: it waits near its spawn tile, then
 ## attacks, and some kinds retreat to the spawn tile and leave the map. Each

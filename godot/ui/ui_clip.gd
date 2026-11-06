@@ -21,6 +21,7 @@ var _base := TextureRect.new()
 var _parts: Dictionary = {}  # Part name (or "#depth" for unnamed text) -> Control.
 var _button := false
 var _hover_frame := false
+static var _colour_materials := {}  # Color -> ShaderMaterial, see set_colour().
 
 
 func _init(ui_library: UiLibrary, id: int) -> void:
@@ -76,6 +77,19 @@ func show_frame(new_frame: int) -> void:
 		if not shown.has(key):
 			_parts[key].queue_free()
 			_parts.erase(key)
+
+
+## Gives the image of the clip one colour, as the color of a ColorTransform
+## in Flash: each pixel takes the colour and keeps its alpha.
+func set_colour(colour: Color) -> void:
+	if not _colour_materials.has(colour):
+		var shader := Shader.new()
+		shader.code = "shader_type canvas_item;\nuniform vec4 colour : source_color;\nvoid fragment() {\n\tCOLOR = vec4(colour.rgb, texture(TEXTURE, UV).a * COLOR.a);\n}\n"
+		var material := ShaderMaterial.new()
+		material.shader = shader
+		material.set_shader_parameter("colour", colour)
+		_colour_materials[colour] = material
+	_base.material = _colour_materials[colour]
 
 
 ## The part at path, for example "message1/yesBtn", or null.

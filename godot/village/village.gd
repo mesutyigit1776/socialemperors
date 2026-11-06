@@ -786,6 +786,39 @@ func lose_unit(placed: PlacedItem) -> void:
 	_bury(placed.item_id)
 
 
+## The name of the player.
+func player_name() -> String:
+	return str(_document["playerInfo"].get("name", ""))
+
+
+## The team that the player chose last for "quest" or "tournament": the unit
+## ids of the 20 places, 0 for an empty place. The save keeps it in
+## privateState "teams".
+func attack_team(team_name: String) -> Array[int]:
+	var places: Array[int] = []
+	var teams: Variant = _document["privateState"].get("teams")
+	var saved: Variant = teams.get(team_name) if teams is Dictionary else null
+	for id: Variant in saved if saved is Array else []:
+		places.append(int(id) if id is int or id is float else 0)
+	return places
+
+
+## The formation of the tournament team that the player chose last (0 to 3).
+func tournament_formation() -> int:
+	return _private_int("tournamentFormation")
+
+
+## Keeps the team and the formation, as the server command "set_attack_team" does.
+func set_attack_team(team_name: String, places: Array[int], formation: int) -> void:
+	var private: Dictionary = _document["privateState"]
+	if not private.get("teams") is Dictionary:
+		private["teams"] = {}
+	private["teams"][team_name] = places.duplicate()
+	# The server keeps the formation only when it is not 0.
+	if formation != 0:
+		private["tournamentFormation"] = formation
+
+
 ## The lives for survival maps: SURVIVAL_LIVES, which come back
 ## GameConfig.survival_life_hours after their use, and the lives that the
 ## player bought. The save keeps the times of use in privateState

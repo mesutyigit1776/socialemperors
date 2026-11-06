@@ -1,7 +1,8 @@
 class_name TeamWindow
 extends Control
 ## The window in which the player chooses the team for an island with teams
-## (SelectionTeamWindow of the client, quest mode). See QuestTeam for the rules.
+## or for the tournament (SelectionTeamWindow of the client, quest and
+## tournament mode). See QuestTeam for the rules.
 ##
 ## - The units of the army show 5 at a time, with the number that is left;
 ##   the arrows show the other pages. A click on a unit puts one in the team.
@@ -10,10 +11,19 @@ extends Control
 ## - OK checks the groups of the island, then that the team has a unit, and
 ##   asks with Yes and No when the team has fewer than 20 units. These alerts
 ##   use the window of the client for the team window (Alert, AlertTournamentMC).
-## - The client also shows the formations of the tournaments here. They do not
-##   change a quest, so the port hides them.
+## - The team that the player chose last for the mode comes back in its places.
+## - In the tournament mode, the units of
+##   GameConfig.tournament_units_not_allowed are not in the list, and a team
+##   can have at most GameConfig.tournament_max_complex_units dragons, gods
+##   and colossi. The four formation buttons choose the formation; the
+##   texts show its name and description. A quest hides the formations, as
+##   they do not change a quest.
+
+enum Mode { QUEST, TOURNAMENT }
 
 signal accepted(team: Dictionary)  ## Unit id -> number.
+## The places of the team (unit ids, 0 for an empty place, TEAM_SIZE in all) and the formation.
+signal places_chosen(places: Array[int], formation: int)
 signal closed
 
 const THUMB_SIZE := 90.0
@@ -25,6 +35,10 @@ const PLACE_MARGIN := 8.0
 const PLACE_COLUMNS := 10
 const PLACES_AT := Vector2(-285, -175)
 const FORMATION_TITLE := "#16"  ## The unnamed text "Formations".
+const FORMATION_SELECTED := 1
+const FORMATION_NORMAL := 0
+## Units of these groups count as complex units in the tournament (groupsNotAllowed).
+const COMPLEX_GROUPS: Array[String] = ["dragon", "god", "colossus"]
 
 var _window: UiClip
 var _ui: UiLibrary
@@ -35,13 +49,27 @@ var _team: Array[int] = []  # The unit ids of the places, in order.
 var _page := 0
 var _thumbs := Control.new()
 var _places := Control.new()
+var _mode := Mode.QUEST
+var _formation := 0
 
 
-func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Dictionary) -> void:
+## island: the island of a quest, or null in the tournament mode. saved: the
+## places of the team that the player chose last, see Village.attack_team().
+func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Dictionary, mode := Mode.QUEST, saved: Array[int] = [], formation := 0) -> void:
 	_ui = ui
 	_config = config
 	_island = island
+	_mode = mode
+	_formation = clampi(formation, 0, maxi(config.tournament_formations.size() - 1, 0))
 	_choices = QuestTeam.choices(army, config)
+	if mode == Mode.TOURNAMENT:
+		_choices = _choices.filter(func(choice: Array) -> bool: return not choice[0] in config.tournament_units_not_allowed)
+	for id in saved:
+		for choice in _choices:
+			if choice[0] == id and choice[1] > 0 and _team.size() < QuestBattle.TEAM_SIZE:
+				choice[1] -= 1
+				_team.append(id)
+				break
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var cover := ColorRect.new()
 	cover.color = Color(0, 0, 0, 0.5)
@@ -52,8 +80,16 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Diction
 	_window.set_text("title_txt", config.text("POPUP_TEAM_SELECTION_TITLE"))
 	_window.set_text("subtitle2_txt", config.text("POPUP_TEAM_SELECTION_SUBTITLE_2"))
 	_window.set_text("ok_btn/txtLabel", "OK")
-	for part in ["tourSelecBtn", "formation_buttons", "formation_txt", "formation_desc", FORMATION_TITLE]:
-		_window.set_part_visible(part, false)
+	_window.set_part_visible("tourSelecBtn", false)
+	for part in ["formation_buttons", "formation_txt", "formation_desc", FORMATION_TITLE]:
+		_window.set_part_visible(part, mode == Mode.TOURNAMENT)
+	if mode == Mode.TOURNAMENT:
+		for i in config.tournament_formations.size():
+			var button := _window.clip("formation_buttons/fb%d" % i)
+			if button != null:
+				button.make_button()
+				button.pressed.connect(_choose_formation.bind(i))
+		_choose_formation(_formation)
 	_thumbs.position = THUMBS_AT
 	_places.position = PLACES_AT
 	for node: Control in [_thumbs, _places]:
@@ -72,7 +108,7 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Diction
 		arrow.make_button(true)
 		arrow.pressed.connect(_turn_page.bind(pair[1]))
 	_show()
-	if not island.groups.is_empty():
+	if island != null and not island.groups.is_empty():
 		_show_alert.call_deferred(_requirement_text())
 
 
@@ -157,21 +193,44 @@ func _on_ok() -> void:
 	var team := {}
 	for id in _team:
 		team[id] = int(team.get(id, 0)) + 1
-	if not QuestTeam.meets_groups(_island, team, _config):
+	var tournament := _mode == Mode.TOURNAMENT
+	if not tournament and not QuestTeam.meets_groups(_island, team, _config):
 		_show_alert(_requirement_text())
 		return
+	if tournament and _complex_units() > _config.tournament_max_complex_units:
+		_show_alert(_config.text("TOURNAMENT_MAX_COMPLEX_UNITS").replace("#0#", str(_config.tournament_max_complex_units)))
+		return
 	if team.is_empty():
-		_show_alert(_config.text("QUEST_TEAM_SELECTION_ALERT_1_UNIT"))
+		_show_alert(_config.text("TOURNAMENT_YOU_CAN_NOT_ENTER_WITHOUT_UNITS" if tournament else "QUEST_TEAM_SELECTION_ALERT_1_UNIT"))
 		return
 	if _team.size() < QuestBattle.TEAM_SIZE:
-		_show_alert(_config.text("QUEST_TEAM_SELECTION_ALERT_LESS_20_CONFIRM"), _accept.bind(team))
+		_show_alert(_config.text("TOURNAMENT_YOU_TEAM_HAS_NOT_MAXIUM_UNITS" if tournament else "QUEST_TEAM_SELECTION_ALERT_LESS_20_CONFIRM"), _accept.bind(team))
 		return
 	_accept(team)
 
 
 func _accept(team: Dictionary) -> void:
+	var places: Array[int] = _team.duplicate()
+	places.resize(QuestBattle.TEAM_SIZE)
+	places_chosen.emit(places, _formation)
 	accepted.emit(team)
 	queue_free()
+
+
+## The dragons, gods and colossi in the team.
+func _complex_units() -> int:
+	return _team.filter(func(id: int) -> bool: return _config.get_item(id).groups in COMPLEX_GROUPS).size()
+
+
+func _choose_formation(formation: int) -> void:
+	_formation = formation
+	for i in _config.tournament_formations.size():
+		var button := _window.clip("formation_buttons/fb%d" % i)
+		if button != null:
+			button.show_frame(FORMATION_SELECTED if i == formation else FORMATION_NORMAL)
+	var texts: Array = _config.tournament_formations[formation]
+	_window.set_text("formation_txt", _config.text(texts[0]))
+	_window.set_text("formation_desc", _config.text(texts[1]))
 
 
 ## The text of the client that names the groups that the island asks for.
@@ -184,25 +243,4 @@ func _requirement_text() -> String:
 
 ## An alert with OK, or with Yes and No when on_yes is given: Yes calls on_yes.
 func _show_alert(text: String, on_yes := Callable()) -> void:
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.3)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
-	var alert := _ui.make("AlertTournamentMC")
-	alert.position = _window.position
-	cover.add_child(alert)
-	alert.set_text("msg_txt", text)
-	var asks := on_yes.is_valid()
-	alert.set_part_visible("ok_btn", not asks)
-	alert.set_part_visible("yes_btn", asks)
-	alert.set_part_visible("no_btn", asks)
-	var buttons := {"yes_btn": ["AUX_SI", on_yes], "no_btn": ["AUX_NO", Callable()]} if asks else {"ok_btn": ["AUX_OK", Callable()]}
-	for part: String in buttons:
-		alert.set_text(part + "/txtLabel", _config.text(buttons[part][0]))
-		var button := alert.clip(part)
-		button.make_button(true)
-		var action: Callable = buttons[part][1]
-		button.pressed.connect(func() -> void:
-			cover.queue_free()
-			if action.is_valid():
-				action.call())
+	add_child(TournamentAlert.new(_ui, _config, text, _window.position, on_yes))

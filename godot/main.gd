@@ -12,6 +12,9 @@ extends Node2D
 ##                         in the island window does; used for checks
 ##   --survival <map id>   go to a survival map, or with "window" open the
 ##                         survival window; used for checks
+##   --tournament <bot>    play the match against the bot with this index (0 to
+##                         2), or with "window" open the tournament window;
+##                         used for checks
 ##   --village-attack <kind>  an attack (siege, stampede, army or bandits) whose
 ##                         wait is over comes to the village; used for checks
 
@@ -20,6 +23,7 @@ extends Node2D
 const WINDOW_LAYER := 10
 const SPELL_LAYER := 5
 const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
+const TOURNAMENT_LEVEL := 15  ## MIN_LEVEL_TOURNAMENT of the client.
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -47,6 +51,8 @@ var _spell_book: SpellBook
 var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
 var _quest_screen: QuestScreen
 var _survival_screen: SurvivalScreen
+var _tournament_screen: TournamentScreen
+var _tournament_scores := {}  # Bot index -> [score, won] of the last match in this session.
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
@@ -105,6 +111,7 @@ func _ready() -> void:
 		_hud.stored_items_requested.connect(func() -> void: _show_panel(SpecialActions.View.STORE))
 		_hud.quests_requested.connect(_open_quests)
 		_hud.survival_requested.connect(_open_survival)
+		_hud.tournament_requested.connect(_open_tournament)
 		add_child(_hud)
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
@@ -134,6 +141,11 @@ func _ready() -> void:
 
 	if _options.has("quest") and _village != null and _view != null:
 		_on_island_chosen(_options["quest"], null)
+	if _options.has("tournament") and _village != null and _view != null and _load_quest_graphics():
+		if _options["tournament"] == "window":
+			_open_tournament()
+		else:
+			_start_tournament_match(int(_options["tournament"]))
 	if _options.has("survival") and _village != null and _view != null and _load_quest_graphics():
 		if _options["survival"] == "window":
 			_open_survival()
@@ -248,6 +260,70 @@ func _on_survival_closed(seconds: int, reward: int, map_id: String) -> void:
 		_hud.show_message("You got a %s. It is in the item store." % _config.get_item(reward).name)
 
 
+## The weekly tournament against the bots of the configuration, from
+## TOURNAMENT_LEVEL; see TournamentWindow.
+func _open_tournament() -> void:
+	if not _load_quest_graphics():
+		return
+	if _village.get_level() < TOURNAMENT_LEVEL:
+		_alert("%s %d" % [_config.text("UNLOCK_LEVEL"), TOURNAMENT_LEVEL])
+		return
+	var window := TournamentWindow.new(_ui, _config, _village.attack_team("tournament"), _village.tournament_formation(), _tournament_scores)
+	window.closed.connect(window.queue_free)
+	window.team_requested.connect(func() -> void:
+		window.queue_free()
+		_choose_tournament_team())
+	window.match_requested.connect(func(bot: int) -> void:
+		window.queue_free()
+		_start_tournament_match(bot))
+	_windows.add_child(window)
+
+
+func _choose_tournament_team() -> void:
+	var window := TeamWindow.new(_ui, _config, null, _village.quest_army(), TeamWindow.Mode.TOURNAMENT, _village.attack_team("tournament"), _village.tournament_formation())
+	window.places_chosen.connect(func(places: Array[int], formation: int) -> void:
+		_village.set_attack_team("tournament", places, formation)
+		_save())
+	window.closed.connect(_open_tournament)
+	window.accepted.connect(func(_team: Dictionary) -> void: _open_tournament())
+	_windows.add_child(window)
+
+
+## A match against the bot with this index, with the saved team. Units of the
+## team that the village no longer has stay out, as the client checks the
+## saved team against the units of the village.
+func _start_tournament_match(bot_index: int) -> void:
+	var map := Village.load_from_file(_data_dir.path_join("quests/%s.save.json" % _config.tournament_map), _config)
+	if map == null:
+		_alert("Cannot read the map of the tournament. Import the game files again.")
+		return
+	var left := _village.quest_army()
+	var places: Array[int] = []
+	for id in _village.attack_team("tournament"):
+		var free := int(left.get(id, 0))
+		places.append(id if free > 0 else 0)
+		if free > 0:
+			left[id] = free - 1
+	var bot: Dictionary = _config.tournament_bots[bot_index]
+	var bot_places: Array[int] = bot["team"]
+	var match_battle := TournamentBattle.create(map, places, _village.tournament_formation(), bot_places, 0, _config, _sprites, _rng, _village.get_level())
+	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_tournament_screen.village_changed.connect(_save)
+	_tournament_screen.closed.connect(func(score: int, won: bool) -> void:
+		_tournament_scores[bot_index] = [score, won]
+		_known_level = _village.get_level()
+		_enemies.on_map_loaded(_now())
+		_save()
+		_tournament_screen.queue_free()
+		_tournament_screen = null
+		_show_village(true)
+		_view.sync_items()
+		_open_tournament())
+	_select(null)
+	_show_village(false)
+	add_child(_tournament_screen)
+
+
 ## window: the island window, which closes when the quest starts; or null.
 func _on_island_chosen(quest_id: String, window: QuestListWindow) -> void:
 	if not _load_quest_graphics():
@@ -277,8 +353,11 @@ func _start_quest(quest_id: String) -> void:
 	if not island.team:
 		_land(quest_id, _village.quest_army())
 		return
-	var window := TeamWindow.new(_ui, _config, island, _village.quest_army())
+	var window := TeamWindow.new(_ui, _config, island, _village.quest_army(), TeamWindow.Mode.QUEST, _village.attack_team("quest"), _village.tournament_formation())
 	window.closed.connect(_open_quests)
+	window.places_chosen.connect(func(places: Array[int], formation: int) -> void:
+		_village.set_attack_team("quest", places, formation)
+		_save())
 	window.accepted.connect(func(team: Dictionary) -> void: _land(quest_id, team))
 	_windows.add_child(window)
 
@@ -761,7 +840,7 @@ func _level_up_text(old_level: int) -> String:
 ## until the fight ends. unit: a unit of the player that attacks the enemy on
 ## target, when the player started the fight with a click.
 func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZERO) -> void:
-	if _village_fight != null or _quest_screen != null or _survival_screen != null or not _load_quest_graphics():
+	if _village_fight != null or _quest_screen != null or _survival_screen != null or _tournament_screen != null or not _load_quest_graphics():
 		return
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
