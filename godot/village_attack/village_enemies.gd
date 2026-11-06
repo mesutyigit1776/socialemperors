@@ -20,6 +20,7 @@ var _rng: RandomNumberGenerator
 var _is_busy: Callable  # True for a unit of the player that is not on the map now, see UnitOrders.is_busy().
 var _time := 0.0
 var _frame := 0
+var _calm_positions := 0  # The positions after the last fight, see _positions().
 
 
 func _init(village: Village, view: VillageView, config: GameConfig, rng: RandomNumberGenerator, is_busy: Callable) -> void:
@@ -66,9 +67,13 @@ func take_groups() -> Array[VillageAttacks.Group]:
 	return taken
 
 
-## The fight ended; the attacks that stay come back.
+## The fight ended; the attacks that stay come back, before the attacks of a
+## level that the player reached during the fight.
 func set_groups(staying: Array[VillageAttacks.Group]) -> void:
-	groups = staying
+	var merged: Array[VillageAttacks.Group] = staying.duplicate()
+	merged.append_array(groups)
+	groups = merged
+	_calm_positions = _positions()
 	_show()
 
 
@@ -94,11 +99,26 @@ func _process(delta: float) -> void:
 			return
 
 
+## A step of an attack is due, or the enemies and the player are in contact.
+## A fight that ended calm does not start again while nothing moved: for
+## example an enemy that cannot reach its target.
 func _fight_due() -> bool:
 	for group in groups:
 		if group.step_due():
 			return true
-	return VillageBattle.has_contact(_village, groups, _config, _is_busy)
+	return VillageBattle.has_contact(_village, groups, _config, _is_busy) and _positions() != _calm_positions
+
+
+## A number for the tiles of all units and the number of items of the village.
+func _positions() -> int:
+	var tiles := [_village.items.size()]
+	for placed in _village.items:
+		if _config.get_item(placed.item_id) != null and _config.get_item(placed.item_id).is_unit():
+			tiles.append(placed.tile)
+	for group in groups:
+		for attacker in group.attackers:
+			tiles.append(attacker.tile)
+	return tiles.hash()
 
 
 func _show() -> void:

@@ -38,6 +38,7 @@ var _sprites: SpriteLibrary
 var _placed := {}  # BattleFighter -> Village.PlacedItem of the save.
 var _attackers := {}  # BattleFighter -> [VillageAttacks.Group, VillageAttacks.Role]
 var _calm_frames := 0
+static var _conditions := {}  # Item id -> BattleAI.Condition, see _fights().
 var _ended := false
 var kills := 0  ## Enemy units that died.
 var losses := 0  ## Units of the save of the player that died.
@@ -184,39 +185,47 @@ func apply() -> Array[VillageAttacks.Group]:
 	return staying
 
 
-## True when an enemy in the village is near enough to the player to fight, as
-## the AI of the client would find it: an enemy unit and a unit or building of
-## the player that the client targets are within CONTACT_RANGE tiles, or the
-## enemy is in the attack range of a building of the player. Bandits that
-## attack search the whole map; the client takes a target only when its score
-## is not below 0, see BattleSim.SCORE_BASE.
+## True when an enemy in the village and the player are near enough to fight,
+## as the AI of the client would find it: an enemy unit that fights has a
+## unit or building of the player that the client targets within
+## CONTACT_RANGE tiles, a unit of the player that fights has an enemy unit
+## within CONTACT_RANGE tiles, or a building of the player has an enemy in its
+## attack range. Units that only flee or never fight (villagers, healers,
+## passive units) do not start a fight. Bandits that attack search the whole
+## map; the client takes a target only when its score is not below 0, see
+## BattleSim.SCORE_BASE.
 static func has_contact(village: Village, attacks: Array[VillageAttacks.Group], config: GameConfig, is_busy: Callable) -> bool:
 	var enemies: Array[Vector2i] = []
+	var fighting_enemies: Array[Vector2i] = []
 	var searching: Array[Vector2i] = []
 	for placed in village.items:
 		if village.is_enemy_unit(placed):
 			enemies.append(placed.tile)
+			if _fights(config.get_item(placed.item_id)):
+				fighting_enemies.append(placed.tile)
 	for group in attacks:
 		var searches := group.ai.kind == CollectiveAI.Kind.BANDITS and group.ai.step == CollectiveAI.ATTACK
 		for attacker in group.attackers:
-			if attacker.team == BattleFighter.Team.ENEMY:
-				(searching if searches else enemies).append(attacker.tile)
-	if enemies.is_empty() and searching.is_empty():
+			if attacker.team != BattleFighter.Team.ENEMY:
+				continue
+			enemies.append(attacker.tile)
+			if searches:
+				searching.append(attacker.tile)
+			elif _fights(attacker.def):
+				fighting_enemies.append(attacker.tile)
+	if enemies.is_empty():
 		return false
 	for placed in village.items:
 		var def := config.get_item(placed.item_id)
 		if def == null or is_busy.call(placed) or not _is_player_item(village, placed, def):
 			continue
 		var bonus := _score_bonus(def)
-		var reach := 0
-		if bonus >= 0:
-			reach = CONTACT_RANGE
-		if not def.is_unit() and def.attack > 0:
-			reach = maxi(reach, def.attack_range)
-		for tile in enemies:
-			var offset := tile - placed.tile
-			if offset.x * offset.x + offset.y * offset.y <= reach * reach:
-				return true
+		if bonus >= 0 and _any_within(fighting_enemies, placed.tile, CONTACT_RANGE):
+			return true
+		if def.is_unit() and _fights(def) and _any_within(enemies, placed.tile, CONTACT_RANGE):
+			return true
+		if not def.is_unit() and def.attack > 0 and _any_within(enemies, placed.tile, def.attack_range):
+			return true
 		if bonus < 0:
 			continue
 		for tile in searching:
@@ -224,6 +233,23 @@ static func has_contact(village: Village, attacks: Array[VillageAttacks.Group], 
 			var squared := offset.x * offset.x + offset.y * offset.y + (BattleSim.NO_ATTACK_PENALTY if def.attack == 0 else 0)
 			if BattleSim.SCORE_BASE - squared + bonus > -1:
 				return true
+	return false
+
+
+## True for a unit that attacks: its AI looks for enemies (see BattleAI).
+static func _fights(def: GameConfig.ItemDef) -> bool:
+	if def.attack <= 0:
+		return false
+	if not _conditions.has(def.id):
+		_conditions[def.id] = BattleAI.create(def).condition
+	return _conditions[def.id] in [BattleAI.Condition.AGGRESSIVE, BattleAI.Condition.DEFENSIVE]
+
+
+static func _any_within(tiles: Array[Vector2i], centre: Vector2i, reach: int) -> bool:
+	for tile in tiles:
+		var offset := tile - centre
+		if offset.x * offset.x + offset.y * offset.y <= reach * reach:
+			return true
 	return false
 
 
