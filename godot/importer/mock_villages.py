@@ -19,7 +19,8 @@ each import makes the same villages. Each village is a walled town:
   in the town, the units of the unit buildings and the villagers.
 - Outside the wall, trees, stone and gold on the rest of the land.
 Larger villages own more land areas, and their town covers more than one; a
-village buys more land when its town does not fit.
+village buys more land when its town does not fit. From level 21 the town
+fills all its land, and its buildings spread over it.
 The game stores an item at the tile of its bottom right corner (see
 VillageMap.footprint()); the generator does the same, and checks that no
 items overlap and that all are on the land of the village.
@@ -66,6 +67,12 @@ DECORATION_SUBCAT = "411"
 # then a square of four, then a square of nine.
 LAND_ORDER = [13, 12, 17, 18, 7, 8, 9, 14, 19]
 LAND_TILES = 20
+## From this level the town fills its land: 6 land areas (40 x 60 tiles), from
+## level 31 all 9 (60 x 60), with WIDE_MARGIN tiles outside the wall.
+WIDE_LEVEL = 21
+WIDE_MARGIN = 3
+WIDE_TOWN = 24  # A town wider than this has blocks of buildings.
+BLOCK = 4
 FIRST_DAY = 1759373520  # The timestamp of villages/initial.json.
 
 
@@ -144,6 +151,13 @@ class _Map:
 		return False
 
 
+def _owned_rect(owned, margin):
+	"The rectangle of the owned land, which is whole areas in a rectangle, without margin tiles at its edges."
+	xs = [x for x, _ in owned]
+	ys = [y for _, y in owned]
+	return (min(xs) + margin, min(ys) + margin, max(xs) - margin, max(ys) - margin)
+
+
 def _town_rect(owned, side):
 	"The square of the town, side tiles with the wall, on the owned land and nearest to its middle; or None."
 	xs = [x for x, _ in owned]
@@ -168,9 +182,17 @@ def make_village(template, items, levels, name, level, difficulty, index):
 	rng = random.Random(f"{name}/{level}/2")
 	strength = STRENGTH[difficulty]
 	area_count = 1 + min(len(LAND_ORDER) - 1, level // 5)
+	# From WIDE_LEVEL the town fills a rectangle of whole land areas.
+	wide = level >= WIDE_LEVEL
+	if wide:
+		area_count = 6 if level < 31 else 9
 	town_hall = _top_of_line(items, TOWN_HALL, level)
 	buildings = [item for item in (_top_of_line(items, first, level) for first in TOWN_LINES) if item]
-	buildings += [_top_of_line(items, HOUSE, level)] * (level // 5)
+	buildings += [_top_of_line(items, HOUSE, level)] * (level // (2 if wide else 5))
+	if wide:
+		# A wide town has more farms, mills, mines and ranches.
+		buildings += [_top_of_line(items, 10, level)] * (level // 4)
+		buildings += [item for item in (_top_of_line(items, first, level) for first in (5, 13, 77, 16, 11, 12)) if item] * (level // 15)
 	castles = []
 	if level >= 12:
 		castles.append(items[rng.choice([c for c in CASTLES if _int(items[c]["min_level"]) <= level])])
@@ -183,7 +205,7 @@ def make_village(template, items, levels, name, level, difficulty, index):
 	while True:
 		areas = LAND_ORDER[:area_count]
 		village_map = _Map(areas, rng)
-		rect = _town_rect(village_map.owned, side)
+		rect = _owned_rect(village_map.owned, WIDE_MARGIN) if wide else _town_rect(village_map.owned, side)
 		if rect is None:
 			# A town that does not fit buys the next land area.
 			if area_count == len(LAND_ORDER):
@@ -192,8 +214,10 @@ def make_village(template, items, levels, name, level, difficulty, index):
 			continue
 		if _build_town(village_map, items, rect, level, strength, town_hall, buildings, castles, rng):
 			break
+		if wide:
+			raise ValueError(f"{name}: the buildings do not fit in the town")
 		side += 2
-	_add_resources(village_map, items, level, rng)
+	_add_resources(village_map, items, level, rng, rect)
 
 	save = copy.deepcopy(template)
 	info = save["playerInfo"]
@@ -231,7 +255,7 @@ def _build_town(village_map, items, rect, level, strength, town_hall, buildings,
 			# The tiles in front of and behind the gate stay free.
 			village_map.reserved |= {(gx + i, gy + j) for i in range(-1, 4) for j in range(-1, 4)}
 	# Towers in the wall: at the corners, then at even distances.
-	towers = max(4, int(round((2 + level / 3) * strength))) if tower else 0
+	towers = max(4, int(round((2 + level / 3) * strength)), len(ring) // 16) if tower else 0
 	cash_share = 0.0 if level < 8 else min(0.5, 0.15 * strength)
 	cash_towers = [items[t] for t in CASH_TOWERS if _int(items[t]["min_level"]) <= level]
 	corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
@@ -262,13 +286,27 @@ def _build_town(village_map, items, rect, level, strength, town_hall, buildings,
 	for castle, corner in zip(castles, rng.sample([(inner[0], inner[1]), (inner[2], inner[1]), (inner[0], inner[3]), (inner[2], inner[3])], 4)):
 		if not village_map.place_in(castle, inner, 1, corner):
 			return False
-	for item in sorted(buildings, key=lambda item: -_size(item)[0] * _size(item)[1]):
-		if not village_map.place_in(item, inner, 1, middle):
+	# A small town packs its buildings around the town hall. A wide town spreads
+	# them over a grid of places across the town, with wider gaps.
+	ordered = sorted(buildings, key=lambda item: -_size(item)[0] * _size(item)[1])
+	targets = [middle] * len(ordered)
+	gap = 1
+	if (inner[2] - inner[0]) > WIDE_TOWN:
+		# Blocks of BLOCK buildings, with a street of 2 free tiles between the blocks.
+		width, height = inner[2] - inner[0] + 1, inner[3] - inner[1] + 1
+		blocks = math.ceil(len(ordered) / BLOCK)
+		columns = max(1, round(math.sqrt(blocks * width / height)))
+		rows = math.ceil(blocks / columns)
+		centres = [(inner[0] + (c + 0.5) * width / columns, inner[1] + (r + 0.5) * height / rows) for r in range(rows) for c in range(columns)]
+		rng.shuffle(centres)
+		targets = [centres[i // BLOCK] for i in range(len(ordered))]
+	for item, target in zip(ordered, targets):
+		if not village_map.place_in(item, inner, gap, target) and not village_map.place_in(item, inner, 1, target):
 			return False
 	# Siege engines behind the wall, with free tiles between them.
 	siege = [items[s] for s in SIEGE if _int(items[s]["min_level"]) <= level]
 	band = [(x, y) for x, y in ring_inside(rect) if (x, y) not in gate_tiles]
-	engines = int(round((level / 6) * strength)) if siege else 0
+	engines = max(int(round((level / 6) * strength)), len(ring) // 24) if siege else 0
 	village_map.reserved -= set(band) - _gate_paths(village_map, gate_tiles)
 	spacing = max(2, len(band) // max(1, engines))
 	placed = 0
@@ -287,7 +325,7 @@ def _build_town(village_map, items, rect, level, strength, town_hall, buildings,
 	decorations = [item for item in items.values() if item["subcat_functional"] == DECORATION_SUBCAT and item["race"] in ("h", "a")
 			and str(item["in_store"]) == "1" and item["cost_type"] in ("g", "w", "s", "f") and _int(item["min_level"]) <= level and _size(item) == (1, 1)]
 	decorations.sort(key=lambda item: _int(item["id"]))
-	people += [rng.choice(decorations) for _ in range(2 + level // 4)] if decorations else []
+	people += [rng.choice(decorations) for _ in range(2 + (level * 2 if (inner[2] - inner[0]) > WIDE_TOWN else level // 4))] if decorations else []
 	for item in people:
 		while free and not village_map.fits(*free[-1], 1, 1):
 			free.pop()
@@ -310,11 +348,13 @@ def _gate_paths(village_map, gate_tiles):
 	return {(x + i, y + j) for x, y in gate_tiles for i in (-1, 0, 1) for j in (-1, 0, 1)}
 
 
-def _add_resources(village_map, items, level, rng):
-	"Trees, stone and gold on the free land outside the town, more trees than the others."
-	free = sorted(village_map.owned - village_map.taken - village_map.reserved)
+def _add_resources(village_map, items, level, rng, rect):
+	"Trees, stone and gold on the free land outside the wall, more trees than the others."
+	left, top, right, bottom = rect
+	free = sorted(tile for tile in village_map.owned - village_map.taken - village_map.reserved
+			if not (left <= tile[0] <= right and top <= tile[1] <= bottom))
 	rng.shuffle(free)
-	for x, y in free[:len(free) // 9]:
+	for x, y in free[:len(free) // 6]:
 		if village_map.fits(x, y, 1, 1, 1):
 			choice = rng.random()
 			village_map.add(items[rng.choice(TREES if choice < 0.7 else STONES if choice < 0.85 else GOLD)], x, y)
