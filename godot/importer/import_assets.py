@@ -244,7 +244,8 @@ def import_neighbours(source, out_dir, config):
 	and writes the mock neighbours (mock_villages.py) to <out>/neighbours/mock/.
 	As the server does with villages/friend_static, a file that is already
 	there stays: the port writes the shields and the attack logs of the
-	neighbours that the player attacks into these files. Returns the saves,
+	neighbours that the player attacks into these files. The mock villages
+	are made again when mock_villages.py changes (neighbours/mock_generator.json). Returns the saves,
 	whose items need graphics."""
 	saves = []
 	for kind, folders in NEIGHBOUR_FOLDERS.items():
@@ -260,11 +261,18 @@ def import_neighbours(source, out_dir, config):
 	with open(os.path.join(source, "villages", "initial.json"), encoding='utf-8') as f:
 		template = json.load(f)
 	target = os.path.join(out_dir, "neighbours", "mock")
+	# The mock villages of another version of the generator go away.
+	with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_villages.py"), 'rb') as f:
+		generator = hashlib.sha256(f.read()).hexdigest()[:16]
+	marker = os.path.join(out_dir, "neighbours", "mock_generator.json")
+	if not is_done(marker, "generator", generator):
+		shutil.rmtree(target, ignore_errors=True)
 	os.makedirs(target, exist_ok=True)
 	for name, save in make_mock_villages(config, template).items():
 		dest = os.path.join(target, name)
 		if not os.path.exists(dest):
 			write_json_last(dest, save)
+	write_json_last(marker, {"generator": generator})
 	for path in sorted(glob.glob(os.path.join(out_dir, "neighbours", "*", "*.json"))):
 		saves.append(load_village(path))
 	return saves
