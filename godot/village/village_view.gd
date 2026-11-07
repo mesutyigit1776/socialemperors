@@ -185,10 +185,11 @@ static func unit_direction(from: Vector2i, to: Vector2i) -> int:
 	return UNIT_DIRECTIONS_BY_ANGLE[posmod(roundi(delta.angle() / (PI / 4)), 8)]
 
 
-## Shows a mark above each building that is ready to collect at the time now.
-func update_production(now: float) -> void:
+## Shows a mark above each building that is ready to collect at the time now,
+## and above the items of also_ready (the open items of a quest in the town).
+func update_production(now: float, also_ready: Array[Village.PlacedItem] = []) -> void:
 	for placed: Village.PlacedItem in _nodes:
-		var ready := _village.seconds_to_ready(placed, now) == 0
+		var ready := _village.seconds_to_ready(placed, now) == 0 or placed in also_ready
 		if ready and not _ready_marks.has(placed):
 			_ready_marks[placed] = add_ready_mark(_nodes[placed], _config.get_item(placed.item_id).collect_type)
 		elif not ready and _ready_marks.has(placed):

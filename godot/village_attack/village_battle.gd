@@ -83,6 +83,11 @@ func _team_of(placed: Village.PlacedItem, def: GameConfig.ItemDef) -> BattleFigh
 		if _village.is_own_unit(placed):
 			return BattleFighter.Team.PLAYER
 		return BattleFighter.Team.NEUTRAL if _village.is_wild_animal(placed) else BattleFighter.Team.ENEMY
+	match _village.quest_roles.get(placed):
+		Village.QuestRole.ENEMY:
+			return BattleFighter.Team.ENEMY
+		Village.QuestRole.NEUTRAL, Village.QuestRole.OBJECTIVE:
+			return BattleFighter.Team.NEUTRAL
 	return BattleFighter.Team.NEUTRAL if def.race == "n" else BattleFighter.Team.PLAYER
 
 
@@ -156,6 +161,8 @@ func apply() -> Array[VillageAttacks.Group]:
 		if not fighter.is_unit():
 			if fighter.team == BattleFighter.Team.PLAYER:
 				_village.set_health(placed, fighter.health if not fighter.dead else 0)
+			elif fighter.dead and fighter.team == BattleFighter.Team.ENEMY:
+				_village.kill_enemy(fighter.def, placed)  # A wall or tower of a quest in the town.
 			continue
 		if _village.is_own_unit(placed):
 			# A unit that a monk converted fought for the other side: the player lost it.
@@ -210,6 +217,11 @@ static func has_contact(village: Village, attacks: Array[VillageAttacks.Group], 
 			enemies.append(placed.tile)
 			if _fights(config.get_item(placed.item_id)):
 				fighting_enemies.append(placed.tile)
+	for placed: Village.PlacedItem in village.quest_roles:
+		if village.quest_roles[placed] == Village.QuestRole.ENEMY:
+			enemies.append(placed.tile)
+			if config.get_item(placed.item_id).attack > 0:
+				fighting_enemies.append(placed.tile)
 	for group in attacks:
 		var searches := group.ai.kind == CollectiveAI.Kind.BANDITS and group.ai.step == CollectiveAI.ATTACK
 		for attacker in group.attackers:
@@ -261,7 +273,7 @@ static func _any_within(tiles: Array[Vector2i], centre: Vector2i, reach: int) ->
 
 
 static func _is_player_item(village: Village, placed: Village.PlacedItem, def: GameConfig.ItemDef) -> bool:
-	return village.is_own_unit(placed) if def.is_unit() else def.race != "n"
+	return village.is_own_unit(placed) if def.is_unit() else def.race != "n" and not village.quest_roles.has(placed)
 
 
 ## The part of the client's target score for the kind of item, or -1 for an

@@ -21,6 +21,8 @@ extends VillageSocial
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
 const SUBCAT_DECORATION := 411
+## The wait after the end of a quest in the town (TIMER_OGRES_VILLAGE).
+const TOWN_QUEST_WAIT := 4 * 3600
 ## The nests grow their units, one after the other, in NEST_STEPS steps of care.
 ## After each step the player waits NEST_STEP_SECONDS or pays cash: "wait_cash"
 ## is [cash for the 1st, 3rd, ... unit, cash for the 2nd, 4th, ... unit]. "keys"
@@ -828,6 +830,22 @@ func add_enemy(item: GameConfig.ItemDef, tile: Vector2i, now: int) -> PlacedItem
 	return _add_entry(item, tile, 0, now, {})
 
 
+## Puts an item of a quest in the town on the map with the server command
+## "place_stored_item", which adds it without cost and without experience,
+## also when the item store does not have it. The client sent "buy" without
+## cost, which gives the experience of each item: more than 800 for the walls
+## of some camps, three levels for a new player.
+func place_quest_item(item: GameConfig.ItemDef, tile: Vector2i, now: int) -> PlacedItem:
+	_register_unit(item.id)
+	return _add_entry(item, tile, 0, now, {})
+
+
+## Takes an item off the map with the command "sell" without resources, as the
+## client does when it cleans an area for a quest or removes a quest item.
+func remove_free_item(placed: PlacedItem) -> void:
+	_remove(placed)
+
+
 ## An enemy item died in a battle in the village: the client sends "kill". The
 ## server removes the item from the map when the save has it (placed), and for
 ## a unit it gives the collect_xp of the unit and KILL_GOLD gold, also when the
@@ -1588,3 +1606,62 @@ func _stored() -> Dictionary:
 	if not _map.get("store") is Dictionary:
 		_map["store"] = {}
 	return _map["store"]
+
+
+## The quest in the town (TownQuests): its number in the chain of 30 quests
+## ("idCurrentTreasure"), the time when the last one ended
+## ("timestampLastTreasure") and its state ("currentQuestVars").
+func town_quest_id() -> int:
+	return int(_map.get("idCurrentTreasure", 0))
+
+
+func town_quest_time() -> int:
+	return int(_map.get("timestampLastTreasure", 0))
+
+
+func town_quest_vars() -> Dictionary:
+	var vars: Variant = _map.get("currentQuestVars")
+	return vars if vars is Dictionary else {}
+
+
+## Keeps a value of the state of the quest, as the server command
+## "set_quest_var" does. The server ignores the command in the
+## TOWN_QUEST_WAIT after the end of a quest. Some old saves have a list
+## instead of the dictionary; the port replaces it.
+func set_town_quest_var(key: String, value: Variant, now: int) -> void:
+	if absi(now - town_quest_time()) <= TOWN_QUEST_WAIT:
+		return
+	if not _map.get("currentQuestVars") is Dictionary:
+		_map["currentQuestVars"] = {}
+	_map["currentQuestVars"][key] = value
+
+
+## Ends the quest as the server command "collect_treasure" does: the rewards,
+## the number of the next quest, the time of the end and an empty state. The
+## server refuses it in the TOWN_QUEST_WAIT after the end of the last quest.
+func finish_town_quest(gold: int, xp: int, next_id: int, food: int, stone: int, now: int) -> Placement:
+	if absi(now - town_quest_time()) < TOWN_QUEST_WAIT:
+		return Placement.NOT_ALLOWED
+	_map["timestampLastTreasure"] = now
+	_map["idCurrentTreasure"] = next_id
+	_map["currentQuestVars"] = {}
+	_add_resource("g", gold)
+	_add_xp(xp)
+	_add_resource("f", food)
+	_add_resource("s", stone)
+	return Placement.OK
+
+
+## The player collects the open treasure of a quest: the client sends "sell"
+## with resources, so the server gives back the sell value of the item.
+func collect_quest_treasure(placed: PlacedItem) -> void:
+	var refund := sell_refund(_config.get_item(placed.item_id))
+	if refund > 0:
+		_add_resource(_config.get_item(placed.item_id).cost_type, refund)
+	_remove(placed)
+
+
+## A building that a quest gives goes to the item store, as the client does
+## with "store_add_items".
+func store_quest_reward(item_id: int) -> void:
+	_add_stored(item_id)

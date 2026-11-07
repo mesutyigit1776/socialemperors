@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1453,6 +1453,76 @@ func _check_second_town() -> bool:
 	village._document["maps"][1]["coins"] = 999
 	_check(village.buy_second_town(false, NOW) == Village.Placement.NOT_ENOUGH_RESOURCES and village.buy_second_town(true, NOW) == Village.Placement.OK and village.get_resource("c") == 0, "the troll town costs 22 cash")
 	_check(village._document["maps"].size() == 2 and village._document["maps"][1]["coins"] == 999, "the purchase keeps a troll map that the save has")
+	return true
+
+
+## The quests in the town (TownQuests): the race filter, the rewards, a camp
+## from its start to its end, the server rules of the wait, the fights at a
+## camp, a quest of activators and a quest of boss waves.
+func _check_town_quests() -> bool:
+	_check(TownQuests.playable_id(9, "h") == 10 and TownQuests.playable_id(11, "h") == 12 and TownQuests.playable_id(0, "h") == 0, "humans skip the quests 9 and 11")
+	_check([0, 4, 7, 11, 14, 20].map(func(id: int) -> int: return TownQuests.playable_id(id, "t")) == [1, 5, 10, 12, 14, 1], "the troll town skips the quests of humans")
+	_check(TownQuests.reward(5) == Vector2i(250, 50) and TownQuests.reward(21) == Vector2i(650, 90) and TownQuests.reward(26) == Vector2i(750, 100), "the gold and experience of the end go by level")
+	var path := _write_fixture("town_quests", 10, _config.levels[9].exp_required, 1000, {"idCurrentTreasure": 0, "timestampLastTreasure": 0, "currentQuestVars": {}})
+	var village := Village.load_from_file(path, _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 46
+	var quests := TownQuests.new(village, _config, rng)
+	var xp := village.get_xp()
+	_check(not quests.is_active() and quests.can_start(NOW) and quests.start(NOW) and quests.quest_id() == 0, "the first quest starts when the map opens")
+	_check(village.get_xp() == xp and village.quest_roles.size() == 45, "the camp has its walls, towers and treasure, and gives no experience")
+	var vars := village.town_quest_vars()
+	_check(vars.get("spawned") == true and vars.get("quest") == 0 and vars.get("sites", []).size() == 1, "the save keeps the quest and its site")
+	var treasure: Village.PlacedItem = village.quest_roles.keys().filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == 83).front()
+	var wall: Village.PlacedItem = village.quest_roles.keys().filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == 305).front()
+	_check(not quests.is_open(treasure) and quests.collect(treasure, NOW) == "", "the guards keep the princess closed")
+	_check(not village.can_move(wall) and not village.can_sell(wall), "the player cannot move or sell the camp")
+	_check(village.save_to_file(path) == OK, "the save with the camp is written")
+	village = Village.load_from_file(path, _config)
+	quests = TownQuests.new(village, _config, rng)
+	_check(quests.is_active() and village.quest_roles.size() == 45, "the quest and its items come back with the save")
+	wall = village.quest_roles.keys().filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == 305).front()
+	treasure = village.quest_roles.keys().filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == 83).front()
+	var battle := VillageBattle.new(village, [], _config, null, rng, func(_placed: Village.PlacedItem) -> bool: return false)
+	_check(battle.fighter_of(wall).team == BattleFighter.Team.ENEMY and battle.fighter_of(treasure).team == BattleFighter.Team.NEUTRAL, "the walls fight for the enemy; the prisoner is neutral")
+	battle.fighter_of(wall).dead = true
+	battle.apply()
+	_check(not wall in village.items, "a wall that the player destroys leaves the map")
+	for placed in village.items.duplicate():
+		if village.is_enemy_unit(placed):
+			village.kill_enemy(_config.get_item(placed.item_id), placed)
+	var gold := village.get_resource("g")
+	xp = village.get_xp()
+	_check(quests.is_open(treasure) and quests.collect(treasure, NOW + 10) == "done", "the princess opens when the enemies near her are dead, and the player frees her")
+	_check(village.get_resource("g") == gold + 350 and village.get_xp() == xp + 60 and village.town_quest_id() == 1 and village.town_quest_time() == NOW + 10 and village.town_quest_vars().is_empty(), "the end sends collect_treasure: 350 gold, 60 XP and the next quest")
+	_check(village.items.any(func(placed: Village.PlacedItem) -> bool: return placed.item_id == 533 and village.is_own_unit(placed)) and village.quest_roles.is_empty(), "the Warrior Princess joins the player and the camp goes away")
+	_check(village.finish_town_quest(1, 1, 2, 0, 0, NOW + 20) == Village.Placement.NOT_ALLOWED and village.town_quest_id() == 1, "the server refuses another end in the 4 hours")
+	village.set_town_quest_var("spawned", true, NOW + 20)
+	_check(village.town_quest_vars().is_empty() and not quests.can_start(NOW + 20) and quests.seconds_to_next(NOW + 10 + 3600) == 3 * 3600, "the next quest waits 4 hours, and the server ignores quest values in that time")
+	_check(quests.can_start(NOW + 10 + Village.TOWN_QUEST_WAIT + 1), "after the wait the next quest can start")
+	# A quest of activators without a treasure.
+	path = _write_fixture("town_quests_activators", 30, _config.levels[29].exp_required, 1000, {"idCurrentTreasure": 26, "timestampLastTreasure": 0, "currentQuestVars": {}})
+	village = Village.load_from_file(path, _config)
+	quests = TownQuests.new(village, _config, rng)
+	_check(quests.start(NOW) and quests.open_items().is_empty() and quests.progress_text().contains("0 of 4"), "the four activators of the Atlantis quest are guarded")
+	for placed in village.items.duplicate():
+		if village.is_enemy_unit(placed):
+			village.kill_enemy(_config.get_item(placed.item_id), placed)
+	var open := quests.open_items()
+	_check(open.size() == 4 and quests.collect(open[0], NOW + 1) == "1 of 4 collected." and village.town_quest_vars()["activators"].size() == 1, "an activator opens without guards, and the save keeps it")
+	for placed in quests.open_items():
+		quests.collect(placed, NOW + 1)
+	_check(not quests.is_active() and village.stored_items().get(274, 0) == 1 and village.town_quest_id() == 27, "the last activator ends the quest; its reward goes to the item store")
+	# A quest of boss waves.
+	path = _write_fixture("town_quests_waves", 30, _config.levels[29].exp_required, 1000, {"idCurrentTreasure": 24, "timestampLastTreasure": 0, "currentQuestVars": {}})
+	village = Village.load_from_file(path, _config)
+	quests = TownQuests.new(village, _config, rng)
+	var count := func(id: int) -> int: return village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == id).size()
+	_check(quests.start(NOW) and count.call(679) == 4 and count.call(678) == 0 and count.call(613) == 2, "the first wave and the helpers come at the start")
+	for placed in village.items.duplicate():
+		if placed.item_id == 679:
+			village.kill_enemy(_config.get_item(placed.item_id), placed)
+	_check(quests.update(NOW + 1) and count.call(680) == 4 and village.town_quest_vars()["wave"] == 2, "the next wave comes when the last one is dead")
 	return true
 
 

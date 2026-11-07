@@ -85,6 +85,7 @@ var _store_button := Button.new()
 var _rename_dialog := AcceptDialog.new()
 var _rename_edit := LineEdit.new()
 var _goal_box := VBoxContainer.new()
+var _town_quest := Label.new()  # The quest in the town, or the time until the next one.
 var _lists := HFlowContainer.new()  # The buttons of the windows and lists.
 var _sell_dialog := ConfirmationDialog.new()
 var _action_dialog := ConfirmationDialog.new()  # The question of an action, see show_actions().
@@ -224,7 +225,12 @@ func _init() -> void:
 	var goals := PanelContainer.new()
 	goals.position = Vector2(PANEL_MARGIN, PANEL_MARGIN)
 	goals.custom_minimum_size.x = GOAL_BOX_WIDTH
-	goals.add_child(_goal_box)
+	var left := VBoxContainer.new()
+	left.add_child(_goal_box)
+	_town_quest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_town_quest.custom_minimum_size.x = GOAL_BOX_WIDTH
+	left.add_child(_town_quest)
+	goals.add_child(left)
 	add_child(goals)
 	_category.item_selected.connect(_show_category)
 
@@ -465,6 +471,12 @@ func show_goals(goals: Array, map_name: String) -> void:
 		var id: int = entry[0]
 		button.pressed.connect(func() -> void: goal_requested.emit(id))
 		_goal_box.add_child(button)
+
+
+## The quest in the town (TownQuests), or the time until the next one.
+func show_town_quest(text: String) -> void:
+	_town_quest.text = text
+	_town_quest.visible = not text.is_empty()
 
 
 func show_message(text: String) -> void:

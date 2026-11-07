@@ -57,6 +57,7 @@ var _tournament_screen: TournamentScreen
 var _tournament_scores := {}  # Bot index -> [score, won] of the last match in this session.
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
+var _town_quests: TownQuests  # The quest in the town, see TownQuestBook.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
 var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## The client loads the map again after a use of the Time Machine or the
@@ -194,6 +195,7 @@ func _ready() -> void:
 		if _enemies.on_map_loaded(_now()):
 			_view.sync_items()
 			_save()
+		_town_quests = TownQuests.new(_village, _config, _rng)
 		var kinds := {"siege": CollectiveAI.Kind.SIEGE, "stampede": CollectiveAI.Kind.BIG_MOUNTS, "army": CollectiveAI.Kind.ARMY, "bandits": CollectiveAI.Kind.BANDITS}
 		if kinds.has(_options.get("village-attack", "")):
 			_enemies.add_due_attack(kinds[_options["village-attack"]])
@@ -219,6 +221,7 @@ func _ready() -> void:
 			_hud.show_message(_reload_message)
 			_reload_message = ""
 		_offer_received_assists()
+		_check_town_quest()
 
 	if _options.has("quest") and _village != null and _view != null:
 		_on_island_chosen(_options["quest"], null)
@@ -534,7 +537,11 @@ func _on_item_selected(item: GameConfig.ItemDef) -> void:
 ## or to a resource that it can use. Otherwise a click on a ready building collects from it, as in the
 ## original game, and a click on an item selects it.
 func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
-	if (placed != null and _village.is_enemy_unit(placed)) or _enemies.has_attacker_at(tile):
+	if placed != null and _village.quest_roles.get(placed) == Village.QuestRole.OBJECTIVE:
+		_collect_town_quest(placed)
+		return
+	if (placed != null and (_village.is_enemy_unit(placed) or _village.quest_roles.get(placed) == Village.QuestRole.ENEMY)) \
+			or _enemies.has_attacker_at(tile):
 		if not _tutorial.allows_orders():
 			return
 		var attacker := _selected if _selected != null and _village.is_own_unit(_selected) else null
@@ -627,6 +634,7 @@ func _on_clock() -> void:
 		_view.add_placed(change[1])
 	if changed:
 		_save()
+	_check_town_quest()
 	_update_production()
 	_update_store()
 
@@ -756,7 +764,7 @@ func _update_store() -> void:
 ## Updates the marks of the ready buildings and the production of the selected building.
 func _update_production() -> void:
 	var now := _now()
-	_view.update_production(now)
+	_view.update_production(now, _town_quests.open_items() if _town_quests != null else [] as Array[Village.PlacedItem])
 	_view.update_damage()
 	if _selected == null or not _village.is_producer(_selected):
 		_hud.show_production(null, 0, "", 0, false, "")
@@ -775,6 +783,68 @@ func _update_production() -> void:
 		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now), _village.speed_up_cost(_selected, now))
 	var panel := _specials.describe(_panel, _selected, now)
 	_hud.show_actions(panel[0], panel[1])
+
+
+## Starts the quest in the town when it is due, spawns its boss waves and
+## shows what the player does next. The tutorial comes first, and no quest
+## starts while a fight or another screen is open.
+func _check_town_quest() -> void:
+	if _town_quests == null or _tutorial.is_active() or _village_fight != null or not _view.visible:
+		return
+	var now := _now()
+	var was_active := _town_quests.is_active()
+	var old_level := _village.get_level()
+	if _town_quests.start(now):
+		_view.sync_items()
+		_save()
+		var id := _town_quests.quest_id()
+		_open_town_quest_window(_config.text("POPUP_QUEST_INFO_TITLE").replace("#0#", str(id + 1)) + ": " + _config.text(_town_quests.text_name("title")), _config.text(_town_quests.text_name("text")))
+		_camera.position = IsoGrid.tile_to_map(Vector2(_town_quests.focus_tile()))
+	elif _town_quests.update(now):
+		_view.sync_items()
+		_save()
+		if was_active and not _town_quests.is_active():
+			_end_town_quest(old_level)
+	if _town_quests.is_active():
+		_hud.show_town_quest(_town_quests.progress_text())
+	else:
+		var left := _town_quests.seconds_to_next(now)
+		_hud.show_town_quest("%s: %02d:%02d:%02d" % [_config.text("TIMER_CAMPAMENTO_ENEMIGO"), left / 3600, left / 60 % 60, left % 60] if left > 0 else "")
+
+
+func _collect_town_quest(placed: Village.PlacedItem) -> void:
+	var old_level := _village.get_level()
+	var ended_text := _config.text(_town_quests.text_name("end_title"))
+	var ended_body := _config.text(_town_quests.text_name("end_text"))
+	var result := _town_quests.collect(placed, _now())
+	if result.is_empty():
+		_select(placed)
+		_hud.show_message(_town_quests.progress_text())
+		return
+	_select(null)
+	_view.sync_items()
+	_save()
+	if _town_quests.is_active():
+		_hud.show_message(result)
+		_hud.show_town_quest(_town_quests.progress_text())
+	else:
+		_open_town_quest_window(ended_text, ended_body)
+		_end_town_quest(old_level)
+		_check_town_quest()
+
+
+## The quest ended: the reward and the time of the next quest.
+func _end_town_quest(old_level: int) -> void:
+	var gold_xp := TownQuests.reward(old_level)
+	_hud.show_message("%s You get %d gold and %d XP. %s%s" % [_config.text("AUX_COMPLETADO"), gold_xp.x, gold_xp.y, _config.text("POPUP_TESORO_DESCRIPCION"), _level_up_text(old_level)])
+	_update_store()
+
+
+func _open_town_quest_window(title: String, text: String) -> void:
+	for child in _hud.get_children():
+		if child is TownQuestWindow:
+			child.queue_free()
+	_hud.add_child(TownQuestWindow.new(title, text))
 
 
 func _show_panel(panel: SpecialActions.View) -> void:
@@ -1026,6 +1096,7 @@ func _on_village_fight_closed() -> void:
 	var text := "The fight is over. Enemies killed: %d. Units lost: %d." % [battle.kills, battle.losses]
 	if _save():
 		_hud.show_message(text + _level_up_text(old_level))
+	_check_town_quest()
 
 
 ## Counts an event of the screens for the goals, and saves when a goal was

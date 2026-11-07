@@ -32,6 +32,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -117,6 +118,24 @@ def save_item_ids(village):
 	return ids
 
 
+# The treasures and activators of the quests in the town (TownQuestBook).
+TOWN_QUEST_SUBCATS = ("811", "812")
+TOWN_QUEST_BOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "town_quests", "town_quest_book.gd")
+
+
+def town_quest_item_ids():
+	"""Returns the ids of the items that the quests in the town put on the map
+	or give: the numbers of the "legend", ENEMY_BUILDINGS and "rewards" of
+	town_quest_book.gd."""
+	with open(TOWN_QUEST_BOOK, encoding='utf-8') as f:
+		book = f.read()
+	ids = set()
+	for block in re.findall(r'"legend": \{([^}]*)\}|ENEMY_BUILDINGS := \{(.*)\}|"rewards": \[([^\]]*)\]', book):
+		for text in block:
+			ids.update(int(number) for number in re.findall(r'\b\d+\b', text))
+	return ids
+
+
 def needed_items(config, villages, shop, export_all):
 	"""Returns {img_name: item} for the items whose graphics must be exported.
 
@@ -124,7 +143,7 @@ def needed_items(config, villages, shop, export_all):
 	rotation, the units that these buildings train, the trees and deposits, the
 	wild animals, the mounted units of the training stables, the items that the
 	special buildings and the collections give, the items in the villages
-	and on the quest maps, all units (bosses and abilities call units that are
+	and on the quest maps, the items of the quests in the town, all units (bosses and abilities call units that are
 	on no map) and the buildings that battles make (BATTLE_BUILDING_IDS).
 	"""
 	items = {int(item["id"]): item for item in config["items"]}
@@ -147,6 +166,8 @@ def needed_items(config, villages, shop, export_all):
 			ids.update(int(item_id) for item_id in group)
 		for village in villages:
 			ids.update(save_item_ids(village))
+		ids.update(item_id for item_id, item in items.items() if str(item["subcat_functional"]) in TOWN_QUEST_SUBCATS)
+		ids.update(town_quest_item_ids())
 		ids.update(int(items[item_id]["trains"]) for item_id in list(ids) if item_id in items and str(items[item_id]["trains"]) != "0")
 	result = {}
 	for item_id in ids:

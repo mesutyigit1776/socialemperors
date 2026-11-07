@@ -7,6 +7,8 @@ extends RefCounted
 ## the name of the map, the market, the workers of buildings, and saving. It
 ## also sends the events of the goals (happened, see VillageEvent).
 
+enum QuestRole { ENEMY, NEUTRAL, OBJECTIVE }
+
 enum Placement {
 	OK,
 	OUTSIDE_MAP,
@@ -112,6 +114,9 @@ var race: String  ## "h" (human) or "t" (troll).
 ## list: the server hires them as workers of new buildings. The owner sets
 ## them from NeighbourSource; the save does not keep them.
 var neighbour_ids: Array[String] = []
+## The items of the quest in the town and their side, set by TownQuests; the
+## save does not keep it. The player cannot move, sell or store these items.
+var quest_roles := {}  # PlacedItem -> QuestRole
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _map_index: int
@@ -562,7 +567,7 @@ func _read(path: String, config: GameConfig, map_index: int) -> bool:
 func can_move(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and not item.is_unit() and item.category_id != CATEGORY_TERRAIN \
-			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS
+			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS and not quest_roles.has(placed)
 
 
 ## The player can sell the items that they can move, except the town hall.
@@ -830,6 +835,7 @@ func _set_frame(placed: PlacedItem, frame: int) -> void:
 
 
 func _remove(placed: PlacedItem) -> void:
+	quest_roles.erase(placed)
 	_mark_occupied(placed, -1)
 	items.erase(placed)
 	_map["items"].erase(placed._entry)
