@@ -35,6 +35,7 @@ signal stored_items_requested
 signal quests_requested
 signal survival_requested
 signal tournament_requested
+signal pvp_requested
 signal packs_requested
 ## The player wants to put the selected item into the item store.
 signal store_requested
@@ -64,7 +65,7 @@ const PLACEMENT_MESSAGES := {
 	Village.Placement.NOT_ALLOWED: "You cannot do this with this item.",
 	Village.Placement.POPULATION_FULL: "The population is full. Build houses for more population.",
 	Village.Placement.UNIT_LIMIT_REACHED: "You have the maximum number of this unit.",
-	Village.Placement.NEIGHBOURS_NEEDED: "This needs more neighbours. The port does not have neighbours yet.",
+	Village.Placement.NEIGHBOURS_NEEDED: "This needs more neighbours.",
 	Village.Placement.NO_TRADES_LEFT: "The market has no trades left.",
 }
 
@@ -127,7 +128,7 @@ func _init() -> void:
 	column.add_child(title)
 	column.add_child(_category)
 	var lists := _lists
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["PvP", pvp_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
 		var button := Button.new()
 		button.text = pair[0]
 		var requested: Signal = pair[1]

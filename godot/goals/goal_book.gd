@@ -13,19 +13,16 @@ extends RefCounted
 ## The counts of the building goals start again when the map loads, and then
 ## each building on the map counts as built, as in the client. Some goals take
 ## their value from the save instead of counting: the population, the land
-## areas, the unit packs and the attacks on other players.
+## areas, the unit packs and the attacks on other players. The attack goals
+## start each session from the attacks in the save, and count each new attack.
 
 signal goal_completed(goal: GameConfig.GoalDef)
 
-const OTHER_PLAYERS_TEXT := "This goal needs other players. The port does not have them yet."
 const MAX_ACTIVE := 15
 const SHOWN := 2
 ## The goal types that count minutes and show hours.
 const TIME_TYPES: Array[String] = ["select_time_subcatfunc", "select_time_id"]
 const BUILD_TYPES: Array[String] = ["built_subcatfunc", "built_id"]
-## The types that are not in the port: they need other players or neighbours.
-## They stay open, as in a client without these features.
-const OTHER_PLAYER_TYPES: Array[String] = ["attack_player", "assaults_won", "help_friend_id", "recruit_market_friend", "assist_neighbour_buildings"]
 ## A scorpion that destroys a tower counts in all battles, as in the client.
 const SCORPION := 520
 const SUBCAT_TOWER := 211
@@ -94,6 +91,12 @@ func on_map_loaded() -> bool:
 		if item != null and not item.is_unit():
 			_count(VillageEvent.Kind.BUILT, {"item": item.id})
 	_count(VillageEvent.Kind.PACK_BOUGHT, {"amount": 0})
+	for goal in _config.goals:
+		if goal.type == "attack_player":
+			_steps[goal.id] = _village.attacks_won() + _village.attacks_lost()
+		elif goal.type == "assaults_won":
+			_steps[goal.id] = _village.attacks_won()
+	_village.report_all_workers()
 	var rewarded := _village.goal_ids("rewarded").size()
 	# The client counts land only when the player buys it. The server
 	# completes these goals when it loads a save whose land is enough.
@@ -128,7 +131,7 @@ func hint(goal: GameConfig.GoalDef) -> Dictionary:
 			return {"build": items.front()} if not items.is_empty() else {}
 		"built_id":
 			return {"build": _config.get_item(_ids(p, "ids")[0])} if not _ids(p, "ids").is_empty() else {}
-		"trained_id", "select_time_id", "collected_id", "complete_social_id":
+		"trained_id", "select_time_id", "collected_id", "complete_social_id", "recruit_market_friend":
 			var ids: Array[int] = _ids(p, "ids")
 			if goal.type == "trained_id" or not p.has("ids"):
 				ids = [_int(p, "building_id" if goal.type == "trained_id" else "id")]
@@ -168,7 +171,13 @@ func hint(goal: GameConfig.GoalDef) -> Dictionary:
 		"complete_quest", "popup_opened_quests":
 			return {"open": "quests"}
 		"popup_opened_collections":
-			return {"open": "collections"} if p.get("name") == "popups.popupCollections" else {"text": OTHER_PLAYERS_TEXT}
+			return {"open": "collections"} if p.get("name") == "popups.popupCollections" else {"open": "pvp"}
+		"attack_player", "assaults_won":
+			return {"open": "pvp"}
+		"help_friend_id":
+			return {"text": "Click %s at the right end of the neighbour bar, then Visit." % text("#0#")}
+		"assist_neighbour_buildings":
+			return {"text": "Visit a neighbour from the neighbour bar and click their farms, mills, mines or ranches."}
 		"buy_unit_pack":
 			return {"open": "packs"}
 		"rename_empire":
@@ -181,8 +190,6 @@ func hint(goal: GameConfig.GoalDef) -> Dictionary:
 			return {"text": "Click a unit two times quickly: the units of its kind near it are selected."}
 		"use_selection_tool":
 			return {"text": "Press the space bar or the Select units button, then drag a box over your units."}
-	if goal.type in OTHER_PLAYER_TYPES:
-		return {"text": OTHER_PLAYERS_TEXT}
 	return {}
 
 
@@ -273,6 +280,13 @@ func _new_step(goal: GameConfig.GoalDef, kind: VillageEvent.Kind, data: Dictiona
 			return step + 1 if kind == VillageEvent.Kind.WINDOW_OPENED and data.get("window") == p.get("name") else null
 		"buy_unit_pack":
 			return _village.unit_packs_bought(_ids(p, "ids")) if kind == VillageEvent.Kind.PACK_BOUGHT else null
+		"recruit_market_friend":
+			return int(data["amount"]) if kind == VillageEvent.Kind.WORKERS_HIRED and _has_id(p, "ids", data.get("item")) else null
+		"help_friend_id":
+			var pids: Variant = p.get("ids")
+			return step + 1 if kind == VillageEvent.Kind.FRIEND_VISITED and pids is Array and pids.has(data.get("pid")) else null
+		"assaults_won":
+			return int(data["amount"]) if kind == VillageEvent.Kind.ASSAULT_WON else null
 	var simple := {
 		"zoom": VillageEvent.Kind.ZOOMED, "dragons_nest_feed": VillageEvent.Kind.NEST_FED,
 		"double_click": VillageEvent.Kind.DOUBLE_CLICKED, "rename_empire": VillageEvent.Kind.RENAMED,
@@ -280,6 +294,7 @@ func _new_step(goal: GameConfig.GoalDef, kind: VillageEvent.Kind, data: Dictiona
 		"repair_building": VillageEvent.Kind.FIRE_PUT_OUT, "kill_tower_with_scorpion": VillageEvent.Kind.TOWER_KILLED_BY_SCORPION,
 		"sacrifice_unit": VillageEvent.Kind.SACRIFICED, "convert_unit": VillageEvent.Kind.CONVERTED,
 		"heal_units_with_healing_spring": VillageEvent.Kind.HEALED,
+		"attack_player": VillageEvent.Kind.ASSAULT_STARTED, "assist_neighbour_buildings": VillageEvent.Kind.FRIEND_ASSISTED,
 	}
 	return step + 1 if simple.get(goal.type, -1) == kind else null
 

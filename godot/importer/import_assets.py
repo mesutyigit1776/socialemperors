@@ -9,7 +9,10 @@ socialemperors server folder that the user supplies and writes:
   <out>/sprites/<img_name>/meta.json  record of the import, see below
   <out>/fx/<name>/...                shots, effects and spells of battles, in the same form as the units
   <out>/villages/<name>.json         village saves to display
+  <out>/neighbours/<kind>/<file>     the neighbours, see import_neighbours()
   <out>/quests/<id>.save.json        maps of the quest islands
+  <out>/fx/fire_flames.json          the flames of the fire of damaged buildings (FireMC of the client):
+                                     for each frame, the matrix [a, b, c, d, x, y] (pixels) of each flame
   <out>/spells.json                  how the spell graphics play: img_name -> {"labels": {label: frame},
                                      "loop_from": frame where the graphic goes on after its last frame, or null}
   <out>/ui/...                       windows of the client, see ui_import.py
@@ -32,6 +35,7 @@ import os
 import shutil
 import sys
 
+from mock_villages import make_mock_villages
 from swf_bounds import SwfError, SwfFile
 from ui_import import CAST_SWF, CLIENT_SWF, import_ui
 
@@ -47,6 +51,13 @@ SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 8
 BATTLE_BUILDING_IDS = {434}
 # The code that decides the content of the output. A graphic from other code is imported again.
 IMPORTER_FILES = ("import_assets.py", "swf_bounds.py", "ui_import.py")
+# The kinds of neighbours, as the server loads them (sessions.py), and the mock
+# neighbours of the port: neighbour folder -> folders of the server.
+NEIGHBOUR_FOLDERS = {
+	"static": [os.path.join("villages")],  # Arthur and Guinevere, and other fixed villages
+	"friend": [os.path.join("villages", "friend_static"), "friend"],
+	"enemy": ["enemy"],
+}
 # The copy of the SWF file in the folder of a graphic, from which the port draws it.
 GRAPHIC_FILE = "graphic.swf"
 
@@ -185,6 +196,19 @@ def write_json_last(path, data):
 	os.replace(path + ".tmp", path)
 
 
+# The fire of damaged buildings, in the client file. Its frames 1 to 4 place
+# 1 to 4 copies of one animated flame; the port plays a flame at each place.
+FIRE_SYMBOL = "FireMC"
+
+
+def write_fire_flames(swf_path, out_path):
+	"Writes the places of the flames in each frame of FireMC, see FIRE_SYMBOL."
+	swf = SwfFile(swf_path)
+	pos, end = swf.sprites[swf.symbols[FIRE_SYMBOL]]
+	frames = [[[a, b, c, d, tx / 20, ty / 20] for _, (a, b, c, d, tx, ty), _ in places.values()] for places in swf._frame_places(pos, end)]
+	write_json_last(out_path, {"frames": frames})
+
+
 # The library of magic particles that the client loads (ExternalClass.LIB_MAGICPARTICLES).
 MAGIC_PARTICLES_SWF = os.path.join("assets", "swf", "20131010_magicParticles.swf")
 MAGIC_PARTICLES_SYMBOL = "MagicParticleMC"
@@ -215,6 +239,37 @@ def _loop_frame(swf, labels):
 	return None if b"stop" in swf.data else 1
 
 
+def import_neighbours(source, out_dir, config):
+	"""Copies the neighbour villages of the server to <out>/neighbours/<kind>/,
+	and writes the mock neighbours (mock_villages.py) to <out>/neighbours/mock/.
+	As the server does with villages/friend_static, a file that is already
+	there stays: the port writes the shields and the attack logs of the
+	neighbours that the player attacks into these files. Returns the saves,
+	whose items need graphics."""
+	saves = []
+	for kind, folders in NEIGHBOUR_FOLDERS.items():
+		target = os.path.join(out_dir, "neighbours", kind)
+		os.makedirs(target, exist_ok=True)
+		for folder in folders:
+			for path in sorted(glob.glob(os.path.join(source, folder, "*.json"))):
+				name = os.path.basename(path)
+				if not name.startswith("initial"):
+					dest = os.path.join(target, name)
+					if not os.path.exists(dest):
+						shutil.copyfile(path, dest)
+	with open(os.path.join(source, "villages", "initial.json"), encoding='utf-8') as f:
+		template = json.load(f)
+	target = os.path.join(out_dir, "neighbours", "mock")
+	os.makedirs(target, exist_ok=True)
+	for name, save in make_mock_villages(config, template).items():
+		dest = os.path.join(target, name)
+		if not os.path.exists(dest):
+			write_json_last(dest, save)
+	for path in sorted(glob.glob(os.path.join(out_dir, "neighbours", "*", "*.json"))):
+		saves.append(load_village(path))
+	return saves
+
+
 def main():
 	repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -243,6 +298,7 @@ def main():
 		json.dump(shop, f, indent='\t')
 	for path in village_paths:
 		shutil.copyfile(path, os.path.join(out_dir, "villages", os.path.basename(path)))
+	villages += import_neighbours(source, out_dir, config)
 	os.makedirs(os.path.join(out_dir, "quests"), exist_ok=True)
 	for path in glob.glob(os.path.join(source, "villages", "quests", "*.save.json")):
 		shutil.copyfile(path, os.path.join(out_dir, "quests", os.path.basename(path)))
@@ -271,6 +327,7 @@ def main():
 	# The magic particles of the abilities: one frame for each type of particle
 	# (MagicParticle of the client), with the clip that plays.
 	jobs.append((f"fx/{MAGIC_PARTICLES_SYMBOL}", os.path.join(source, MAGIC_PARTICLES_SWF), MAGIC_PARTICLES_SYMBOL, os.path.join(out_dir, "fx", MAGIC_PARTICLES_SYMBOL), True))
+	jobs.append((f"fx/{FIRE_SYMBOL}", os.path.join(source, CLIENT_SWF), FIRE_SYMBOL, os.path.join(out_dir, "fx", FIRE_SYMBOL), True))
 	# The graphics of the spells, which the battles show like the effects.
 	jobs += [(f"fx/{name}", os.path.join(sprite_dir, f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in sorted(spell_labels)]
 
@@ -310,6 +367,10 @@ def main():
 		print("stopped: run the import again with the same --out folder to continue", file=sys.stderr)
 		sys.exit(130)
 	pool.shutdown()
+	try:
+		write_fire_flames(os.path.join(source, CLIENT_SWF), os.path.join(out_dir, "fx", "fire_flames.json"))
+	except (SwfError, OSError, KeyError) as e:
+		failed.append(("fx/fire_flames.json", str(e)))
 
 	# All pictures of buildingthumbs: the windows show the units, and the
 	# portrait buttons of the special units show pictures of their attacks.

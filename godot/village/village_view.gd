@@ -33,7 +33,7 @@ const PLACEMENT_VALID_COLOR := Color(0.5, 1.0, 0.5, 0.8)
 const PLACEMENT_INVALID_COLOR := Color(1.0, 0.4, 0.4, 0.8)
 const SELECTION_COLOR := Color(1.0, 1.0, 0.4, 0.35)
 const DAMAGED_COLOR := Color(1.0, 0.65, 0.5)
-const TUTORIAL_MARK_COLOR := Color(0.3, 0.6, 1.0, 0.5)
+const MARK_COLOR := Color(0.3, 0.6, 1.0, 0.5)
 const READY_MARK_COLORS := {
 	"g": Color(1.0, 0.85, 0.2), "w": Color(0.6, 0.4, 0.2), "s": Color(0.7, 0.7, 0.7),
 	"f": Color(1.0, 0.55, 0.15), "c": Color(0.3, 0.75, 0.3), "m": Color(0.4, 0.5, 1.0),
@@ -56,6 +56,11 @@ var _nodes: Dictionary = {}  # Village.PlacedItem -> Sprite2D
 var _visitors: Array[Node2D] = []  # Units that are on the map but not in the save, see show_visitors().
 var _ready_marks: Dictionary = {}  # Village.PlacedItem -> Polygon2D, child of the item node
 var _health_bars: Dictionary = {}  # Village.PlacedItem -> ColorRect, child of the item node, see update_damage()
+var _fires: Dictionary = {}  # Village.PlacedItem -> [FireMC frame, FireSprite], child of the item node
+## The fire graphic of the client and the places of its flames, see FireSprite;
+## null without the import, and then a damaged building looks burnt.
+var fire_graphic: SpriteLibrary.ItemSprite
+var fire_flames: Array = []
 
 # Placement mode. _placing_item is null when the mode is off. _moving is the
 # item that moves, or null when the player builds a new item.
@@ -73,7 +78,7 @@ var selection_tool := false
 var _box_start := Vector2.INF  # Map position where the box started.
 var _box := Polygon2D.new()
 var _group_outlines := Node2D.new()
-var _tutorial_marks := Node2D.new()
+var _marks := Node2D.new()
 
 
 func _ready() -> void:
@@ -84,7 +89,7 @@ func _ready() -> void:
 	_selection.visible = false
 	add_child(_selection)
 	add_child(_group_outlines)
-	add_child(_tutorial_marks)
+	add_child(_marks)
 	_box.color = SELECTION_COLOR
 	add_child(_box)
 	_placement_layer.add_child(_outline)
@@ -192,8 +197,8 @@ func update_production(now: float) -> void:
 
 
 ## Shows the life of the damaged items, see Village.health(), in the colours
-## of the battle screen. A damaged building also looks burnt; the port does
-## not have the fire graphics of the client yet.
+## of the battle screen. A damaged building also burns with the fire of the
+## client, see FireSprite.
 func update_damage() -> void:
 	for placed: Village.PlacedItem in _nodes:
 		var damaged := _village.is_damaged(placed)
@@ -203,6 +208,9 @@ func update_damage() -> void:
 				_health_bars[placed].queue_free()
 				_health_bars.erase(placed)
 				node.self_modulate = Color.WHITE
+			if _fires.has(placed):
+				_fires[placed][1].queue_free()
+				_fires.erase(placed)
 			continue
 		if not _health_bars.has(placed):
 			var new_bar := ColorRect.new()
@@ -220,11 +228,26 @@ func update_damage() -> void:
 		var share := clampf(float(_village.health(placed)) / maxf(_config.get_item(placed.item_id).life, 1), 0, 1)
 		(bar.get_child(0) as ColorRect).size = Vector2(BattleView.HEALTH_BAR_SIZE.x * share, BattleView.HEALTH_BAR_SIZE.y)
 		if not node is UnitSprite:
-			node.self_modulate = DAMAGED_COLOR
+			_show_fire(placed, node)
+
+
+func _show_fire(placed: Village.PlacedItem, node: Node2D) -> void:
+	var state := FireSprite.state(_village.health(placed), _config.get_item(placed.item_id).life)
+	if fire_graphic == null or state > fire_flames.size():
+		(node as Sprite2D).self_modulate = DAMAGED_COLOR
+		return
+	if _fires.has(placed) and _fires[placed][0] == state:
+		return
+	if _fires.has(placed):
+		_fires[placed][1].queue_free()
+	var fire := FireSprite.new(fire_graphic, fire_flames[state - 1])
+	node.add_child(fire)
+	_fires[placed] = [state, fire]
 
 
 ## Removes the item from the map after Village.sell().
 func remove_placed(placed: Village.PlacedItem) -> void:
+	_fires.erase(placed)
 	if _nodes.has(placed):
 		_nodes[placed].queue_free()
 		_nodes.erase(placed)
@@ -265,10 +288,10 @@ func _box_input(event: InputEvent) -> void:
 		_box.polygon = PackedVector2Array([box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)])
 
 
-## Marks what the tutorial asks for: the tiles of the items, and the tiles
-## where the player places a building. Empty lists remove the marks.
-func show_tutorial_marks(items: Array[Village.PlacedItem], tiles: Array[Vector2i]) -> void:
-	for child in _tutorial_marks.get_children():
+## Marks the tiles of the items and the tiles: what the tutorial asks for, or
+## the buildings that the player helped in a visit. Empty lists remove the marks.
+func show_marks(items: Array[Village.PlacedItem], tiles: Array[Vector2i]) -> void:
+	for child in _marks.get_children():
 		child.queue_free()
 	var areas: Array[Rect2i] = []
 	for placed in items:
@@ -277,9 +300,9 @@ func show_tutorial_marks(items: Array[Village.PlacedItem], tiles: Array[Vector2i
 		areas.append(Rect2i(tile, Vector2i.ONE))
 	for area in areas:
 		var outline := Polygon2D.new()
-		outline.color = TUTORIAL_MARK_COLOR
+		outline.color = MARK_COLOR
 		outline.polygon = IsoGrid.footprint_outline(area)
-		_tutorial_marks.add_child(outline)
+		_marks.add_child(outline)
 
 
 ## Outlines the tiles of the units of a selected group; an empty list removes the outlines.

@@ -1,5 +1,5 @@
 class_name Village
-extends VillageUnits
+extends VillageSocial
 ## One map of a village save, in the format that the server stores in saves/<USERID>.save.json.
 ##
 ## The village keeps the whole save document. It changes only the values that
@@ -7,9 +7,10 @@ extends VillageUnits
 ## load the save. The server command handlers in op.py are the reference for
 ## these changes.
 ##
-## GDScript has no partial classes, so the village is in three layers, and each
+## GDScript has no partial classes, so the village is in four layers, and each
 ## layer uses only the layers below it: VillageMap (the save, the map and the
-## placement rules), VillageUnits (production, units and training) and Village
+## placement rules), VillageUnits (production, units and training),
+## VillageSocial (neighbours and attacks on other players) and Village
 ## (special buildings and collections). Other code uses Village.
 ##
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
@@ -730,7 +731,23 @@ func end_quest(result: Dictionary) -> void:
 	for key: Variant in rewards if rewards is Dictionary else {}:
 		for i in int(rewards[key]):
 			_add_stored(int(key))
-	for entry: Array in result["units"]:
+	_lose_dead_units(result["units"])
+
+
+## Applies the end of an attack of the player on another player: the units
+## that died and did not come back leave the map for the graveyard, as the
+## server command "end_attack" does, and the rest as _count_pvp_result()
+## describes. result["units"] has the form of the units of end_quest().
+func end_pvp_attack(result: Dictionary) -> void:
+	_lose_dead_units(result["units"])
+	_count_pvp_result(result)
+
+
+## units: [unit id, number that went, number that died, number that came
+## back] for each kind of unit. The units that did not come back leave the
+## map; the graveyard takes them.
+func _lose_dead_units(units: Array) -> void:
+	for entry: Array in units:
 		var lost := int(entry[2]) - int(entry[3])
 		for placed in items.filter(func(placed: PlacedItem) -> bool: return placed.item_id == int(entry[0])).slice(0, maxi(lost, 0)):
 			_remove(placed)
@@ -1067,6 +1084,117 @@ func take_supreme_bahamut(temple: PlacedItem, now: int) -> Placement:
 	if stored_items().has(heart.id):
 		_sell_stored(heart)
 	_set_private(["templeStep", "timeStampTemple"], [[], 0])
+	return Placement.OK
+
+
+## The allies buildings keep their list of workers ("si"), which neighbours
+## join when they help the village (autohire_ignore_buildings of the server).
+## The player can also hire workers for cash, see hire_worker(); the
+## Recruitment Prize costs nothing for each recruit. The Round Table takes only
+## neighbours, so it needs other players.
+## - The Allies Building (and the troll one): with all workers, opening it
+##   brings SUMMIT_KNIGHTS Alliance Knights, as the client's
+##   spawnAlliedTroops(); the list starts again.
+## - The Allies Market: the player chooses a resource; after the activation
+##   time of the building it gives GameConfig.allies_market_collect of it and
+##   more for each worker ("finish_si"), and the list starts again.
+## - The Recruitment Prize: each prize of GameConfig.recruitment_prizes needs
+##   a number of recruits; the units of the prize go to the item store
+##   ("finish_si_recruitment").
+const SUMMITS: Array[int] = [234, 361]
+const ALLIES_MARKETS: Array[int] = [266, 352]
+const RECRUITMENT_PRIZE := 387
+const ALLIANCE_KNIGHT := 576
+const SUMMIT_KNIGHTS := 9
+const ALLIES_RESOURCES: Array[String] = ["g", "w", "f", "s"]
+const RECRUITS_KEPT := 4  ## The server keeps at most this number of recruits.
+
+
+## Opens a full Allies Building: the Alliance Knights come next to it. Needs
+## room for them in the population.
+func open_allies_building(placed: PlacedItem, now: int) -> Array[PlacedItem]:
+	var knights: Array[PlacedItem] = []
+	var counts := workers(placed)
+	if not placed.item_id in SUMMITS or counts[0] < counts[1] or population() + SUMMIT_KNIGHTS > max_population():
+		return knights
+	var knight := _config.get_item(ALLIANCE_KNIGHT)
+	var area := VillageMap.footprint(_config.get_item(placed.item_id), placed.tile)
+	for i in SUMMIT_KNIGHTS:
+		var tile := free_tile_around(area)
+		if tile == ANY_TILE:
+			break
+		# The client buys each knight without cost ("buy" with is_free).
+		_add_xp(knight.xp)
+		knights.append(_add_player_unit(knight, tile, 0, now))
+	placed._entry[7]["si"] = []
+	happened.emit(VillageEvent.Kind.SOCIAL_BUILDING_OPENED, {"item": placed.item_id})
+	return knights
+
+
+## The resource that the Allies Market of the map collects ("g", "w", "f" or
+## "s"), or "n" when the player did not choose one.
+func allies_market_resource() -> String:
+	var code: Variant = _map.get("resourceAlliesMarket", "n")
+	return code if code in ALLIES_RESOURCES else "n"
+
+
+## Chooses the resource, as the server command "set_resource_allies" does:
+## the time starts again, and the workers leave.
+func set_allies_market_resource(placed: PlacedItem, code: String, now: int) -> Placement:
+	if not placed.item_id in ALLIES_MARKETS or not code in ALLIES_RESOURCES:
+		return Placement.NOT_ALLOWED
+	_map["resourceAlliesMarket"] = code
+	placed._entry[4] = now
+	placed._entry[7]["si"] = []
+	return Placement.OK
+
+
+## Seconds until the Allies Market can be collected, or -1 without a resource.
+func allies_market_seconds(placed: PlacedItem, now: float) -> float:
+	if allies_market_resource() == "n":
+		return -1
+	return maxf(0, _config.get_item(placed.item_id).activation - (now - float(placed._entry[4])))
+
+
+## The amount that the Allies Market gives now.
+func allies_market_amount(placed: PlacedItem) -> int:
+	var code := allies_market_resource()
+	return int(_config.allies_market_collect.get(code, 0)) + int(_config.allies_market_per_worker.get(code, 0)) * workers(placed)[0]
+
+
+## Collects from the Allies Market ("finish_si"); the client then chooses no resource.
+func collect_allies_market(placed: PlacedItem, now: int) -> Placement:
+	if not placed.item_id in ALLIES_MARKETS or allies_market_seconds(placed, now) != 0:
+		return Placement.NOT_ALLOWED
+	_add_resource(allies_market_resource(), allies_market_amount(placed))
+	placed._entry[7]["si"] = []
+	_map["resourceAlliesMarket"] = "n"
+	happened.emit(VillageEvent.Kind.SOCIAL_BUILDING_OPENED, {"item": placed.item_id})
+	return Placement.OK
+
+
+## The prizes of the Recruitment Prize that the player did not take yet.
+func open_recruitment_prizes() -> Array[Dictionary]:
+	var taken: Variant = _document["privateState"].get("recruitmentPrices")
+	return _config.recruitment_prizes.filter(func(prize: Dictionary) -> bool: return not (taken is Array and (taken.has(prize["id"]) or taken.has(float(prize["id"])))))
+
+
+## Takes the prize, as the server command "finish_si_recruitment" does: it
+## needs its recruits, and the level of the prize unless all earlier prizes
+## were taken. The recruits that it needs leave; at most RECRUITS_KEPT stay.
+func take_recruitment_prize(placed: PlacedItem, prize: Dictionary) -> Placement:
+	if placed.item_id != RECRUITMENT_PRIZE or not open_recruitment_prizes().any(func(other: Dictionary) -> bool: return other["id"] == prize["id"]) \
+			or workers(placed)[0] < prize["recruits"]:
+		return Placement.NOT_ALLOWED
+	if get_level() < prize["level"] and open_recruitment_prizes().any(func(other: Dictionary) -> bool: return other["id"] < prize["id"]):
+		return Placement.LEVEL_TOO_LOW
+	for unit_id: int in prize["units"]:
+		_add_stored(unit_id)
+	var kept := maxi(0, mini(RECRUITS_KEPT, workers(placed)[0]) - prize["recruits"])
+	placed._entry[7]["si"] = placed._entry[7]["si"].slice(0, kept)
+	if not _document["privateState"].get("recruitmentPrices") is Array:
+		_document["privateState"]["recruitmentPrices"] = []
+	_document["privateState"]["recruitmentPrices"].append(prize["id"])
 	return Placement.OK
 
 

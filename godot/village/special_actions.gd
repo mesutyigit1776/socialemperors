@@ -15,7 +15,7 @@ class Outcome:
 	var text: String
 	var changed: bool
 	var reload: bool
-	var redraw: bool  ## The land changed: the caller draws the map again.
+	var redraw: bool  ## The land or the items changed: the caller draws the map again.
 	var place: GameConfig.ItemDef
 
 
@@ -159,7 +159,7 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			if result == Village.Placement.OK:
 				outcome.text = "The wait is over."
 		"land":
-			result = _village.buy_land(argument, parts[2] == "cash", 0)
+			result = _village.buy_land(argument, parts[2] == "cash", _village.neighbour_ids.size())
 			if result == Village.Placement.OK:
 				outcome.text = "The land is yours. Build on it."
 				outcome.redraw = true
@@ -180,6 +180,27 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.open_building(building)
 			if result == Village.Placement.OK:
 				outcome.text = "%s is open." % name
+		"allies_open":
+			var knights := _village.open_allies_building(building, now)
+			result = Village.Placement.OK if not knights.is_empty() else Village.Placement.POPULATION_FULL
+			if result == Village.Placement.OK:
+				outcome.text = "%d %s came to %s." % [knights.size(), _config.get_item(Village.ALLIANCE_KNIGHT).name, name]
+				outcome.redraw = true
+		"allies_resource":
+			result = _village.set_allies_market_resource(building, parts[1], now)
+			if result == Village.Placement.OK:
+				outcome.text = "%s collects %s now." % [name, VillageHud.RESOURCE_NAMES[parts[1]]]
+		"allies_collect":
+			var amount := _village.allies_market_amount(building)
+			var code := _village.allies_market_resource()
+			result = _village.collect_allies_market(building, now)
+			if result == Village.Placement.OK:
+				outcome.text = "%s gave %d %s." % [name, amount, VillageHud.RESOURCE_NAMES[code]]
+		"recruit_prize":
+			var prizes := _village.open_recruitment_prizes().filter(func(prize: Dictionary) -> bool: return prize["id"] == argument)
+			result = _village.take_recruitment_prize(building, prizes[0]) if not prizes.is_empty() else Village.Placement.NOT_ALLOWED
+			if result == Village.Placement.OK:
+				outcome.text = "The prize is in your item store: %s." % ", ".join(prizes[0]["units"].map(func(id: int) -> String: return _config.get_item(id).name))
 		"pack":
 			var pack := _pack(argument)
 			var units := _village.buy_unit_packs(pack, int(parts[2]), _rng)
@@ -296,6 +317,8 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 			return _describe_temple(building, now)
 	if _village.is_being_built(building):
 		return _describe_workers(building)
+	if building.item_id in Village.SUMMITS or building.item_id in Village.ALLIES_MARKETS or building.item_id in [Village.RECRUITMENT_PRIZE, Village.ROUND_TABLE]:
+		return _describe_allies(building, now)
 	if Village.MARKETS.has(building.item_id) and building == _village.market():
 		return _describe_market(now)
 	return ["", []]
@@ -308,8 +331,39 @@ func _describe_workers(building: Village.PlacedItem) -> Array:
 	var cost: int = _config.worker_item_ids[building.item_id][0]
 	if counts[0] >= counts[1]:
 		return ["%s has all %d workers." % [name, counts[1]], [["open", _config.text("POPUP_EDIFICIO_ABRIR").strip_edges(), true]]]
-	# The client asks neighbours for the other workers; the port has no neighbours yet.
+	# The server hires the neighbours when the player buys the building.
 	return ["%s needs workers before it works: %d of %d." % [name, counts[0], counts[1]], [["hire", "Hire a worker for %d cash" % cost, _village.get_resource("c") >= cost]]]
+
+
+## The allies buildings, see Village. Neighbours join them when they help the
+## village; the neighbours of the port do not, so the player hires the workers.
+func _describe_allies(building: Village.PlacedItem, now: int) -> Array:
+	var name := _config.get_item(building.item_id).name
+	var counts := _village.workers(building)
+	var cost: int = _config.worker_item_ids.get(building.item_id, [0, 0])[0]
+	var hire := ["hire", "Hire a worker for %d cash" % cost if cost > 0 else "Take a recruit", counts[0] < counts[1] and _village.get_resource("c") >= cost]
+	if building.item_id == Village.ROUND_TABLE:
+		return ["%s: %d of %d neighbours. Only neighbours who help your village join it; the neighbours of the port do not." % [name, counts[0], counts[1]], []]
+	if building.item_id in Village.SUMMITS:
+		if counts[0] >= counts[1]:
+			return ["%s has all %d allies." % [name, counts[1]], [["allies_open", "Call the %d %s" % [Village.SUMMIT_KNIGHTS, _config.get_item(Village.ALLIANCE_KNIGHT).name], true]]]
+		return ["%s: %d of %d allies." % [name, counts[0], counts[1]], [hire]]
+	if building.item_id == Village.RECRUITMENT_PRIZE:
+		var actions := [hire]
+		for prize in _village.open_recruitment_prizes():
+			var units: Array = prize["units"].map(func(id: int) -> String: return _config.get_item(id).name)
+			actions.append(["recruit_prize:%d" % prize["id"], "Take %s (%d recruits, level %d)" % [", ".join(units), prize["recruits"], prize["level"]], counts[0] >= prize["recruits"]])
+		return ["%s: %d recruits." % [name, counts[0]], actions]
+	var seconds := _village.allies_market_seconds(building, now)
+	if seconds < 0:
+		var actions := []
+		for code: String in Village.ALLIES_RESOURCES:
+			actions.append(["allies_resource:%s" % code, "Collect %s" % VillageHud.RESOURCE_NAMES[code], true])
+		return ["%s: choose the resource to collect." % name, actions]
+	var amount := "%d %s" % [_village.allies_market_amount(building), VillageHud.RESOURCE_NAMES[_village.allies_market_resource()]]
+	if seconds > 0:
+		return ["%s: %s in %s, %d of %d workers." % [name, amount, VillageHud.duration(seconds), counts[0], counts[1]], [hire]]
+	return ["%s: %s are ready." % [name, amount], [["allies_collect", "Collect %s" % amount, true]]]
 
 
 func _describe_market(now: int) -> Array:
@@ -329,7 +383,8 @@ func _describe_land() -> Array:
 		return ["", []]
 	var actions := [["land:%d:cash" % land_area, "Buy for %d cash" % price["cash"], _village.get_resource("c") >= int(price["cash"])]]
 	# The client sells land for gold only to players with this number of neighbours.
-	actions.append(["land:%d:gold" % land_area, "Buy for %d gold (needs %d neighbours)" % [price["coins"], price["neighbors"]], int(price["neighbors"]) == 0])
+	var enough := _village.neighbour_ids.size() >= int(price["neighbors"])
+	actions.append(["land:%d:gold" % land_area, "Buy for %d gold (needs %d neighbours)" % [price["coins"], price["neighbors"]], enough and _village.get_resource("g") >= int(price["coins"])])
 	return ["This land area is for sale.", actions]
 
 

@@ -22,7 +22,7 @@ enum Placement {
 	NOT_ALLOWED,  ## The player cannot move, turn or sell this item.
 	POPULATION_FULL,
 	UNIT_LIMIT_REACHED,
-	NEIGHBOURS_NEEDED,  ## The client asks for neighbours, which the port does not have yet.
+	NEIGHBOURS_NEEDED,  ## The client asks for more neighbours.
 	NO_TRADES_LEFT,
 }
 
@@ -94,6 +94,10 @@ var owned_land: PackedInt32Array = []  ## Land area numbers, see IsoGrid.land_ar
 var skin: int = 0  ## Map style; selects the land item 1000 + skin.
 var race: String  ## "h" (human) or "t" (troll).
 
+## The ids of the player's neighbours, in the order of the server's neighbour
+## list: the server hires them as workers of new buildings. The owner sets
+## them from NeighbourSource; the save does not keep them.
+var neighbour_ids: Array[String] = []
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _map_index: int
@@ -211,9 +215,10 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 
 	_add_resource(item.cost_type, -item.cost)
 	_add_xp(item.xp)
 	_register_unit(item.id)
-	_add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
+	var placed := _add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
 	if not item.is_unit():
 		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
+	_report_workers(placed)
 	return Placement.OK
 
 
@@ -231,8 +236,9 @@ func can_buy_land(area: int) -> bool:
 
 
 ## Buys the land area for cash or gold, as the server command "expand" does.
-## For gold the client wants the number of neighbours of the price; the port
-## has no neighbours yet. Changes nothing when the result is not OK.
+## For gold the client wants the number of neighbours of the price, from
+## neighbours: the neighbours of the server's list, without Arthur. Changes
+## nothing when the result is not OK.
 func buy_land(area: int, with_cash: bool, neighbours: int) -> Placement:
 	if not can_buy_land(area):
 		return Placement.NOT_ALLOWED
@@ -340,22 +346,26 @@ func is_being_built(placed: PlacedItem) -> bool:
 			and placed._entry[7].get("si") is Array and not _needs_neighbours(placed.item_id)
 
 
-## The workers of the building: [hired, needed].
+## The workers of a building with a list of them ("si"): [hired, needed].
+## [0, 0] for other buildings.
 func workers(placed: PlacedItem) -> Array[int]:
-	var hired: Variant = placed._entry[7].get("si") if is_being_built(placed) else null
-	return [hired.size() if hired is Array else 0, int(_config.worker_item_ids.get(placed.item_id, [0, 0])[1])]
+	var hired: Variant = _workers_list(placed)
+	return [hired.size() if hired is Array else 0, int(_config.worker_item_ids.get(placed.item_id, [0, 0])[1]) if hired is Array else 0]
 
 
 ## Hires a worker for the worker cost in cash, as the server command
-## "buy_si_help" does.
+## "buy_si_help" does: for a building that waits for its workers, and for the
+## allies buildings except the Round Table, which takes only neighbours.
 func hire_worker(placed: PlacedItem) -> Placement:
-	if not is_being_built(placed) or workers(placed)[0] >= workers(placed)[1]:
+	var hired: Variant = _workers_list(placed)
+	if not hired is Array or placed.item_id == ROUND_TABLE or hired.size() >= workers(placed)[1]:
 		return Placement.NOT_ALLOWED
 	var cost := int(_config.worker_item_ids[placed.item_id][0])
 	if get_resource("c") < cost:
 		return Placement.NOT_ENOUGH_RESOURCES
 	_add_resource("c", -cost)
-	placed._entry[7]["si"].append("0")
+	hired.append("0")
+	_report_workers(placed)
 	return Placement.OK
 
 
@@ -367,6 +377,25 @@ func open_building(placed: PlacedItem) -> Placement:
 	placed._entry[7].erase("si")
 	happened.emit(VillageEvent.Kind.SOCIAL_BUILDING_OPENED, {"item": placed.item_id})
 	return Placement.OK
+
+
+func _workers_list(placed: PlacedItem) -> Variant:
+	if not _config.worker_item_ids.has(placed.item_id) or placed._entry.size() <= 7 or not placed._entry[7] is Dictionary:
+		return null
+	return placed._entry[7].get("si")
+
+
+## The client tells the goals the number of workers of a building that has a
+## list of them, when it loads the map and when a worker comes.
+func _report_workers(placed: PlacedItem) -> void:
+	if _workers_list(placed) is Array:
+		happened.emit(VillageEvent.Kind.WORKERS_HIRED, {"item": placed.item_id, "amount": _workers_list(placed).size()})
+
+
+## Sends WORKERS_HIRED for each building with workers, as the client does when it loads the map.
+func report_all_workers() -> void:
+	for placed in items:
+		_report_workers(placed)
 
 
 func _needs_neighbours(item_id: int) -> bool:
@@ -661,18 +690,23 @@ func _resource_holder(code: String) -> Dictionary:
 
 
 ## The server's "buy" gives a building that needs workers a list of hired
-## workers ("si"): the player's own villager ("0"), then neighbours from the
-## other saves on the server. The port cannot see these saves, so it hires only
-## the villager, as the server does when it does not know the player. The
-## player can hire the other workers in the game.
+## workers ("si"): the player's own villager ("0"), except in the Great
+## Church, then the neighbours in the order of neighbour_ids, until the
+## building has its workers (hire_friends of the server). The buildings of
+## the allies and the Round Table hire no one.
 func _new_item_attributes(item: GameConfig.ItemDef) -> Dictionary:
 	if not _config.worker_item_ids.has(item.id):
 		return {}
 	if item.id == ROUND_TABLE:
 		return {"si": [], "sif": {}}
-	if _needs_neighbours(item.id) or item.id == GREAT_CHURCH:
+	if _needs_neighbours(item.id):
 		return {"si": []}
-	return {"si": ["0"]}
+	var hired: Array = [] if item.id == GREAT_CHURCH else ["0"]
+	for pid in neighbour_ids:
+		if hired.size() >= int(_config.worker_item_ids[item.id][1]):
+			break
+		hired.append(pid)
+	return {"si": hired}
 
 
 ## The client counts each tile that a tower covers, not each tower.

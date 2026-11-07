@@ -38,4 +38,9 @@ enum Kind {
 	CONVERTED,  ## A monk converted an enemy unit.
 	HEALED,  ## A healing spring healed a unit.
 	SOCIAL_BUILDING_OPENED,  ## item: a building with workers opened, or an allies market gave its resources.
+	WORKERS_HIRED,  ## item, amount: the building has this number of hired workers.
+	FRIEND_VISITED,  ## pid: the player visited the neighbour.
+	FRIEND_ASSISTED,  ## The player helped a building of a neighbour.
+	ASSAULT_STARTED,  ## level: the player attacked another player of this level.
+	ASSAULT_WON,  ## amount: the attacks that the player won until now.
 }

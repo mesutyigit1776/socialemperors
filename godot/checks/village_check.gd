@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1285,6 +1285,154 @@ func _check_village_actions() -> bool:
 	var game_map: Dictionary = saved["maps"][0]
 	_check(saved["playerInfo"]["map_names"][0] == "Camelot" and game_map["expansions"].has(14.0) and game_map["numTradesDone"] == 2 and game_map["resourcesTraded"] == {"w": 1.0, "s": -1.0} and saved["privateState"]["unitPacks"] == {"1": 1.0}, "the save has the name, the land, the trades and the pack as the server writes them")
 	return true
+
+
+## The neighbours of the import, help in visits, help from neighbours, and the
+## workers that the server hires from the neighbours.
+func _check_neighbours() -> bool:
+	var source := NeighbourSource.load_from(_neighbour_copy(), _config)
+	var list := source.neighbours("port_player")
+	var pids: Array = list.map(func(entry: Dictionary) -> String: return entry["pid"])
+	_check(pids.size() == 11 and pids[0] == "AcidCaos" and pids[1] == "mock_1" and not pids.any(func(pid: String) -> bool: return pid in NeighbourSource.ARTHUR_IDS), "the neighbours are the friend village and the 10 mock villages, without Arthur, in the order of the server")
+	_check(source.has("100000032") and source.load_village("100000032", NOW).get_level() == 34, "the villages of Arthur and Guinevere can be visited")
+	var path := _write_fixture("neighbours", 20, _config.levels[19].exp_required, 100000)
+	_patch_private(path, {}, 200)
+	var village := Village.load_from_file(path, _config)
+	village.neighbour_ids.assign(pids)
+	var events := []
+	village.happened.connect(func(kind: VillageEvent.Kind, data: Dictionary) -> void: events.append([kind, data]))
+	var mill_tile := _free_tile(village, 6, Rect2i(40, 40, 20, 20))
+	_buy(village, 6, mill_tile, Village.Placement.OK)
+	var mill := village.item_at(mill_tile)
+	_check(mill._entry[7]["si"] == ["0", "AcidCaos", "mock_1", "mock_10", "mock_2", "mock_3"] and village.open_building(mill) == Village.Placement.OK, "Mill II gets the villager and the first 5 neighbours, as hire_friends of the server, and opens")
+	_check(events.any(func(event: Array) -> bool: return event[0] == VillageEvent.Kind.WORKERS_HIRED and event[1]["amount"] == 6), "the workers send the event of the goal that counts them")
+	_check(village.buy_land(14, false, village.neighbour_ids.size()) == Village.Placement.OK, "with neighbours, the second land area is sold for gold")
+	# Help for a neighbour: once a day, honour for 5 buildings.
+	_check(village.can_assist("mock_1", NOW), "a neighbour that the player never helped can be helped")
+	village.assist_neighbour("mock_1", 4, NOW)
+	_check(village.honour() == 0 and not village.can_assist("mock_1", NOW + 3600) and village.can_assist("mock_1", NOW + 86401), "4 buildings give no honour; the neighbour can be helped again after a day")
+	village.assist_neighbour("mock_2", 5, NOW)
+	_check(village.honour() == _config.honour_help_friend, "5 buildings give honour")
+	village.assist_neighbour("mock_3", 0, NOW)
+	_check(village.can_assist("mock_3", NOW), "a visit without help does not count")
+	var arthur := source.load_village("100000031", NOW)
+	var helped := arthur.items.filter(func(placed: Village.PlacedItem) -> bool: return VillageSocial.is_assistable(_config.get_item(placed.item_id)))
+	_check(not helped.is_empty() and not VillageSocial.is_assistable(_config.get_item(TREASURE_MINE)) and not VillageSocial.is_assistable(_config.get_item(HOUSE)), "farms, mills and mines can be helped; the Treasure Mine and houses not")
+	# Help from a neighbour, as the save of the server keeps it.
+	var farm_tile := _free_tile(village, PUMPKIN_CROP, Rect2i(40, 40, 20, 20))
+	_buy(village, PUMPKIN_CROP, farm_tile, Village.Placement.OK)
+	village._map["receivedAssists"] = {"mock_4": [[farm_tile.x, farm_tile.y, PUMPKIN_CROP], [1, 1, PUMPKIN_CROP]], "mock_5": [[farm_tile.x, farm_tile.y, PUMPKIN_CROP]]}
+	var food := village.get_resource("f")
+	var xp := village.get_xp()
+	var accepted := village.accept_assist("mock_4")
+	_check(accepted.size() == 1 and village.get_resource("f") == food + floori(_config.get_item(PUMPKIN_CROP).collect / 4.0) and village.get_xp() == xp + 10, "the help gives a quarter of the collect of each building that is still there, and 10 experience")
+	village.decline_assist("mock_5")
+	_check(village.received_assists().is_empty(), "accepted and declined help leaves the save")
+	return true
+
+
+## The allies buildings: the Allies Building, the Allies Market and the Recruitment Prize.
+func _check_allies_buildings() -> bool:
+	var path := _write_fixture("allies", 20, _config.levels[19].exp_required, 100000)
+	_patch_private(path, {}, 200)
+	var village := Village.load_from_file(path, _config)
+	village.neighbour_ids.assign(["n1", "n2"])
+	var market_tile := _free_tile(village, 266, Rect2i(40, 40, 20, 20))
+	_buy(village, 266, market_tile, Village.Placement.OK)
+	var market := village.item_at(market_tile)
+	_check(market._entry[7]["si"] == [] and village.allies_market_resource() == "n" and village.allies_market_seconds(market, NOW) == -1, "the Allies Market hires no one and waits for a resource")
+	_check(village.set_allies_market_resource(market, "w", NOW) == Village.Placement.OK and village.allies_market_seconds(market, NOW) == 86400, "a chosen resource starts the day of the market")
+	_check(village.hire_worker(market) == Village.Placement.OK and village.allies_market_amount(market) == 250, "a hired worker adds 125 wood to the 125")
+	var wood := village.get_resource("w")
+	_check(village.collect_allies_market(market, NOW + 100) == Village.Placement.NOT_ALLOWED and village.collect_allies_market(market, NOW + 86400) == Village.Placement.OK, "the market gives its resource after a day")
+	_check(village.get_resource("w") == wood + 250 and market._entry[7]["si"] == [] and village.allies_market_resource() == "n", "it gives 250 wood, and the workers and the resource start again")
+	var summit_tile := _free_tile(village, ALLIES_BUILDING, Rect2i(40, 40, 20, 20))
+	_buy(village, ALLIES_BUILDING, summit_tile, Village.Placement.OK)
+	var summit := village.item_at(summit_tile)
+	_check(village.workers(summit) == [0, 9] and village.open_allies_building(summit, NOW).is_empty(), "the Allies Building needs 9 allies")
+	for i in 9:
+		village.hire_worker(summit)
+	_check(village.workers(summit) == [9, 9] and village.get_resource("c") == 200 - 2 - 27, "9 allies cost 3 cash each")
+	var room := village.population() + Village.SUMMIT_KNIGHTS <= village.max_population()
+	_check(room or village.open_allies_building(summit, NOW).is_empty(), "the knights need room in the population")
+	while village.population() + Village.SUMMIT_KNIGHTS > village.max_population():
+		if village.buy(_config.get_item(HOUSE), _free_tile(village, HOUSE, Rect2i(20, 40, 40, 20)), NOW) != Village.Placement.OK:
+			break
+	var knights := village.open_allies_building(summit, NOW)
+	_check(knights.size() == Village.SUMMIT_KNIGHTS and knights.all(func(placed: Village.PlacedItem) -> bool: return placed.item_id == Village.ALLIANCE_KNIGHT and village.is_own_unit(placed)) and village.workers(summit) == [0, 9], "with all allies, 9 Alliance Knights come and the allies leave")
+	var prize_tile := _free_tile(village, Village.RECRUITMENT_PRIZE, Rect2i(40, 40, 20, 20))
+	_buy(village, Village.RECRUITMENT_PRIZE, prize_tile, Village.Placement.OK)
+	var prize := village.item_at(prize_tile)
+	var first: Dictionary = village.open_recruitment_prizes()[0]
+	_check(village.take_recruitment_prize(prize, first) == Village.Placement.NOT_ALLOWED and village.hire_worker(prize) == Village.Placement.OK, "a prize needs its recruits; a recruit costs nothing")
+	_check(village.take_recruitment_prize(prize, first) == Village.Placement.OK and village.stored_items().get(first["units"][0]) == 1 and village.workers(prize)[0] == 0, "the first prize gives its unit into the item store and uses the recruit")
+	_check(not village.open_recruitment_prizes().any(func(other: Dictionary) -> bool: return other["id"] == first["id"]) and village._document["privateState"]["recruitmentPrices"] == [first["id"]], "the save keeps the prize as taken")
+	var round_table_tile := _free_tile(village, ROUND_TABLE, Rect2i(40, 40, 20, 20))
+	_buy(village, ROUND_TABLE, round_table_tile, Village.Placement.OK)
+	_check(village.hire_worker(village.item_at(round_table_tile)) == Village.Placement.NOT_ALLOWED, "the Round Table takes only neighbours")
+	return true
+
+
+## Shields, the search, the end of an attack for both players, and the PvP battle.
+func _check_pvp() -> bool:
+	var path := _write_fixture("pvp", 20, _config.levels[19].exp_required, 100000)
+	_patch_private(path, {}, 200)
+	var village := Village.load_from_file(path, _config)
+	_check(village.pvp_search_cost() == 25 and village.pay_pvp_search() == Village.Placement.OK and village.get_resource("g") == 100000 - 25, "a search costs 25 gold from level 11")
+	_check(village.buy_shield(1, NOW) == Village.Placement.OK and village.get_resource("c") == 210 and village.shield_seconds(NOW) == 86400, "a shield of a day costs 10 cash, and the server gives back 20")
+	_check(not village.can_buy_shield(1, NOW) and village.buy_shield(2, NOW + 10) == Village.Placement.OK and village.shield_seconds(NOW + 10) == 86400 - 10 + 172800, "each shield once; a second one adds its time")
+	_check(village.can_buy_shield(1, NOW + 172800 + 11), "after the cooldown all shields can be bought again")
+	village.drop_shield()
+	_check(village.shield_seconds(NOW) == 0, "an attack ends the shield")
+	var knights := village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == LIGHT_KNIGHT).size()
+	var gold := village.get_resource("g")
+	village.end_pvp_attack({"units": [[LIGHT_KNIGHT, 2, 2, 1]], "loot": {"g": 100, "w": 50, "s": 0, "f": 0}, "xp": 7, "won": false, "percentage": 0.2})
+	_check(village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == LIGHT_KNIGHT).size() == knights - 1 and village.graveyard_units().get(LIGHT_KNIGHT, 0) == 1, "a unit that did not come back leaves the map for the graveyard")
+	_check(village.get_resource("g") == gold + 100 and village.honour() == 40 and village.attacks_lost() == 1 and village._document["playerInfo"]["attacks_lost"] == 1, "a lost attack gives its loot and 5 honour for each tenth not taken, and counts as lost")
+	village.end_pvp_attack({"units": [], "loot": {"g": 0, "w": 0, "s": 0, "f": 0}, "xp": 0, "won": true, "percentage": 1.0})
+	_check(village.honour() == 40 + _config.honour_pvp_win and village.attacks_won() == 1, "a won attack gives 15 honour and counts as won")
+	# The other player: shield and attack log, in the file of the neighbour.
+	var source := NeighbourSource.load_from(_neighbour_copy(), _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var enemy := source.find_enemy("port_player", 5, NOW, rng)
+	_check(source.has(enemy) and absi(source.load_village(enemy, NOW).get_level() - 5) <= NeighbourSource.SEARCH_LEVEL_RANGE and not enemy in NeighbourSource.ARTHUR_IDS, "the search finds a village within 10 levels, never Arthur")
+	_check(source.record_attack("mock_1", {"name": "Emperor", "level": 20, "id": "port_player"}, true, {"g": 5}, NOW), "the attack is written into the village of the neighbour")
+	var victim := source.load_village("mock_1", NOW)
+	_check(victim.shield_seconds(NOW) == VillageSocial.PVP_VICTIM_SHIELD_SECONDS and victim.attacks_received().size() == 1 and victim.attacks_received()[0]["attackWinner"] == "port_player", "the neighbour gets a shield of 12 hours and the attack in its log")
+	var found := {}
+	for i in 30:
+		found[source.find_enemy("port_player", 4, NOW, rng)] = true
+	_check(not found.has("mock_1"), "a village with a shield is not found")
+	# The battle: the loot and the win.
+	var map := source.load_village("mock_2", NOW + 86400 * 3)
+	var loot := PvpBattle.loot_of(map, 20, _config, rng)
+	_check(loot["g"] == int(map.loot_resources()["g"] * PvpBattle.LOOT_SHARE), "the loot is a third of each resource")
+	var battle := PvpBattle.create(map, {LIGHT_KNIGHT: 3}, loot, Vector2i(10, 50), _config, null, rng, 20)
+	_check(battle.has_town_hall and not battle.is_won() and battle.sim.fighters.filter(func(f: BattleFighter) -> bool: return f.team == BattleFighter.Team.PLAYER).size() == 3, "the army lands, and the village has a town hall")
+	var town_hall: BattleFighter = battle._targets.filter(func(f: BattleFighter) -> bool: return f.def.subcat_functional == PvpBattle.SUBCAT_TOWN_HALL)[0]
+	battle.sim.receive_attack(town_hall, 10, null)
+	_check(battle.taken["g"] > 0 and battle.percentage() > 0 and battle.percentage() < 1, "damage to the town hall takes a part of the loot")
+	for target in battle._targets.duplicate():
+		battle.sim.kill(target)
+	var result := battle.result()
+	_check(battle.is_won() and result["loot"] == loot and is_equal_approx(result["percentage"], 1.0), "with all resource buildings destroyed, the attack is won and takes all the loot")
+	for i in 40:
+		battle.sim.step()
+		battle.update()
+	_check(battle.is_finished(), "the battle ends a second after the win")
+	return true
+
+
+## A copy of the neighbour folders of the import, so that the checks can write into it.
+func _neighbour_copy() -> String:
+	var target := "user://checks/neighbours"
+	for folder in NeighbourSource.FOLDERS:
+		var from := _data_dir.path_join("neighbours").path_join(folder)
+		DirAccess.make_dir_recursive_absolute(target.path_join(folder))
+		for file in DirAccess.get_files_at(from) if DirAccess.dir_exists_absolute(from) else PackedStringArray():
+			DirAccess.copy_absolute(from.path_join(file), target.path_join(folder).path_join(file))
+	return target
 
 
 ## The tutorial of a new empire: the steps, what they allow, and the save.

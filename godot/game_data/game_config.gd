@@ -177,6 +177,22 @@ var quest_units_back_hardcore: int  ## The same after a quest on a hard or god i
 var quest_honour: Array[int] = []  ## For a win with 1, 2 and 3 stars.
 var quest_honour_first: Array[int] = []  ## For the first win with these stars.
 var quest_honour_lost: int
+## Neighbours and the attacks on other players (PvP), see VillageSocial and PvpBattle.
+var honour_help_friend: int  ## For 5 assists in one visit.
+var honour_pvp_win: int
+var honour_pvp_lost: int  ## For each tenth of the loot that the attacker did not take.
+var pvp_seconds: int  ## The time of an attack.
+var pvp_search_costs: Array[Array] = []  ## [from level, gold], in the order of the levels.
+var pvp_max_loot: Array[Array] = []  ## [from level, gold]: the most of each resource that an attack can take.
+var pvp_units_back: Array[int] = []  ## The part of the dead units of the attacker that come back, in percent: up to level 9, 10 to 15, from 16.
+var pvp_shields: Array[Dictionary] = []  ## {"id", "name", "price", "price_type", "protection_time", "cooldown"}.
+## The Allies Market gives allies_market_collect[code] of the resource, and
+## allies_market_per_worker[code] more for each hired worker.
+var allies_market_collect: Dictionary = {}
+var allies_market_per_worker: Dictionary = {}
+## The prizes of the Recruitment Prize building: {"id", "units" (Array[int]),
+## "recruits", "level"}, in configuration order.
+var recruitment_prizes: Array[Dictionary] = []
 var spells: Array[SpellDef] = []  ## In configuration order.
 ## The goals in configuration order. The client sorts them by their order
 ## value, which is 1 for all of them, and leaves out the goals of order 0.
@@ -284,6 +300,9 @@ static func load_from_file(path: String) -> GameConfig:
 		return null
 	if not _parse_quest_globals(config, globals):
 		push_error("Game configuration '%s' has no correct quest settings in globals (ISLE_ORDER, QUEST_GOLD_REWARD, HONOR_POINT_QUEST and others)." % path)
+		return null
+	if not _parse_social(config, data, globals):
+		push_error("Game configuration '%s' has no correct neighbour or PvP settings (HONOR_POINT_HELP_FRIEND, PVP_SEARCH_ENEMY_COST, pvp_shields and others)." % path)
 		return null
 	var survival := [to_int(globals.get("SURVIVAL_BUY_LIVE_CASH")), to_int(globals.get("SURVIVAL_HOURS_LIVE_REGENERATE"))]
 	if null in survival:
@@ -504,6 +523,70 @@ static func _parse_tournament(config: GameConfig, data: Dictionary, globals: Dic
 ## Reads the globals of the campaign quests. The server adds some of them with
 ## the patch config/patch/1-mega_patch.json. Returns false when one is missing
 ## or not correct.
+static func _parse_social(config: GameConfig, data: Dictionary, globals: Dictionary) -> bool:
+	var numbers := [to_int(globals.get("HONOR_POINT_HELP_FRIEND")), to_int(globals.get("HONOR_POINT_PVP_WIN_ATTACK")), to_int(globals.get("HONOR_POINT_PVP_LOSE_ATTACK")),
+			to_int(globals.get("PVP_TIMER_SECONDS")), to_int(globals.get("PERCENT_UNITS_RECOVERED_ATTACKER_L9")),
+			to_int(globals.get("PERCENT_UNITS_RECOVERED_ATTACKER_L10_L15")), to_int(globals.get("PERCENT_UNITS_RECOVERED_ATTACKER_L16"))]
+	if null in numbers:
+		return false
+	config.honour_help_friend = numbers[0]
+	config.honour_pvp_win = numbers[1]
+	config.honour_pvp_lost = numbers[2]
+	config.pvp_seconds = numbers[3]
+	config.pvp_units_back.assign(numbers.slice(4))
+	for pair: Array in [[config.pvp_search_costs, "PVP_SEARCH_ENEMY_COST"], [config.pvp_max_loot, "PVP_MAX_RESOURCES"]]:
+		var table: Variant = globals.get(pair[1])
+		if not table is Dictionary:
+			return false
+		for key: Variant in table:
+			var gold: Variant = to_int(table[key].get("g")) if table[key] is Dictionary else null
+			if to_int(key) == null or gold == null:
+				return false
+			pair[0].append([to_int(key), gold])
+		pair[0].sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for pair: Array in [[config.allies_market_collect, "ALLIES_MARKET_INITIAL_COLLECT"], [config.allies_market_per_worker, "ALLIES_MARKET_INCREMENTAL_COLLECT"]]:
+		var table: Variant = globals.get(pair[1])
+		if not table is Dictionary:
+			return false
+		for code: Variant in table:
+			if to_int(table[code]) == null:
+				return false
+			pair[0][str(code)] = to_int(table[code])
+	var prizes: Variant = data.get("recruitment_prices")
+	if not prizes is Array:
+		return false
+	for entry: Variant in prizes:
+		var values := [to_int(entry.get("id")), to_int(entry.get("num_recruitments")), to_int(entry.get("unlock_level"))] if entry is Dictionary else [null]
+		if null in values:
+			return false
+		var units: Array[int] = []
+		for id in str(entry.get("units", "")).split(",", false):
+			if to_int(id) == null:
+				return false
+			units.append(to_int(id))
+		config.recruitment_prizes.append({"id": values[0], "units": units, "recruits": values[1], "level": values[2]})
+	var shields: Variant = data.get("pvp_shields")
+	if not shields is Array:
+		return false
+	for entry: Variant in shields:
+		var values := [to_int(entry.get("id")), to_int(entry.get("price")), to_int(entry.get("protection_time")), to_int(entry.get("cooldown"))] if entry is Dictionary else [null]
+		if null in values:
+			return false
+		config.pvp_shields.append({"id": values[0], "name": str(entry.get("name", "")), "price": values[1], "price_type": str(entry.get("price_type")), "protection_time": values[2], "cooldown": values[3]})
+	return true
+
+
+## The value of a table of PVP_SEARCH_ENEMY_COST or PVP_MAX_RESOURCES for the
+## level: the entry of the highest "from level" that the level reaches.
+static func value_for_level(table: Array[Array], level: int) -> int:
+	var value := 0
+	for entry in table:
+		if level < entry[0]:
+			break
+		value = entry[1]
+	return value
+
+
 static func _parse_quest_globals(config: GameConfig, globals: Dictionary) -> bool:
 	for pair: Array in [[config.quest_order, "ISLE_ORDER"], [config.quests_always_open, "UNLOCKED_FOREVER_QUESTS"]]:
 		var ids: Variant = globals.get(pair[1])

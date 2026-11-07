@@ -73,6 +73,16 @@ var _goal_done := false  # A goal was completed since the last save, see _record
 var _group: Array[Village.PlacedItem] = []  # Units of the player selected together (double click or box).
 var _last_click: Village.PlacedItem  # For the double click.
 var _last_click_msec := 0
+## The other players, see NeighbourSource.
+var _neighbours: NeighbourSource
+var _neighbour_bar := NeighbourBar.new()
+## The neighbours that the player visited in this session: the client lets the
+## player help each neighbour once in a session (arFriendsAssisted).
+static var _visited := {}
+var _visit: VisitScreen
+var _spy: SpyScreen
+var _enemy: Dictionary = {}  # The enemy of the spy screen: {"pid", "village", "loot"}.
+var _pvp_screen: PvpScreen
 const DOUBLE_CLICK_MSEC := 1000
 const MAX_GROUP := 20  ## MAX_SELECTED_OBJECTS of the client.
 const GROUP_RINGS := 6
@@ -94,6 +104,9 @@ func _ready() -> void:
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
 	_store = Store.load_from_file(data_dir.path_join("shop.json"), _config) if _config != null else null
 	_village = Village.load_from_file(_village_path, _config) if _store != null else null
+	if _village != null:
+		_neighbours = NeighbourSource.load_from(data_dir.path_join("neighbours"), _config)
+		_village.neighbour_ids.assign(_neighbours.neighbours(_village.player_id()).map(func(entry: Dictionary) -> String: return entry["pid"]))
 	if _village == null:
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	elif _options.has("battle"):
@@ -103,6 +116,8 @@ func _ready() -> void:
 		_sprites = SpriteLibrary.new(data_dir, _frames)
 		_view = VillageView.new()
 		add_child(_view)
+		_view.fire_graphic = SpriteLibrary.new(data_dir, _frames, "fx").get_sprite(FireSprite.SYMBOL)
+		_view.fire_flames = FireSprite.read_flames(data_dir)
 		_view.show_village(_village, _config, _sprites)
 		_view.placement_confirmed.connect(_on_placement_confirmed)
 		_view.move_confirmed.connect(_on_move_confirmed)
@@ -147,7 +162,11 @@ func _ready() -> void:
 		_hud.quests_requested.connect(_open_quests)
 		_hud.survival_requested.connect(_open_survival)
 		_hud.tournament_requested.connect(_open_tournament)
+		_hud.pvp_requested.connect(_open_pvp)
 		add_child(_hud)
+		_neighbour_bar.visit_requested.connect(_visit_neighbour)
+		_hud.add_child(_neighbour_bar)
+		_update_neighbour_bar()
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
 		_spell_layer.layer = SPELL_LAYER
@@ -188,6 +207,7 @@ func _ready() -> void:
 		if not _reload_message.is_empty():
 			_hud.show_message(_reload_message)
 			_reload_message = ""
+		_offer_received_assists()
 
 	if _options.has("quest") and _village != null and _view != null:
 		_on_island_chosen(_options["quest"], null)
@@ -1027,7 +1047,7 @@ func _show_tutorial() -> void:
 	var tiles: Array[Vector2i] = []
 	if _tutorial.marked_tile() != Village.ANY_TILE:
 		tiles.append(_tutorial.marked_tile())
-	_view.show_tutorial_marks(_tutorial.marked_items(), tiles)
+	_view.show_marks(_tutorial.marked_items(), tiles)
 	_hud.set_locked(_tutorial.is_active())
 
 
@@ -1036,7 +1056,7 @@ func _on_tutorial_finished() -> void:
 	var nest := _village.add_tutorial_nest(_now())
 	_tutorial_box.queue_free()
 	_tutorial_box = null
-	_view.show_tutorial_marks([], [])
+	_view.show_marks([], [])
 	_hud.set_locked(false)
 	_store_key = []
 	_view.sync_items()
@@ -1096,6 +1116,8 @@ func _on_goal_do_it(goal: GameConfig.GoalDef) -> void:
 		_show_panel(SpecialActions.View.PACKS)
 	elif hint.get("open") == "rename":
 		_hud.open_rename()
+	elif hint.get("open") == "pvp":
+		_open_pvp()
 	elif hint.has("text"):
 		_hud.show_message(hint["text"])
 
@@ -1217,6 +1239,199 @@ func _speed_up_tutorial_farm(now: int) -> bool:
 				_tutorial.handle(Tutorial.Action.FARM_READY)
 			return true
 	return false
+
+
+# --- Neighbours and attacks on other players ---
+
+
+func _update_neighbour_bar() -> void:
+	var helped: Array[String] = []
+	helped.assign(_visited.keys())
+	_neighbour_bar.show_entries(NeighbourBar.entries(_neighbours.neighbours(_village.player_id()), _village, _config, _now(), helped))
+
+
+## The client visits a neighbour from the neighbour bar; not during the tutorial.
+func _visit_neighbour(entry: Dictionary) -> void:
+	if not _tutorial.allows_other():
+		return
+	var pid: String = entry["pid"]
+	var neighbour := _neighbours.load_village(pid, _now())
+	if neighbour == null:
+		_hud.show_message("The village of %s is not in the imported files." % entry["name"])
+		return
+	# The host has no help mark in the client, but can be helped once in a session.
+	var can_help: bool = (entry["host"] or entry["assist"]) and not _visited.has(pid)
+	_visit = VisitScreen.new(neighbour, entry, can_help, _config, _sprites, _start_position(neighbour))
+	_visit.helped.connect(func() -> void: _record(VillageEvent.Kind.FRIEND_ASSISTED, {}))
+	_visit.closed.connect(_on_visit_closed.bind(pid))
+	_select(null)
+	_show_village(false)
+	add_child(_visit)
+	_record(VillageEvent.Kind.FRIEND_VISITED, {"pid": pid})
+
+
+## The player leaves the neighbour: the help goes to the save
+## ("assist_neighbor_new"). The neighbour villages of the port do not
+## receive it, as the server does not change fixed and friend villages.
+func _on_visit_closed(clicks: Array, pid: String) -> void:
+	_visited[pid] = true
+	_village.assist_neighbour(pid, clicks.size(), _now())
+	_save()
+	_visit.queue_free()
+	_visit = null
+	_show_village(true)
+	_update_neighbour_bar()
+
+
+## The help of neighbours that the save has (receivedAssists): the client
+## shows a cart for each neighbour, and the player accepts or declines it.
+func _offer_received_assists() -> void:
+	var assists := _village.received_assists()
+	if assists.is_empty() or _tutorial.is_active():
+		return
+	var pid: String = assists.keys()[0]
+	var dialog := ConfirmationDialog.new()
+	var name := pid
+	for entry in _neighbours.neighbours(_village.player_id()):
+		if entry["pid"] == pid:
+			name = entry["name"]
+	dialog.dialog_text = "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()]
+	dialog.ok_button_text = _config.text("AUX_ACEPTAR").strip_edges()
+	dialog.cancel_button_text = "No"
+	dialog.confirmed.connect(func() -> void:
+		var helped := _village.accept_assist(pid)
+		_hud.show_message("%s helped %d of your buildings." % [name, helped.size()])
+		_after_assist(dialog))
+	dialog.canceled.connect(func() -> void:
+		_village.decline_assist(pid)
+		_after_assist(dialog))
+	_hud.add_child(dialog)
+	dialog.popup_centered()
+
+
+func _after_assist(dialog: ConfirmationDialog) -> void:
+	dialog.queue_free()
+	_save()
+	_offer_received_assists()
+
+
+## The PvP window; the client opens PvP from level VillageSocial.PVP_LEVEL.
+func _open_pvp() -> void:
+	if not _tutorial.allows_other():
+		return
+	if _village.get_level() < VillageSocial.PVP_LEVEL:
+		_hud.show_message("Attacks on other players open at level %d." % VillageSocial.PVP_LEVEL)
+		return
+	var window := PvpWindow.new(_village, _config)
+	window.search_requested.connect(func() -> void:
+		window.queue_free()
+		_search_enemy())
+	window.shield_requested.connect(func(shield_id: int) -> void:
+		var result := _village.buy_shield(shield_id, _now())
+		_hud.show_placement_result(result)
+		if result == Village.Placement.OK:
+			_save()
+			_hud.refresh(_village)
+		window.show_main(_now()))
+	window.attack_log_opened.connect(func() -> void: _record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"}))
+	_hud.add_child(window)
+	window.show_main(_now())
+
+
+## Pays the search ("get_enemy_new") and shows the enemy that the search
+## finds (the server's "pvp/enemy"), or a message.
+func _search_enemy() -> void:
+	_close_spy()
+	var result := _village.pay_pvp_search()
+	if result != Village.Placement.OK:
+		_show_village(true)
+		_hud.show_placement_result(result)
+		return
+	_save()
+	var pid := _neighbours.find_enemy(_village.player_id(), _village.get_level(), _now(), _rng)
+	var enemy := _neighbours.load_village(pid, _now()) if not pid.is_empty() else null
+	if enemy == null:
+		_show_village(true)
+		_hud.refresh(_village)
+		_hud.show_message("No enemy found. Try again later.")
+		return
+	_enemy = {"pid": pid, "village": enemy, "name": enemy.player_name(), "loot": PvpBattle.loot_of(enemy, _village.get_level(), _config, _rng)}
+	_spy = SpyScreen.new(enemy, _enemy["name"], _enemy["loot"], _village.pvp_search_cost(), _config, _sprites, _start_position(enemy))
+	_spy.next_requested.connect(_search_enemy)
+	_spy.home_requested.connect(func() -> void:
+		_close_spy()
+		_show_village(true))
+	_spy.attack_requested.connect(_on_attack_requested)
+	_select(null)
+	_show_village(false)
+	add_child(_spy)
+
+
+func _close_spy() -> void:
+	if _spy != null:
+		_spy.queue_free()
+		_spy = null
+
+
+## The client asks before an attack that ends the shield of the player.
+func _on_attack_requested(start_tile: Vector2i) -> void:
+	if _village.shield_seconds(_now()) == 0:
+		_start_attack(start_tile)
+		return
+	var dialog := ConfirmationDialog.new()
+	dialog.dialog_text = _config.text("PVP_SHIELDS_ATTACK_CONFIRMATION").strip_edges()
+	dialog.confirmed.connect(func() -> void:
+		dialog.queue_free()
+		_start_attack(start_tile))
+	dialog.canceled.connect(dialog.queue_free)
+	_spy.add_child(dialog)
+	dialog.popup_centered()
+
+
+## The attack starts ("begin_attack_new"): the own shield ends, and the whole
+## army of the player goes, as getCurrentArmy() of the client.
+func _start_attack(start_tile: Vector2i) -> void:
+	if not _load_quest_graphics():
+		return
+	var army := _village.quest_army()
+	if army.is_empty():
+		_hud.show_message(_config.text("PVP_NEED_ARMY").strip_edges())
+		return
+	_village.drop_shield()
+	_record(VillageEvent.Kind.ASSAULT_STARTED, {"level": _enemy["village"].get_level()})
+	_save()
+	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], start_tile, _config, _sprites, _rng, _village.get_level())
+	_goals.watch_battle(battle.sim)
+	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_pvp_screen.village_changed.connect(_save)
+	_pvp_screen.closed.connect(_on_attack_closed)
+	_close_spy()
+	add_child(_pvp_screen)
+
+
+## The end of the attack: the save of the player ("end_attack",
+## "end_attack_new" and the attacker part of "pvp/attack/end"), and the
+## village of the enemy (NeighbourSource.record_attack()).
+func _on_attack_closed(result: Dictionary) -> void:
+	var old_level := _village.get_level()
+	_village.end_pvp_attack(result)
+	if not _neighbours.record_attack(_enemy["pid"], {"name": _village.player_name(), "level": old_level, "id": _village.player_id()}, result["won"], result["loot"], _now()):
+		push_warning("Cannot write the attack into the village of %s." % _enemy["pid"])
+	if result["won"]:
+		_record(VillageEvent.Kind.ASSAULT_WON, {"amount": _village.attacks_won()})
+	_known_level = _village.get_level()
+	_enemies.on_map_loaded(_now())
+	_goals.on_map_loaded()
+	_save()
+	_pvp_screen.queue_free()
+	_pvp_screen = null
+	_enemy = {}
+	_show_village(true)
+	_view.sync_items()
+	_update_store()
+	_update_production()
+	_hud.refresh(_village)
+	_hud.show_message(_level_up_text(old_level).strip_edges())
 
 
 ## The server stores whole seconds.
