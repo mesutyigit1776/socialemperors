@@ -184,7 +184,13 @@ The 1.4.07 client has a chain of 30 quests on the player's own map, but it never
 
 **5. The look and the sound of the original game**
 
-1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. This comes after the screens exist. The importer and `godot/ui/` can already show windows of the client; the quests use them.
+1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. Done:
+   - The HUD of the village is GuiMC of the client (`godot/village/village_hud.gd`), laid out as the client lays it out on a full screen: the bars of the top at the top, the bottom bar at the bottom, 760 pixels wide in the middle. The tools of the bottom bar have the menus of the client. The town selector of 4.5 is now the town button of the client's games menu, with its level rule. Survival, which 1.4.07 hides, shows in the World menu.
+   - The store (`store_window.gd`) has the tabs, subcategories, item buttons, pages and order of BuildingWindow. The panel of a selected item (`selection_panel.gd`) uses the extended portraits EP_House_MC, EP_UnitMC, EP_Farm_MC and EP_NewBarracksMC. The actions of the port that the client has in other windows are buttons in a box above the panel.
+   - The goal box and goal windows (MissionPopup, PopupGoalList), the neighbour bar (FriendsWindow, FriendButton, PopOverVisit), the tutorial box, PopupConfirm, the town window (PopupRaceSelector), the window of a quest in the town (PopupQuestInfo2 with the pictures of the quests by race), the zoom slider and a visit to a neighbour (StateNeighbour) use the art of the client. The spell book is at the place of the client's magic box.
+   - The importer writes the names of the fonts, imports unnamed buttons (the icons of the menus), and makes the shapes under a named mask a sprite of their own, so that a bar fills as in Flash (the experience bar, the time bars). The other controls of the port get the fonts and colours of the client from a theme (`godot/ui/client_theme.gd`).
+   - A comparison with Ruffle, the same save at 760 × 600, puts the parts of the HUD at the same places. Not in the port: the viral buttons of Facebook ("open me"), the animations of the shield (separate SWF files), the host of the goal box, the Add Cash shop and the options panel, which comes with 5.2.
+   - The comparison also found a rule difference from step 4.1, for step 6.1: the client sends `buy` for the idle enemies at the load of the map, which gives their experience on the server, but then sends `rt_publish_score` with its own experience, which does not count them. The port gives the experience. With the save of the comparison, the port showed 634 and the client 504.
 2. Music and sounds. The troll town has its own music.
 
 **6. Release**

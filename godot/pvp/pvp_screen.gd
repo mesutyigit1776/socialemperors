@@ -56,16 +56,15 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	row.add_child(_bar)
 	var withdraw := Button.new()
 	withdraw.text = config.text("AUX_WITHDRAW").strip_edges()
-	var question := ConfirmationDialog.new()
-	question.dialog_text = config.text("AUX_SURE_WANT_TO_SURRENDER").strip_edges()
-	question.confirmed.connect(func() -> void:
-		battle.retreat()
-		_show_result())
-	withdraw.pressed.connect(question.popup_centered)
+	withdraw.pressed.connect(func() -> void:
+		var question := ConfirmWindow.new(ui, config, config.text("AUX_SURE_WANT_TO_SURRENDER").strip_edges())
+		question.confirmed.connect(func() -> void:
+			battle.retreat()
+			_show_result())
+		_windows.add_child(question))
 	row.add_child(withdraw)
 	panel.add_child(row)
 	_windows.add_child(panel)
-	_windows.add_child(question)
 	var buttons := UnitButtonPanel.new(battle.sim, ui, config)
 	_screen.selection_changed.connect(buttons.show_selection)
 	_windows.add_child(buttons)

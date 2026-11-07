@@ -35,6 +35,19 @@ extends RefCounted
 
 ## The number of quests in the chain (NUM_QUESTS).
 const QUEST_COUNT := 30
+## The pictures of the quest window (GameStatic.IMAGES_QUESTSINMAP and
+## IMAGES_QUESTSINMAP_TROLL), by quest id; the trolls have pictures for the first 16.
+const PICTURES := {
+	"h": ["quest_princess.jpg", "quest_archers.jpg", "quest_kidnapped.jpg", "quest_treasure.jpg", "quest_villagers.jpg", "quest_troll.jpg",
+		"quest_prince.jpg", "quest_mill.jpg", "quest_healers.jpg", "quest_stone_mine.jpg", "quest_allies.jpg", "quest_cages.jpg", "quest_siege.jpg",
+		"quest_undead.jpg", "quest_chinos_fuegos.jpg", "quest_egypt_golem.jpg", "quest_vikingos_cerveza.jpg", "quest_yeti_negro.jpg",
+		"quest_altar_azteca.jpg", "quest_vibora.jpg", "quest_arbolvida.jpg", "quest_egypt_sarcofago.jpg", "quest_rockdriller.jpg",
+		"quest_chinos_dragones.jpg", "quest_cleopatra.jpg", "quest_ent.jpg", "quest_atlantes_tesoro.jpg", "quest_balrog.jpg", "quest_portales.jpg",
+		"quest_magos.jpg"],
+	"t": ["jaulaanimal_SCREEN.jpg", "cofre.png", "jaulaanimal_SCREEN.jpg", "jaulaanimal_SCREEN.jpg", "prisontroll.png", "jaulaanimal_SCREEN.jpg",
+		"principecolgado.png", "molinollamaspopup.jpg", "jaulaanimal_SCREEN.jpg", "minapiedracandado_SCREEN.jpg", "jaulaanimal_SCREEN.jpg",
+		"jaulaanimal_SCREEN.jpg", "jaulaanimal_SCREEN.jpg", "estatuaesqueletopopup.jpg", "fuegoschinos.jpg", "golemdorado.jpg"],
+}
 ## The walls and towers of the enemy, by the race of the player.
 const ENEMY_BUILDINGS := {"h": {"#": 305, "T": 291}, "t": {"#": 35, "T": 29}}
 
@@ -607,3 +620,9 @@ const QUESTS := {
 		]], "legend": {"h": 107, "f": 68, "a": 690, "b": 691, "c": 692, "d": 693}, "rewards": [652],
 	},
 }
+
+
+## The picture of the quest window for the race ("h" or "t"), or "" when the client has none.
+static func picture(id: int, race: String) -> String:
+	var pictures: Array = PICTURES.get(race, [])
+	return pictures[id] if id >= 0 and id < pictures.size() else ""

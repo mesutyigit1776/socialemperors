@@ -80,7 +80,7 @@ var _last_click: Village.PlacedItem  # For the double click.
 var _last_click_msec := 0
 ## The other players, see NeighbourSource.
 var _neighbours: NeighbourSource
-var _neighbour_bar := NeighbourBar.new()
+var _neighbour_bar: NeighbourBar
 ## The neighbours that the player visited in this session: the client lets the
 ## player help each neighbour once in a session (arFriendsAssisted).
 static var _visited := {}
@@ -114,7 +114,10 @@ func _ready() -> void:
 	if _village != null:
 		_neighbours = NeighbourSource.load_from(data_dir.path_join("neighbours"), _config)
 		_village.neighbour_ids.assign(_neighbours.neighbours(_village.player_id()).map(func(entry: Dictionary) -> String: return entry["pid"]))
-	if _village == null:
+	# The HUD of the village and the windows use the art of the client.
+	if _village != null and not _options.has("battle"):
+		_ui = UiLibrary.load_from(data_dir, _frames)
+	if _village == null or (_ui == null and not _options.has("battle")):
 		_show_message("Cannot start. Import the game files first; see godot/README.md.\nData folder: %s" % ProjectSettings.globalize_path(data_dir))
 	elif _options.has("battle"):
 		_sprites = SpriteLibrary.new(data_dir, _frames)
@@ -140,23 +143,33 @@ func _ready() -> void:
 		add_child(_orders)
 		_camera = MapCamera.new()
 		_camera.position = _start_position(_village)
-		_camera.zoomed.connect(func() -> void: _record(VillageEvent.Kind.ZOOMED, {}))
+		_camera.zoomed.connect(func() -> void:
+			_record(VillageEvent.Kind.ZOOMED, {})
+			_hud.show_zoom(_camera.zoom.x))
 		add_child(_camera)
-		_hud = VillageHud.new()
-		_hud.item_selected.connect(_on_item_selected)
-		_hud.move_requested.connect(_on_move_requested)
-		_hud.sell_confirmed.connect(_on_sell_confirmed)
-		_hud.rotate_requested.connect(_on_rotate_requested)
-		_hud.collect_requested.connect(func() -> void: _collect(_selected))
-		_hud.hurry_requested.connect(func() -> void: _collect(_selected, true))
-		_hud.work_time_chosen.connect(_on_work_time_chosen)
-		_hud.train_requested.connect(_on_train_requested)
-		_hud.speed_up_requested.connect(_on_speed_up_requested)
-		_hud.unqueue_requested.connect(_on_unqueue_requested)
-		_hud.unit_out_requested.connect(_on_unit_out_requested)
-		_hud.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
-		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
-		_hud.action_requested.connect(_on_action_requested)
+		# The controls that the port makes itself get the fonts and colours of
+		# the client. A theme of a node does not pass through the canvas
+		# layers of the HUD and the windows, so it goes into the default theme.
+		ThemeDB.get_default_theme().merge_with(ClientTheme.make(_ui))
+		_hud = VillageHud.new(_ui, _config)
+		_hud.store.item_selected.connect(_on_item_selected)
+		var panel := _hud.selection
+		panel.move_requested.connect(_on_move_requested)
+		panel.sell_confirmed.connect(_on_sell_confirmed)
+		panel.rotate_requested.connect(_on_rotate_requested)
+		panel.collect_requested.connect(func() -> void: _collect(_selected))
+		panel.hurry_requested.connect(func() -> void: _collect(_selected, true))
+		panel.work_time_chosen.connect(_on_work_time_chosen)
+		panel.train_requested.connect(_on_train_requested)
+		panel.speed_up_requested.connect(_on_speed_up_requested)
+		panel.unqueue_requested.connect(_on_unqueue_requested)
+		panel.unit_out_requested.connect(_on_unit_out_requested)
+		panel.warehouse_unit_out_requested.connect(_on_warehouse_unit_out_requested)
+		panel.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
+		panel.action_requested.connect(_on_action_requested)
+		panel.store_requested.connect(_on_store_requested)
+		_hud.tool_cancelled.connect(_cancel_tool)
+		_hud.zoom_requested.connect(_camera.zoom_to)
 		_hud.collections_requested.connect(func() -> void:
 			# The client has the collections only in the human town.
 			if _village.race != "h":
@@ -165,7 +178,6 @@ func _ready() -> void:
 			_show_panel(SpecialActions.View.COLLECTIONS)
 			_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.popupCollections"}))
 		_hud.packs_requested.connect(func() -> void: _show_panel(SpecialActions.View.PACKS))
-		_hud.store_requested.connect(_on_store_requested)
 		_hud.rename_requested.connect(_on_rename_requested)
 		_hud.selection_tool_requested.connect(_start_selection_tool)
 		_hud.goal_requested.connect(func(id: int) -> void: _open_goal(id))
@@ -176,8 +188,10 @@ func _ready() -> void:
 		_hud.pvp_requested.connect(_open_pvp)
 		_hud.towns_requested.connect(_open_towns)
 		add_child(_hud)
+		_hud.show_zoom(_camera.zoom.x)
+		_neighbour_bar = NeighbourBar.new(_ui, _config)
 		_neighbour_bar.visit_requested.connect(_visit_neighbour)
-		_hud.add_child(_neighbour_bar)
+		_hud.neighbour_anchor().add_child(_neighbour_bar)
 		_update_neighbour_bar()
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
@@ -201,7 +215,7 @@ func _ready() -> void:
 			_enemies.add_due_attack(kinds[_options["village-attack"]])
 		_goals.goal_completed.connect(_on_goal_completed)
 		if _tutorial.is_active():
-			_tutorial_box = TutorialBox.new()
+			_tutorial_box = TutorialBox.new(_ui)
 			_tutorial_box.button_pressed.connect(func() -> void: _tutorial.handle(Tutorial.Action.BOX_BUTTON))
 			add_child(_tutorial_box)
 			_tutorial.step_changed.connect(func(_step: int) -> void:
@@ -593,12 +607,13 @@ func _select(placed: Village.PlacedItem) -> void:
 	_panel = SpecialActions.View.BUILDING if placed != null else SpecialActions.View.NONE
 	_view.show_selection(placed)
 	var item := _config.get_item(placed.item_id) if placed != null else null
-	_hud.show_selection(item, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed), placed != null and _village.can_store(placed))
+	_hud.selection.show_selection(item, _village.health(placed) if placed != null else 0, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed), placed != null and _village.can_store(placed))
+	_hud.show_panel(placed != null)
 	var names: Array[String] = []
 	if placed != null:
 		for id in _village.units_in(placed):
 			names.append(_config.get_item(id).name)
-	_hud.show_units(names)
+	_hud.selection.show_units(names)
 	if placed != null and _village.is_own_unit(placed):
 		_hud.show_message("%s: click a place to walk, a building to go into it, or a tree, stone or gold to harvest it." % item.name)
 	elif placed != null and _village.is_wild_animal(placed):
@@ -609,9 +624,9 @@ func _select(placed: Village.PlacedItem) -> void:
 		for id: int in units:
 			stored.append([id, _config.get_item(id).name, units[id]])
 		var price := _config.warehouse_slot_price if _village.warehouse_capacity() < _config.warehouse_max_capacity else 0
-		_hud.show_warehouse(stored, _village.warehoused_count(), _village.warehouse_capacity(), price)
+		_hud.selection.show_warehouse(stored, _village.warehoused_count(), _village.warehouse_capacity(), price)
 	else:
-		_hud.show_warehouse(null, 0, 0, 0)
+		_hud.selection.show_warehouse(null, 0, 0, 0)
 	_update_production()
 
 
@@ -744,21 +759,15 @@ func _update_store() -> void:
 		# An import before this window has only the message above.
 		if _ui != null and _ui.has_symbol("PopUpAlertaMC") and free.any(func(placed: Village.PlacedItem) -> bool: return placed.item_id == Village.WIZARDRY):
 			_windows.add_child(PictureAlertWindow.new(_ui, _config, _config.text("AVISO_GRIMORIO_TITULO"), _config.text("AVISO_GRIMORIO_DESCRIPCION"), "alert_magic.jpg"))
-		var categories := []
+		var offered := {}
 		for category_id in Store.CATEGORIES:
-			var offered: Array[GameConfig.ItemDef] = []
-			for item in _store.items(category_id, _village.race, _village.get_level(), now):
-				if _sprites.get_sprite(item.img_name) != null:
-					offered.append(item)
-			var name: String = _config.category_names.get(category_id, str(category_id))
-			if category_id == Store.CATEGORY_NEW:
-				var end := Time.get_datetime_dict_from_unix_time(_store.rotation_end(now) + Time.get_time_zone_from_system()["bias"] * 60)
-				name += " (until %04d-%02d-%02d %02d:%02d)" % [end["year"], end["month"], end["day"], end["hour"], end["minute"]]
-			categories.append([name, offered])
-		_hud.set_categories(categories)
+			offered[category_id] = _store.items(category_id, _village.race, _village.get_level(), now).filter(func(item: GameConfig.ItemDef) -> bool: return _sprites.get_sprite(item.img_name) != null)
+		# The limited items show the days until the end of the rotation.
+		_hud.store.set_items(offered, ceili((_store.rotation_end(now) - now) / 86400.0))
 	_hud.refresh(_village)
 	_hud.show_world_button(_village.race != "h" or _village.get_level() >= Village.SECOND_TOWN_LEVEL)
-	_hud.show_goals(_goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> Array: return [goal.id, _goals.text(goal.title), _goals.progress_text(goal)]), _village.map_name())
+	_hud.show_goals(_goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> Array: return [goal.id, _goals.text(goal.title), _goals.progress_text(goal)]))
+	_hud.show_shield(_village.get_level(), _village.shield_seconds(now))
 
 
 ## Updates the marks of the ready buildings and the production of the selected building.
@@ -767,7 +776,7 @@ func _update_production() -> void:
 	_view.update_production(now, _town_quests.open_items() if _town_quests != null else [] as Array[Village.PlacedItem])
 	_view.update_damage()
 	if _selected == null or not _village.is_producer(_selected):
-		_hud.show_production(null, 0, "", 0, false, "")
+		_hud.selection.show_production(null, 0, 0, "", 0, false, "")
 	else:
 		var item := _config.get_item(_selected.item_id)
 		var requirement := ""
@@ -775,14 +784,14 @@ func _update_production() -> void:
 			requirement = "Breeds a new animal from two animals of the same kind. Select a captured animal, then click the nursery."
 		elif _village.needs_units(_selected):
 			requirement = "Works only with a unit in it. Select a unit, then click the building."
-		_hud.show_production(item, _village.seconds_to_ready(_selected, now), _product_text(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), requirement)
+		_hud.selection.show_production(item, _village.seconds_to_ready(_selected, now), _village.production_seconds(_selected), _product_text(_selected), _village.collect_cost(_selected), _village.can_hurry(_selected, now), requirement)
 	var unit := _village.trained_unit(_selected) if _selected != null else null
 	if unit == null:
-		_hud.show_training(null, {}, 0, -1, 0)
+		_hud.selection.show_training(null, {}, 0, -1, 0)
 	else:
-		_hud.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now), _village.speed_up_cost(_selected, now))
+		_hud.selection.show_training(unit, _village.training_costs(unit), _village.queued_units(_selected), _village.seconds_to_trained(_selected, now), _village.speed_up_cost(_selected, now))
 	var panel := _specials.describe(_panel, _selected, now)
-	_hud.show_actions(panel[0], panel[1])
+	_hud.selection.show_actions(panel[0], panel[1])
 
 
 ## Starts the quest in the town when it is due, spawns its boss waves and
@@ -798,7 +807,7 @@ func _check_town_quest() -> void:
 		_view.sync_items()
 		_save()
 		var id := _town_quests.quest_id()
-		_open_town_quest_window(_config.text("POPUP_QUEST_INFO_TITLE").replace("#0#", str(id + 1)) + ": " + _config.text(_town_quests.text_name("title")), _config.text(_town_quests.text_name("text")))
+		_open_town_quest_window(_config.text("POPUP_QUEST_INFO_TITLE").replace("#0#", str(id + 1)) + ": " + _config.text(_town_quests.text_name("title")), _config.text(_town_quests.text_name("text")), id, false)
 		_camera.position = IsoGrid.tile_to_map(Vector2(_town_quests.focus_tile()))
 	elif _town_quests.update(now):
 		_view.sync_items()
@@ -806,16 +815,17 @@ func _check_town_quest() -> void:
 		if was_active and not _town_quests.is_active():
 			_end_town_quest(old_level)
 	if _town_quests.is_active():
-		_hud.show_town_quest(_town_quests.progress_text())
+		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
 	else:
 		var left := _town_quests.seconds_to_next(now)
-		_hud.show_town_quest("%s: %02d:%02d:%02d" % [_config.text("TIMER_CAMPAMENTO_ENEMIGO"), left / 3600, left / 60 % 60, left % 60] if left > 0 else "")
+		_hud.show_town_quest("%s: %02d:%02d:%02d" % [_config.text("TIMER_CAMPAMENTO_ENEMIGO"), left / 3600, left / 60 % 60, left % 60] if left > 0 else "", _village.race == "t")
 
 
 func _collect_town_quest(placed: Village.PlacedItem) -> void:
 	var old_level := _village.get_level()
 	var ended_text := _config.text(_town_quests.text_name("end_title"))
 	var ended_body := _config.text(_town_quests.text_name("end_text"))
+	var ended_id := _town_quests.quest_id()
 	var result := _town_quests.collect(placed, _now())
 	if result.is_empty():
 		_select(placed)
@@ -826,9 +836,9 @@ func _collect_town_quest(placed: Village.PlacedItem) -> void:
 	_save()
 	if _town_quests.is_active():
 		_hud.show_message(result)
-		_hud.show_town_quest(_town_quests.progress_text())
+		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
 	else:
-		_open_town_quest_window(ended_text, ended_body)
+		_open_town_quest_window(ended_text, ended_body, ended_id, true)
 		_end_town_quest(old_level)
 		_check_town_quest()
 
@@ -840,11 +850,11 @@ func _end_town_quest(old_level: int) -> void:
 	_update_store()
 
 
-func _open_town_quest_window(title: String, text: String) -> void:
-	for child in _hud.get_children():
+func _open_town_quest_window(title: String, text: String, quest_id: int, completed: bool) -> void:
+	for child in _hud.windows().get_children():
 		if child is TownQuestWindow:
 			child.queue_free()
-	_hud.add_child(TownQuestWindow.new(title, text))
+	_hud.windows().add_child(TownQuestWindow.new(_ui, _config, title, text, TownQuestBook.picture(quest_id, _village.race), completed))
 
 
 func _show_panel(panel: SpecialActions.View) -> void:
@@ -1165,12 +1175,12 @@ func _open_goal(id: int) -> void:
 			return
 	if _goal_window != null and is_instance_valid(_goal_window):
 		_goal_window.queue_free()
-	_goal_window = GoalWindow.new(_goals, _config, _data_dir.path_join("ui/images"))
+	_goal_window = GoalWindow.new(_ui, _goals, _config)
 	_goal_window.do_it.connect(_on_goal_do_it)
 	_goal_window.closed.connect(func() -> void: _tutorial.handle(Tutorial.Action.GOAL_WINDOW_CLOSED))
 	if tutorial_step >= 0:
 		_tutorial.handle(Tutorial.Action.GOAL_BOX)
-	_hud.add_child(_goal_window)
+	_hud.windows().add_child(_goal_window)
 	for goal in _goals.active_goals():
 		if goal.id == id:
 			_goal_window.show_goal(goal)
@@ -1227,6 +1237,16 @@ func _on_rename_requested(new_name: String) -> void:
 	_update_store()
 	if _save():
 		_hud.show_message("Your empire is now %s." % _village.map_name())
+
+
+## The normal mouse of the client (GuiManager.returnMouse): the placement
+## and the selection tool stop, and nothing stays selected.
+func _cancel_tool() -> void:
+	if _view.is_placing():
+		_view.end_placement()
+	_view.selection_tool = false
+	_camera.panning = true
+	_select(null)
 
 
 ## The selection tool of the client: the next drag selects the units in a box.
@@ -1344,7 +1364,7 @@ func _visit_neighbour(entry: Dictionary) -> void:
 		return
 	# The host has no help mark in the client, but can be helped once in a session.
 	var can_help: bool = (entry["host"] or entry["assist"]) and not _visited.has(pid)
-	_visit = VisitScreen.new(neighbour, entry, can_help, _config, _sprites, _start_position(neighbour))
+	_visit = VisitScreen.new(_ui, neighbour, entry, can_help, _config, _sprites, _start_position(neighbour))
 	_visit.helped.connect(func() -> void: _record(VillageEvent.Kind.FRIEND_ASSISTED, {}))
 	_visit.closed.connect(_on_visit_closed.bind(pid))
 	_select(null)
@@ -1374,29 +1394,25 @@ func _offer_received_assists() -> void:
 	if assists.is_empty() or _tutorial.is_active() or _village.race != "h":
 		return
 	var pid: String = assists.keys()[0]
-	var dialog := ConfirmationDialog.new()
 	var name := pid
 	for entry in _neighbours.neighbours(_village.player_id()):
 		if entry["pid"] == pid:
 			name = entry["name"]
-	dialog.dialog_text = "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()]
-	dialog.ok_button_text = _config.text("AUX_ACEPTAR").strip_edges()
-	dialog.cancel_button_text = "No"
-	dialog.confirmed.connect(func() -> void:
+	var window := ConfirmWindow.new(_ui, _config, "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()])
+	window.confirmed.connect(func() -> void:
 		var helped := _village.accept_assist(pid)
 		_hud.show_message("%s helped %d of your buildings." % [name, helped.size()])
-		_after_assist(dialog))
-	dialog.canceled.connect(func() -> void:
+		_after_assist())
+	window.declined.connect(func() -> void:
 		_village.decline_assist(pid)
-		_after_assist(dialog))
-	_hud.add_child(dialog)
-	dialog.popup_centered()
+		_after_assist())
+	_hud.windows().add_child(window)
 
 
-func _after_assist(dialog: ConfirmationDialog) -> void:
-	dialog.queue_free()
+## The window of the help frees itself; the next help, if any, opens after it.
+func _after_assist() -> void:
 	_save()
-	_offer_received_assists()
+	_offer_received_assists.call_deferred()
 
 
 ## The PvP window; the client opens PvP from level VillageSocial.PVP_LEVEL.
@@ -1418,7 +1434,7 @@ func _open_pvp() -> void:
 			_hud.refresh(_village)
 		window.show_main(_now()))
 	window.attack_log_opened.connect(func() -> void: _record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"}))
-	_hud.add_child(window)
+	_hud.windows().add_child(window)
 	window.show_main(_now())
 
 
@@ -1426,7 +1442,7 @@ func _open_pvp() -> void:
 func _open_towns() -> void:
 	if _tutorial.is_active():
 		return
-	var window := TownWindow.new(_village, _config)
+	var window := TownWindow.new(_ui, _village, _config)
 	window.buy_requested.connect(func(with_cash: bool) -> void:
 		var result := _village.buy_second_town(with_cash, _now())
 		if result != Village.Placement.OK:
@@ -1438,7 +1454,7 @@ func _open_towns() -> void:
 	window.travel_requested.connect(func(index: int) -> void:
 		window.queue_free()
 		_travel(index, ""))
-	_hud.add_child(window)
+	_hud.windows().add_child(window)
 
 
 ## Saves, then loads the other town of the save (TownManager.loadTown of the client).
@@ -1489,14 +1505,13 @@ func _on_attack_requested(start_tile: Vector2i) -> void:
 	if _village.shield_seconds(_now()) == 0:
 		_start_attack(start_tile)
 		return
-	var dialog := ConfirmationDialog.new()
-	dialog.dialog_text = _config.text("PVP_SHIELDS_ATTACK_CONFIRMATION").strip_edges()
-	dialog.confirmed.connect(func() -> void:
-		dialog.queue_free()
-		_start_attack(start_tile))
-	dialog.canceled.connect(dialog.queue_free)
-	_spy.add_child(dialog)
-	dialog.popup_centered()
+	var window := ConfirmWindow.new(_ui, _config, _config.text("PVP_SHIELDS_ATTACK_CONFIRMATION").strip_edges())
+	window.confirmed.connect(func() -> void: _start_attack(start_tile))
+	var layer := CanvasLayer.new()
+	layer.layer = WINDOW_LAYER
+	layer.add_child(window)
+	window.tree_exited.connect(layer.queue_free)
+	_spy.add_child(layer)
 
 
 ## The attack starts ("begin_attack_new"): the own shield ends, and the whole

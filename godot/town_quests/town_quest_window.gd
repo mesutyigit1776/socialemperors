@@ -1,31 +1,51 @@
 class_name TownQuestWindow
-extends PanelContainer
+extends Control
 ## The window of a quest in the town (PopupQuestInfo2 of the client): the
-## chapter, the title and the text of the quest at its start, or of its end.
+## picture of the quest, the chapter and title, and the text of the quest at
+## its start, or of its end with the COMPLETED stamp, which grows into place
+## from 10 times its size in one second.
 
-const WIDTH := 420
+const STAMP_SECONDS := 1.0
+const STAMP_START_SCALE := 10.0
+
+var _window: UiClip
+var _completed := false
 
 
-func _init(title: String, text: String) -> void:
-	custom_minimum_size.x = WIDTH
-	var content := VBoxContainer.new()
-	add_child(content)
-	var heading := Label.new()
-	heading.text = title
-	heading.add_theme_font_size_override("font_size", 20)
-	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	heading.custom_minimum_size.x = WIDTH  # Without a width, wrapped text is as high as a column of single words.
-	content.add_child(heading)
-	var body := Label.new()
-	body.text = text
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size.x = WIDTH
-	content.add_child(body)
-	var close := Button.new()
-	close.text = "OK"
-	close.pressed.connect(queue_free)
-	content.add_child(close)
+## picture: a file of TownQuestBook.PICTURES, or "" for none.
+func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, picture: String, completed: bool) -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	var cover := ColorRect.new()
+	cover.color = Color(0, 0, 0, 0.5)
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(cover)
+	_window = ui.make("PopupQuestInfo2MC")
+	add_child(_window)
+	_window.set_text("txTitle", title)
+	_window.set_text("txDesc", text)
+	var texture := ui.image(picture) if not picture.is_empty() else null
+	if texture != null:
+		# The client centres the picture on its part (getRealSizeBitmap).
+		var image := TextureRect.new()
+		image.texture = texture
+		image.position = -texture.get_size() / 2
+		image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_window.clip("foto").add_child(image)
+	_completed = completed
+	_window.set_part_visible("mcCompleted", completed)
+	_window.set_text("mcCompleted/txtCompleted", config.text("AUX_COMPLETADO"))
+	_window.set_text("btnOk/lbl", "OK")
+	var ok := _window.clip("btnOk")
+	ok.make_button(true)
+	ok.pressed.connect(queue_free)
 
 
 func _ready() -> void:
-	position = (get_viewport_rect().size - Vector2(WIDTH, 0)) / 2 - Vector2(0, 150)
+	_window.position = get_viewport_rect().size / 2
+	if _completed:
+		var stamp := _window.clip("mcCompleted")
+		stamp.modulate.a = 0.0
+		stamp.scale = Vector2.ONE * STAMP_START_SCALE
+		var tween := create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tween.tween_property(stamp, "modulate:a", 1.0, STAMP_SECONDS)
+		tween.tween_property(stamp, "scale", Vector2.ONE, STAMP_SECONDS)

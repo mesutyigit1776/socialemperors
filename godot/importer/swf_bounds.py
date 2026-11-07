@@ -217,9 +217,28 @@ class SwfFile:
 					self.symbols[data[p + 2:name_end].decode('utf-8')] = char_id
 					p = name_end + 1
 
-	def without_placements(self, drops):
+	def max_character_id(self):
+		return max([*self.bounds, *self.sprites, *self.buttons, *self.edit_texts, *self.fonts])
+
+	def first_frame_placements(self, sprite_id, depths):
+		"""Returns the tags of the first frame of a sprite that place characters
+		at these depths, as bytes with their headers."""
+		data = self.data
+		start, end = self.sprites[sprite_id]
+		tags = []
+		for code, header, inner_start, inner_end in _raw_tags(data, start, end):
+			if code == SHOW_FRAME_TAG:
+				break
+			if code in PLACE_TAGS:
+				depth_pos = inner_start + (2 if code == 70 else 1)
+				if struct.unpack_from('<H', data, depth_pos)[0] in depths:
+					tags.append(data[header:inner_end])
+		return b''.join(tags)
+
+	def without_placements(self, drops, new_sprites=None):
 		"""Returns an uncompressed copy of the SWF file in which the sprites
-		{sprite id: set of depths} no longer place anything at these depths."""
+		{sprite id: set of depths} no longer place anything at these depths.
+		new_sprites {sprite id: placement tags} adds sprites of one frame."""
 		data = self.data
 		parts = []
 		copied = self._first_tag
@@ -239,7 +258,15 @@ class SwfFile:
 			parts.append(data[copied:header])
 			parts.append(struct.pack('<HI', (SPRITE_TAG << 6) | 0x3F, len(content)) + bytes(content))
 			copied = end
-		body = data[:self._first_tag] + b''.join(parts) + data[copied:]
+		rest = data[copied:]
+		if new_sprites:
+			# Before the End tag, which is the last tag of the file.
+			added = b''
+			for sprite_id, tags in new_sprites.items():
+				content = struct.pack('<HH', sprite_id, 1) + tags + struct.pack('<H', SHOW_FRAME_TAG << 6) + b'\0\0'
+				added += struct.pack('<HI', (SPRITE_TAG << 6) | 0x3F, len(content)) + content
+			rest = rest[:-2] + added + rest[-2:]
+		body = data[:self._first_tag] + b''.join(parts) + rest
 		return b'FWS' + bytes([self.version]) + struct.pack('<I', len(body) + 8) + body
 
 	def named_child(self, sprite_id, name):

@@ -261,7 +261,7 @@ func needs_units(placed: PlacedItem) -> bool:
 ## Seconds until the player can collect: 0 when the building is ready, -1 when it
 ## does not produce, has no unit or has no work time.
 func seconds_to_ready(placed: PlacedItem, now: float) -> float:
-	var duration := _production_seconds(placed)
+	var duration := production_seconds(placed)
 	if duration < 0:
 		return -1
 	return maxf(duration - (now - float(placed._entry[4])), 0)
@@ -810,6 +810,19 @@ func population() -> int:
 ## The population that the buildings allow, up to MAX_POPULATION. Wonders add
 ## their population also above that limit.
 func max_population() -> int:
+	var parts := _population_parts()
+	return mini(parts.x, MAX_POPULATION) + parts.y
+
+
+## The houses and other buildings give no more population: the HUD of the
+## client shows the population in blue then.
+func is_population_capped() -> bool:
+	return _population_parts().x >= MAX_POPULATION
+
+
+## The population of all buildings, and the part of it that wonders give,
+## which does not count for MAX_POPULATION.
+func _population_parts() -> Vector2i:
 	var total := 0
 	var wonders := 0
 	for placed in items:
@@ -818,7 +831,7 @@ func max_population() -> int:
 			total += item.population
 			if item.category_id == CATEGORY_WONDER:
 				wonders += item.population
-	return mini(total, MAX_POPULATION) + wonders
+	return Vector2i(total, wonders)
 
 
 ## The costs of training the unit, as the server command "push_queue_unit" computes them.
@@ -950,7 +963,7 @@ func complete_training(building: PlacedItem, now: int) -> PlacedItem:
 
 
 ## The production time of the building in seconds, or -1 when it does not produce.
-func _production_seconds(placed: PlacedItem) -> float:
+func production_seconds(placed: PlacedItem) -> float:
 	if not is_producer(placed) or needs_units(placed):
 		return -1
 	if needs_work_time(placed):

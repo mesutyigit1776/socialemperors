@@ -24,5 +24,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			zoomed.emit()
 
 
+## Zooms as one step of the mouse wheel does, for example from the zoom slider of the HUD.
+func zoom_to(level: float) -> void:
+	_set_zoom_level(level)
+	zoomed.emit()
+
+
 func _set_zoom_level(level: float) -> void:
 	zoom = Vector2.ONE * clampf(level, ZOOM_MIN, ZOOM_MAX)

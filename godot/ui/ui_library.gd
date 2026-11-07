@@ -20,6 +20,7 @@ var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "f
 var _buttons: Dictionary = {}  # Button id (int) -> top-left of its images (Vector2).
 var _textures: Dictionary = {}  # Path -> Texture2D, or null for a missing file.
 var _fonts: Dictionary = {}  # Font id -> Font.
+var _font_ids: Dictionary = {}  # Font name -> font id, for the texts that the client makes in code.
 
 
 ## Returns null and reports an error when <data_dir>/<folder>/layout.json is
@@ -57,6 +58,9 @@ static func load_from(data_dir: String, frames: FrameCache, folder := "ui") -> U
 			push_error("'%s' has an incorrect button %s." % [path, key])
 			return null
 		library._buttons[key.to_int()] = library._art.canvas(key.to_int()).position
+	var fonts: Variant = data.get("fonts", {})
+	for name: String in fonts if fonts is Dictionary else {}:
+		library._font_ids[name] = int(fonts[name])
 	for name: String in library._symbols:
 		if not library._clips.has(library._symbols[name]):
 			push_error("'%s' has no sprite for the window %s." % [path, name])
@@ -129,6 +133,12 @@ func font(font_id: Variant) -> Font:
 		file.data = data
 		_fonts[font_id] = file if not data.is_empty() else ThemeDB.fallback_font
 	return _fonts[font_id]
+
+
+## A font of the client by its name, for example "Arial Rounded MT Bold", for
+## a text that the client makes in code (TextFieldUtil.getEmbeddedFontName).
+func named_font(name: String) -> Font:
+	return font(_font_ids.get(name))
 
 
 func _clip_frames(sprite_id: int) -> SpriteLibrary.Frames:

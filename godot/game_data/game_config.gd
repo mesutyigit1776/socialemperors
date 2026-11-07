@@ -14,6 +14,9 @@ class ItemDef:
 	var category_id: int
 	var in_store: int  ## 0: not sold. 1 or 3: sold to humans. 2 or 4: sold to trolls.
 	var subcat_functional: int  ## Function of the building, for example 111 for a house.
+	var subcategory_id: int  ## The subcategory of the store, for example 11 (Houses) in category 1.
+	var display_order: int  ## The order in the store.
+	var new_item: bool  ## The store marks the item as new.
 	var cost: int
 	var cost_type: String  ## Resource code, see Village.RESOURCE_KEYS.
 	var xp: int  ## Experience that the player gets when buying the item.
@@ -119,7 +122,7 @@ var land_prices: Array[Dictionary] = []
 var unit_packs: Array[Dictionary] = []
 var max_packs_per_purchase: int  ## MAX_PACKS_ALLOWED_TO_BUY
 var allies_item_ids: Array[int] = []  ## Allies buildings and markets, and the recruitment prize.
-var category_names: Dictionary = {}  ## Store category id -> name.
+var subcategories: Dictionary = {}  ## Store category id -> [[subcategory id, name], ...] in store order.
 ## Buildings that work only after the player chooses a work time, see Village.WORK_MINUTES.
 var variable_collect_ids: Array[int] = []
 ## The client spawns wild animals at each start until the player has this number
@@ -334,7 +337,11 @@ static func load_from_file(path: String) -> GameConfig:
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
 			if entry is Dictionary and to_int(entry.get("id")) != null:
-				config.category_names[to_int(entry["id"])] = str(entry.get("name", ""))
+				var subs: Array = []
+				for sub: Variant in entry.get("sub", []) if entry.get("sub") is Array else []:
+					if sub is Dictionary and to_int(sub.get("id")) != null:
+						subs.append([to_int(sub["id"]), str(sub.get("name", ""))])
+				config.subcategories[to_int(entry["id"])] = subs
 	return config
 
 
@@ -373,7 +380,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	if not entry is Dictionary:
 		return null
 	var numbers := {}
-	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "life", "attack", "defense", "attack_interval", "flying", "elevation", "size", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
+	for key: String in ["id", "width", "height", "category_id", "in_store", "subcat_functional", "subcategory_id", "display_order", "new_item", "cost", "xp", "min_level", "max_frame", "collect", "collect_xp", "population", "store_level", "unit_capacity", "trains", "units_limit", "training_time", "velocity", "attack_range", "life", "attack", "defense", "attack_interval", "flying", "elevation", "size", "breeding_order", "sm_training_time", "potion", "cost_unit_cash"]:
 		numbers[key] = to_int(entry.get(key, 1 if key in ["width", "height", "max_frame"] else 0))
 		if numbers[key] == null:
 			return null
@@ -394,6 +401,9 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.category_id = numbers["category_id"]
 	item.in_store = numbers["in_store"]
 	item.subcat_functional = numbers["subcat_functional"]
+	item.subcategory_id = numbers["subcategory_id"]
+	item.display_order = numbers["display_order"]
+	item.new_item = numbers["new_item"] == 1
 	item.cost = numbers["cost"]
 	item.cost_type = str(entry.get("cost_type", ""))
 	item.xp = numbers["xp"]

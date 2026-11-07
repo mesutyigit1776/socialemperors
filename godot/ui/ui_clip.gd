@@ -13,12 +13,14 @@ signal pressed  ## The player clicked a clip that is a button, see make_button()
 
 ## Flash draws the text of a field 2 pixels inside its rectangle.
 const TEXT_GUTTER := 2.0
+## The key in _parts of the shapes under a mask, after the key of the mask.
+const MASKED_SUFFIX := "#masked"
 
 var library: UiLibrary
 var sprite_id: int
 var frame := 0
 var _base := TextureRect.new()
-var _parts: Dictionary = {}  # Part name (or "#depth" for unnamed text) -> Control.
+var _parts: Dictionary = {}  # Part name (or "#depth" for an unnamed text or button) -> Control.
 var _button := false
 var _hover_frame := false
 static var _colour_materials := {}  # Color -> ShaderMaterial, see set_colour().
@@ -73,10 +75,44 @@ func show_frame(new_frame: int) -> void:
 			node.modulate.a = 1.0
 		if part.get("mask", false):
 			node.visible = false
+			if part.has("masked"):
+				_show_masked(key, node, int(part["masked"]))
 	for key: String in _parts.keys():
-		if not shown.has(key):
+		if not shown.has(key) and not shown.has(key.trim_suffix(MASKED_SUFFIX)):
 			_parts[key].queue_free()
 			_parts.erase(key)
+
+
+## The shapes under a named mask (see importer/ui_import.py) show only
+## inside the rectangle of the mask, which the client moves or scales, for
+## example to fill a bar.
+func _show_masked(key: String, mask: Control, layer_id: int) -> void:
+	var layer_key := key + MASKED_SUFFIX
+	var layer: MaskedLayer = _parts.get(layer_key)
+	if layer == null:
+		layer = MaskedLayer.new(mask, UiClip.new(library, layer_id))
+		_parts[layer_key] = layer
+		add_child(layer)
+	move_child(layer, mask.get_index() + 1)
+
+
+class MaskedLayer:
+	extends Control
+	var _mask: Control
+	var _content: UiClip
+
+	func _init(mask: Control, content: UiClip) -> void:
+		_mask = mask
+		_content = content
+		clip_contents = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(content)
+
+	func _process(_delta: float) -> void:
+		var rect: Rect2 = Transform2D(_mask.rotation, _mask.scale, 0.0, _mask.position) * (_mask as UiClip).bounds()
+		position = rect.position
+		size = rect.size.abs()
+		_content.position = -rect.position
 
 
 ## Gives the image of the clip one colour, as the color of a ColorTransform
@@ -134,12 +170,23 @@ func set_part_visible(path: String, shown: bool) -> void:
 ## as the buttons of the client do.
 func make_button(hover_frame := false) -> void:
 	_button = true
+	# A sprite of the client that is a button often has an unnamed Flash
+	# button as its image, which takes the clicks.
+	for key: String in _parts:
+		if key.begins_with("#") and _parts[key] is UiButton:
+			_parts[key].pressed.connect(func() -> void: pressed.emit())
 	_hover_frame = hover_frame and frame_count() > 1
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	if _hover_frame:
 		mouse_entered.connect(func() -> void: show_frame(1))
 		mouse_exited.connect(func() -> void: show_frame(0))
+
+
+## The image of the clip takes the clicks on its rectangle, so that they do
+## not reach the nodes below it, for example the map below a bar.
+func take_mouse() -> void:
+	_base.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
 ## The rectangle of the images and texts of the clip, in its own coordinates.

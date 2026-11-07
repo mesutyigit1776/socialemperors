@@ -136,6 +136,16 @@ def town_quest_item_ids():
 	return ids
 
 
+def town_quest_pictures(source):
+	"""Returns the pictures of the window of the quests in the town: the file
+	names in PICTURES of town_quest_book.gd that assets/images_new has."""
+	with open(TOWN_QUEST_BOOK, encoding='utf-8') as f:
+		book = f.read()
+	block = re.search(r'const PICTURES := \{(.*?)\n\}', book, re.S)
+	names = set(re.findall(r'"([\w.-]+\.(?:jpg|png))"', block.group(1))) if block else set()
+	return sorted(name for name in names if os.path.isfile(os.path.join(source, "assets", "images_new", name)))
+
+
 def needed_items(config, villages, shop, export_all):
 	"""Returns {img_name: item} for the items whose graphics must be exported.
 
@@ -409,13 +419,14 @@ def main():
 	goal_images = sorted({goal[key] for goal in config.get("goals", []) for key in ("image", "characters")
 			if goal.get(key) not in (None, "", "none") and os.path.isfile(os.path.join(source, "assets", "images_new", goal[key]))})
 	ui_record_path = os.path.join(out_dir, "ui", "import.json")
-	ui_record = {"importer": version, "sources": [file_stamp(os.path.join(source, path)) for path in (CLIENT_SWF, CAST_SWF)], "pictures": unit_thumbs + spell_images + goal_images}
+	quest_images = town_quest_pictures(source)
+	ui_record = {"importer": version, "sources": [file_stamp(os.path.join(source, path)) for path in (CLIENT_SWF, CAST_SWF)], "pictures": unit_thumbs + spell_images + goal_images + quest_images}
 	if is_done(ui_record_path, "windows", ui_record):
 		print("windows: done before", flush=True)
 	else:
 		shutil.rmtree(os.path.join(out_dir, "ui"), ignore_errors=True)
 		try:
-			print(f"windows: {import_ui(source, out_dir, unit_thumbs, spell_images + goal_images)} sprites", flush=True)
+			print(f"windows: {import_ui(source, out_dir, unit_thumbs, spell_images + goal_images + quest_images)} sprites", flush=True)
 			write_json_last(ui_record_path, {"windows": ui_record})
 		except (SwfError, RuntimeError, OSError) as e:
 			failed.append(("windows of the client", str(e)))

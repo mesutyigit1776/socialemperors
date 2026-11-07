@@ -1,105 +1,138 @@
 class_name GoalWindow
-extends PanelContainer
-## The goal window of the client (MissionPopup and PopupGoalList): one goal
-## with its picture, character, description, reward and progress, or the list
-## of the active goals. The port shows it with the controls of Godot; the art
-## of the client's window comes with step 5 of the roadmap.
+extends Control
+## The goal windows of the client: one goal (popupInfo of MissionPopup) with
+## its picture, character, description, reward and progress, or the list of
+## the active goals (PopupGoalList with a GoalListLine for each goal, 5 on a
+## page).
 
 ## The player pressed "DO IT" for the goal; see GoalBook.hint().
 signal do_it(goal: GameConfig.GoalDef)
 signal closed
 
-const WIDTH := 460
-const PICTURE_HEIGHT := 120
+const LINES_ON_PAGE := 5
+const LINE_GAP := 5.0
+const ICON_FRAMES := 4
 
+var _ui: UiLibrary
 var _goals: GoalBook
 var _config: GameConfig
-var _images_dir: String
-var _content := VBoxContainer.new()
+var _window: UiClip
+var _page := 0
+var _centre_offset := Vector2.ZERO  # The point of the window that is in the middle of the screen.
 
 
-## images_dir: the folder with the pictures of the goals (ui/images of the import).
-func _init(goals: GoalBook, config: GameConfig, images_dir: String) -> void:
+func _init(ui: UiLibrary, goals: GoalBook, config: GameConfig) -> void:
+	_ui = ui
 	_goals = goals
 	_config = config
-	_images_dir = images_dir
-	custom_minimum_size.x = WIDTH
-	set_anchors_preset(Control.PRESET_CENTER)
-	add_child(_content)
-
-
-func _ready() -> void:
-	position = (get_viewport_rect().size - Vector2(WIDTH, 0)) / 2 - Vector2(0, 150)
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	var cover := ColorRect.new()
+	cover.color = Color(0, 0, 0, 0.5)
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(cover)
 
 
 func show_goal(goal: GameConfig.GoalDef) -> void:
-	_clear()
-	var pictures := HBoxContainer.new()
-	for name in [goal.image, goal.character]:
-		var texture := _load_picture(name)
-		if texture != null:
-			var picture := TextureRect.new()
-			picture.texture = texture
-			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
-			picture.custom_minimum_size = Vector2(texture.get_width() * PICTURE_HEIGHT / float(texture.get_height()), PICTURE_HEIGHT)
-			pictures.add_child(picture)
-	if pictures.get_child_count() > 0:
-		_content.add_child(pictures)
-	_label(_goals.text(goal.title), true)
-	_label(_goals.text(goal.description))
-	_label("Reward: %d gold. Progress: %s" % [goal.reward, _goals.progress_text(goal)])
-	var buttons := HBoxContainer.new()
-	_button(buttons, _config.text("GOALS_GO").strip_edges(), func() -> void: do_it.emit(goal))
-	_button(buttons, _config.text("OPEN_GOAL_LIST").strip_edges(), show_list)
-	_button(buttons, "Close", _close)
-	_content.add_child(buttons)
+	_replace(_ui.make("popUpMissionsMC"))
+	for part: String in GoalBox.HIDDEN + ["mcGoal1", "mcGoal2", "btnHelp"]:
+		if part != "popupInfo":
+			_window.set_part_visible(part, false)
+	var info := _window.clip("popupInfo")
+	# The client covers the screen with the dark background "fons"; the port has its cover.
+	info.set_part_visible("fons", false)
+	info.set_part_visible("btnPay", false)
+	info.set_text("popupTitle", _config.text("POPUP_MISION_TITULO"))
+	info.set_text("title", _goals.text(goal.title))
+	info.set_text("desc", "%s\n\n%s" % [_goals.text(goal.description), _config.text("POPUP_MISION_COMPLETADO").replace("#0#", _goals.progress_text(goal))])
+	info.set_text("lblReward", _config.text("AUX_RECOMPENSA") + ":")
+	info.set_text("rewardDesc", str(goal.reward))
+	info.set_text("btnTutorialize/lbl", _config.text("GOALS_GO"))
+	info.set_text("btnGoalList/lbl", _config.text("OPEN_GOAL_LIST"))
+	_add_picture(info.clip("foto"), goal.image)
+	_add_picture(info.clip("ninot"), goal.character)
+	_button(info.clip("btnTutorialize"), func() -> void: do_it.emit(goal))
+	_button(info.clip("btnGoalList"), show_list)
+	info.button("closeButt").pressed.connect(_close)
+	_centre(info.position)
 
 
 func show_list() -> void:
-	_clear()
-	_label(_config.text("OPEN_GOAL_LIST").strip_edges(), true)
-	for goal in _goals.active_goals():
-		var row := HBoxContainer.new()
-		_button(row, "%s  %s  (%d gold)" % [_goals.text(goal.title), _goals.progress_text(goal), goal.reward], show_goal.bind(goal))
-		_content.add_child(row)
-	var buttons := HBoxContainer.new()
-	_button(buttons, "Close", _close)
-	_content.add_child(buttons)
+	_replace(_ui.make("PopupGoalListMC"))
+	_window.set_text("lblTitle", _config.text("AUX_OBJETIVOS"))
+	_window.button("btnClose").pressed.connect(_close)
+	for pair: Array in [["butPrev", -1], ["butNext", 1]]:
+		var step: int = pair[1]
+		_button(_window.clip(pair[0]), func() -> void:
+			_page += step
+			_show_page())
+	_page = 0
+	_show_page()
+	_centre(Vector2.ZERO)
 
 
-func _clear() -> void:
-	for child in _content.get_children():
-		_content.remove_child(child)
-		child.queue_free()
+func _show_page() -> void:
+	var anchor := _window.clip("listAnchor")
+	for child in anchor.get_children():
+		if child is UiClip:
+			child.queue_free()
+	var goals := _goals.active_goals()
+	var pages := maxi(ceili(goals.size() / float(LINES_ON_PAGE)), 1)
+	_page = clampi(_page, 0, pages - 1)
+	var y := 0.0
+	for goal in goals.slice(_page * LINES_ON_PAGE, (_page + 1) * LINES_ON_PAGE):
+		var line := _ui.make("GoalListLineMC")
+		line.position.y = y
+		line.set_text("title", _goals.text(goal.title))
+		line.set_text("percent", _config.text("POPUP_MISION_COMPLETADO").replace("#0#", _goals.progress_text(goal)))
+		line.clip("goalIcon").show_frame(goal.id % ICON_FRAMES)
+		line.set_part_visible("btnPay", false)
+		line.set_part_visible("btnReward", false)
+		line.set_text("btnInfo/lbl", "+ " + _config.text("BTN_MORE_INFO"))
+		_button(line.clip("btnInfo"), show_goal.bind(goal))
+		anchor.add_child(line)
+		y += line.bounds().end.y + LINE_GAP
+	_window.set_part_visible("butPrev", _page > 0)
+	_window.set_part_visible("butNext", _page < pages - 1)
 
 
-func _label(text: String, title := false) -> void:
-	var label := Label.new()
-	label.text = text
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = WIDTH - 20
-	if title:
-		label.add_theme_font_size_override("font_size", 20)
-	_content.add_child(label)
+func _replace(window: UiClip) -> void:
+	if _window != null:
+		_window.queue_free()
+	_window = window
+	add_child(_window)
 
 
-func _button(parent: Container, text: String, action: Callable) -> void:
-	var button := Button.new()
-	button.text = text
-	button.pressed.connect(action)
-	parent.add_child(button)
+func _ready() -> void:
+	_place()
+
+
+## Puts the point of the window at this position in the middle of the screen.
+func _centre(point: Vector2) -> void:
+	_centre_offset = point
+	_place()
+
+
+func _place() -> void:
+	if is_inside_tree() and _window != null:
+		_window.position = get_viewport_rect().size / 2 - _centre_offset
+
+
+func _button(clip: UiClip, action: Callable) -> void:
+	clip.make_button(true)
+	clip.pressed.connect(action)
+
+
+## The client centres the pictures of the goals on their part (getRealSizeBitmap).
+func _add_picture(holder: UiClip, name: String) -> void:
+	var texture := _ui.image(name) if name != "none" and not name.is_empty() else null
+	if texture != null:
+		var picture := TextureRect.new()
+		picture.texture = texture
+		picture.position = -texture.get_size() / 2
+		picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(picture)
 
 
 func _close() -> void:
 	closed.emit()
 	queue_free()
-
-
-## The picture, or null when the import does not have it.
-func _load_picture(name: String) -> Texture2D:
-	var path := _images_dir.path_join(name)
-	if name == "none" or not FileAccess.file_exists(path):
-		return null
-	var image := Image.load_from_file(path)
-	return ImageTexture.create_from_image(image) if image != null else null

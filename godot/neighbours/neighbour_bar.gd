@@ -1,36 +1,68 @@
 class_name NeighbourBar
-extends PanelContainer
-## The neighbour bar of the client (FriendsWindow and FriendButton) at the
-## bottom of the village, between the spell book and the HUD panel: the neighbours sorted by experience, then the host
+extends Control
+## The neighbour bar of the client (FriendsWindow and FriendButton) in the
+## bottom bar of the HUD: the neighbours sorted by experience, then the host
 ## of the tutorial, who stands for Arthur and Guinevere. It shows SHOWN
 ## neighbours; the arrows move the list by one or by SHOWN. A click on a
 ## neighbour opens the menu with "Visit" (PopOverVisit). A neighbour whose
-## buildings the player can help has a mark.
+## buildings the player can help has the mark of the client.
 
 signal visit_requested(entry: Dictionary)
 
 const SHOWN := 6
-const BUTTON_SIZE := Vector2(100, 64)
-## The spell book is at the bottom left, the HUD panel at the right.
-const LEFT := 130
-const HELP_MARK := "+ "  ## Before the name of a neighbour that the player can help.
+## FriendsWindow: the window is at (-10, -12) in mcFriends, and its buttons are
+## 88 pixels apart from x = 29.
+const WINDOW_POSITION := Vector2(-10, -12)
+const BUTTON_X := 29.0
+const BUTTON_Y := 11.0
+const BUTTON_STEP := 88.0
+## FriendButton grows by 10 % under the mouse.
+const HOVER_SCALE := 1.1
+const HOVER_SHIFT := Vector2(-4, -5.4)
+const HOST_PICTURE := "thumbrey.jpg"
 
+var _ui: UiLibrary
+var _config: GameConfig
+var _window: UiClip
+var _buttons: Array[UiClip] = []
 var _entries: Array[Dictionary] = []
 var _start := 0
-var _row := HBoxContainer.new()
-var _menu := PopupMenu.new()
-var _chosen: Dictionary
+var _popover: UiClip
 
 
-func _init() -> void:
-	set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	grow_vertical = Control.GROW_DIRECTION_BEGIN
-	offset_left = LEFT
-	offset_bottom = -6
-	add_child(_row)
-	_menu.add_item("Visit", 0)
-	_menu.id_pressed.connect(func(_id: int) -> void: visit_requested.emit(_chosen))
-	add_child(_menu)
+func _init(ui: UiLibrary, config: GameConfig) -> void:
+	_ui = ui
+	_config = config
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_window = ui.make("MenuTabFriendsMC")
+	_window.position = WINDOW_POSITION
+	add_child(_window)
+	for pair: Array in [["shiftLeft", -SHOWN], ["oneLeft", -1], ["oneRight", 1], ["shiftRight", SHOWN]]:
+		var arrow := _window.clip(pair[0])
+		arrow.make_button()
+		var step: int = pair[1]
+		arrow.pressed.connect(func() -> void:
+			_start = clampi(_start + step, 0, maxi(_entries.size() - SHOWN, 0))
+			_refresh())
+	for index in SHOWN:
+		var button := ui.make("FriendButtonMC")
+		var place := Vector2(BUTTON_X + BUTTON_STEP * index, BUTTON_Y)
+		button.position = place
+		button.make_button()
+		button.pressed.connect(_open_popover.bind(index))
+		button.mouse_entered.connect(func() -> void:
+			button.scale = Vector2.ONE * HOVER_SCALE
+			button.position = place + HOVER_SHIFT)
+		button.mouse_exited.connect(func() -> void:
+			button.scale = Vector2.ONE
+			button.position = place)
+		button.set_part_visible("mcworld", false)
+		var picture := TextureRect.new()
+		picture.name = "picture"
+		picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.clip("holder").add_child(picture)
+		_window.add_child(button)
+		_buttons.append(button)
 
 
 ## The entries of the bar, as the client builds them: neighbours (see
@@ -62,35 +94,57 @@ func show_entries(new_entries: Array[Dictionary]) -> void:
 
 
 func _refresh() -> void:
-	for child in _row.get_children():
-		child.queue_free()
-	_arrow("<<", -SHOWN)
-	_arrow("<", -1)
-	for index in range(_start, _start + SHOWN):
-		var button := Button.new()
-		button.custom_minimum_size = BUTTON_SIZE
-		if index < _entries.size():
-			var entry := _entries[index]
-			button.text = "%s%s\nLevel %d" % [HELP_MARK if entry["assist"] else "", entry["name"], entry["level"]]
-			button.clip_text = true
-			button.tooltip_text = "%s, XP %d%s" % [entry["name"], entry["xp"], ". You can help this neighbour." if entry["assist"] else ""]
-			button.pressed.connect(func() -> void:
-				_chosen = entry
-				_menu.popup(Rect2i(get_global_mouse_position(), Vector2i.ZERO)))
-		else:
-			button.text = "No neighbour"
-			button.disabled = true
-		_row.add_child(button)
-	_arrow(">", 1)
-	_arrow(">>", SHOWN)
+	_close_popover()
+	for index in SHOWN:
+		var button := _buttons[index]
+		var has_entry := _start + index < _entries.size()
+		var entry: Dictionary = _entries[_start + index] if has_entry else {}
+		button.set_text("friendName", entry.get("name", ""))
+		button.set_text("exp", _config.text("AUX_EXP").replace("#0#", str(entry["xp"])) if has_entry else "")
+		button.set_text("townSize", "")
+		button.set_text("levelStar/levelText", str(entry.get("level", "")))
+		button.set_part_visible("levelStar", has_entry)
+		button.set_part_visible("mcassist", entry.get("assist", false))
+		# The client centres the picture of the host on the holder.
+		var picture: TextureRect = button.clip("holder").get_node("picture")
+		picture.texture = _ui.image(HOST_PICTURE) if entry.get("host", false) else null
+		picture.position = -picture.texture.get_size() / 2 if picture.texture != null else Vector2.ZERO
+		button.mouse_filter = Control.MOUSE_FILTER_STOP if has_entry else Control.MOUSE_FILTER_IGNORE
+	_set_arrows("shiftLeft", "oneLeft", _start > 0)
+	_set_arrows("shiftRight", "oneRight", _start + SHOWN < _entries.size())
 
 
-func _arrow(text: String, step: int) -> void:
-	var button := Button.new()
-	button.text = text
-	var next := clampi(_start + step, 0, maxi(_entries.size() - SHOWN, 0))
-	button.disabled = next == _start
-	button.pressed.connect(func() -> void:
-		_start = next
-		_refresh())
-	_row.add_child(button)
+## FriendsWindow.disableButton2 shows an arrow that leads nowhere at half alpha.
+func _set_arrows(shift: String, one: String, enabled: bool) -> void:
+	for name in [shift, one]:
+		var arrow := _window.clip(name)
+		arrow.modulate.a = 1.0 if enabled else 0.5
+		arrow.mouse_filter = Control.MOUSE_FILTER_STOP if enabled else Control.MOUSE_FILTER_IGNORE
+
+
+## PopOverVisit at the mouse, with the Visit button; it closes when the mouse leaves it.
+func _open_popover(index: int) -> void:
+	_close_popover()
+	var entry := _entries[_start + index]
+	_popover = _ui.make("PopOverVisitMC")
+	_popover.position = get_global_mouse_position()
+	_popover.set_part_visible("buttonAttack", false)
+	_popover.set_part_visible("buttonSendGift", false)
+	_popover.set_text("buttonVisit/lbl", _config.text("POPOVER_FRIEND_BUTTON_VISIT"))
+	var visit := _popover.clip("buttonVisit")
+	visit.make_button(true)
+	visit.pressed.connect(func() -> void:
+		_close_popover()
+		visit_requested.emit(entry))
+	visit.mouse_exited.connect(_close_popover)
+	# Over the HUD, at the place of the mouse on the screen.
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	layer.add_child(_popover)
+	add_child(layer)
+
+
+func _close_popover() -> void:
+	if _popover != null:
+		_popover.get_parent().queue_free()
+		_popover = null

@@ -33,7 +33,7 @@ func _init(village: Village, config: GameConfig, rng: RandomNumberGenerator) -> 
 	_rng = rng
 
 
-## Returns [text, actions] for VillageHud.show_actions(). building is the selected
+## Returns [text, actions] for SelectionPanel.show_actions(). building is the selected
 ## item for View.BUILDING; the text and actions are empty when it is not special.
 func describe(view: View, building: Village.PlacedItem, now: int) -> Array:
 	match view:

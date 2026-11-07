@@ -1,58 +1,67 @@
 class_name VillageHud
 extends CanvasLayer
-## Village screen interface: resources, the build menu and a message line.
+## The HUD of the village with the art of the client (GuiMC and GuiManager):
+## the resources, the experience bar, the cash, the name of the empire, the
+## population and the shield at the top; the bottom bar with the neighbours
+## (see NeighbourBar) or the panel of the selected item (SelectionPanel), and
+## the tools: the normal mouse, the store, the square tool, the World menu
+## and the Gift menu. The goal box (GoalBox) is at the left.
+##
+## The client puts its HUD of 760 pixels in the middle of a full screen, with
+## the bottom bar at the bottom and the bars of the top at the top
+## (StateNormal.setFullScreen); the port does the same in its window.
 
-signal item_selected(item: GameConfig.ItemDef)
-## The player wants to move the selected item.
-signal move_requested
-## The player confirmed the sale of the selected item.
-signal sell_confirmed
-## The player wants to turn the selected item.
-signal rotate_requested
-## The player wants to collect from the selected building.
-signal collect_requested
-## The player wants to pay cash to collect from the selected building at once.
-signal hurry_requested
-## The player chose Village.WORK_MINUTES[work_time] for the selected mill or mine.
-signal work_time_chosen(work_time: int)
-## The player wants to train a unit in the selected building.
-signal train_requested
-## The player wants to pay cash so that all units in training are ready at once.
-signal speed_up_requested
-## The player wants to take the last unit out of the training queue and get its cost back.
-signal unqueue_requested
-## The player wants to take Village.units_in(selected)[index] out of the selected building.
-signal unit_out_requested(index: int)
-## The player wants to take a unit with this item id out of the unit warehouse.
-signal warehouse_unit_out_requested(unit_id: int)
-## The player wants to buy one more place in the unit warehouse.
-signal warehouse_slot_requested
-## The player chose an action of the action panel; id is the id that show_actions() gave.
-signal action_requested(id: String)
-## The player wants to see the collections, or the items in the item store.
 signal collections_requested
 signal stored_items_requested
 signal quests_requested
 signal survival_requested
 signal tournament_requested
 signal pvp_requested
-## The player opens the town window (the World button).
+## The player opens the town window (the town selector of the client).
 signal towns_requested
 signal packs_requested
-## The player wants to put the selected item into the item store.
-signal store_requested
 ## The player gave the map a new name.
 signal rename_requested(new_name: String)
 ## The next drag on the map selects the units in a box.
 signal selection_tool_requested
-## The player clicked a goal of the goal box: its id.
+## The player clicked the normal mouse: the current tool stops.
+signal tool_cancelled
+## The player clicked a goal of the goal box: its id, or 0 for the goal list.
 signal goal_requested(goal_id: int)
+## The player used the zoom slider: the zoom of MapCamera that it asks for.
+signal zoom_requested(level: float)
 
-const PANEL_WIDTH := 340
-const PANEL_MARGIN := 10.0
-const ACTIONS_MAX_HEIGHT := 220  ## More actions than fit scroll.
-const GOAL_BOX_WIDTH := 260
+const CLIENT_WIDTH := 760
+## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
+const BAR_HEIGHT := 125
+const CLIENT_Y := 525
+## The parts at the top, which the client moves to the top of a full screen.
+const TOP_PARTS := ["experienceBar", "topLeft", "topRight", "barraAttackArriba", "cash", "addCashButton"]
+## The parts that the village does not show (StateNormal.enter and
+## GuiManager.createButtonsHerramientas); the port has no collection panel,
+## options, map button, fast collect, remove tool or darts.
+const HIDDEN := ["barraAttackArriba", "questProgressButton", "panelCollection", "options_panel", "bgBar/btnExit", "bgBar/returnHome",
+		"bgBar/iconMenu", "bgBar/iconMenuGift", "bgBar/iconMenuWorld", "bgBar/iconMenuGames", "bgBar/btnSelectAll", "bgBar/btnSelectSpecials",
+		"bgBar/bulldozer", "bgBar/recolectaRapido", "bgBar/mcTrolls", "bgBar/giftCounter", "bgBar/normalMouse/btnNoArrow"]
+## The y of the panel of the selected item over the neighbours, and below the screen (GuiManager.showRecuadro).
+const PANEL_SHOWN_Y := -9.5
+const PANEL_HIDDEN_Y := 123.0
+const PANEL_SLIDE_SECONDS := 0.2
+## The zoom slider is 24 pixels from the right edge of the screen and 200
+## pixels above the bottom of the 600-pixel stage of the client (ZoomSlider).
+const ZOOM_FROM_RIGHT := 24.0
+const ZOOM_FROM_BOTTOM := 200.0
+## The client shows the shield from level 6 (StateNormal.enter).
+const SHIELD_LEVEL := 6
+const POPULATION_FULL_COLOUR := Color(0, 0, 1)
+const POPULATION_OVER_COLOUR := Color(1, 0, 0)
+const MESSAGE_SECONDS := 8.0
+## The windows of the HUD are over the spell book of the village (layer 5), as
+## the popups of the client are over its magic box, and under the windows of
+## the quests (layer 10).
+const WINDOW_LAYER := 7
 const RESOURCE_NAMES := {"g": "gold", "w": "wood", "s": "stone", "f": "food", "c": "cash", "p": "potions"}
+const RESOURCE_FIELDS := [["topLeft/coinText", "g"], ["topLeft/woodText", "w"], ["topLeft/stoneText", "s"], ["topLeft/foodText", "f"], ["cash/dollarText", "c"]]
 const PLACEMENT_MESSAGES := {
 	Village.Placement.OUTSIDE_MAP: "The item does not fit on the map.",
 	Village.Placement.NOT_OWNED_LAND: "You can build only on your own land.",
@@ -71,353 +80,257 @@ const PLACEMENT_MESSAGES := {
 	Village.Placement.NO_TRADES_LEFT: "The market has no trades left.",
 }
 
-var _resources := Label.new()
+var store: StoreWindow
+var selection: SelectionPanel
+var _goal_box: GoalBox
+var _ui: UiLibrary
+var _config: GameConfig
+var _gui: UiClip
+var _top_y: Dictionary = {}  # Part of TOP_PARTS -> its y in GuiMC.
 var _message := Label.new()
-var _menu := VBoxContainer.new()
-var _category := OptionButton.new()
-var _buttons: Dictionary = {}  # ItemDef -> Button
-var _button_category: Dictionary = {}  # ItemDef -> category index
-var _selection := HBoxContainer.new()
-var _selection_name := Label.new()
-var _move_button := Button.new()
-var _sell_button := Button.new()
-var _store_button := Button.new()
+var _message_timer := Timer.new()
+var _town_quest := Label.new()  # The quest in the town, or the time until the next one.
 var _rename_dialog := AcceptDialog.new()
 var _rename_edit := LineEdit.new()
-var _goal_box := VBoxContainer.new()
-var _town_quest := Label.new()  # The quest in the town, or the time until the next one.
-var _lists := HFlowContainer.new()  # The buttons of the windows and lists.
-var _sell_dialog := ConfirmationDialog.new()
-var _action_dialog := ConfirmationDialog.new()  # The question of an action, see show_actions().
-var _asked_action := ""
-var _rotate_button := Button.new()
-var _production := HBoxContainer.new()
-var _production_text := Label.new()
-var _collect_button := Button.new()
-var _hurry_button := Button.new()
-var _work_times := HBoxContainer.new()
-var _units := HFlowContainer.new()
-var _training := VBoxContainer.new()
-var _training_text := Label.new()
-var _train_button := Button.new()
-var _speed_up_button := Button.new()
-var _unqueue_button := Button.new()
-var _warehouse := VBoxContainer.new()
-var _warehouse_text := Label.new()
-var _warehouse_units := HFlowContainer.new()
-var _warehouse_slot_button := Button.new()
-var _world_button: Button
-var _actions := VBoxContainer.new()
-var _actions_text := Label.new()
-var _action_buttons := VBoxContainer.new()
-var _shown_actions := []  # The actions of the buttons, so that a refresh with the same actions keeps them.
+var _windows := Control.new()  # The windows of the HUD, see WINDOW_LAYER.
+var _menus: Array[String] = ["bgBar/iconMenuWorld", "bgBar/iconMenuGift", "bgBar/iconMenuGames"]
+var _locked := false
+var _zoom: UiClip
+var _zoom_level := 1.0
+var _zoom_dragging := false
+var _panel_tween: Tween
 
 
-func _init() -> void:
-	var panel := PanelContainer.new()
-	# At the top right, because the spell book of the client is at the bottom left.
-	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	panel.offset_left = -PANEL_MARGIN
-	panel.offset_right = -PANEL_MARGIN
-	panel.offset_top = PANEL_MARGIN
-	var column := VBoxContainer.new()
-	column.custom_minimum_size.x = PANEL_WIDTH
-	panel.add_child(column)
-	var title := Label.new()
-	title.text = "Build: click an item, then a place. Space turns it. Right-click cancels."
-	for label: Label in [_resources, title, _message]:
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_resources)
-	column.add_child(title)
-	column.add_child(_category)
-	var lists := _lists
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["PvP", pvp_requested], ["World", towns_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
-		var button := Button.new()
-		button.text = pair[0]
-		var requested: Signal = pair[1]
-		button.pressed.connect(func() -> void: requested.emit())
-		lists.add_child(button)
-		if requested == towns_requested:
-			_world_button = button
-	var rename := Button.new()
-	rename.text = "Rename"
-	rename.pressed.connect(_rename_dialog.popup_centered)
-	lists.add_child(rename)
-	column.add_child(lists)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420)
-	scroll.add_child(_menu)
-	column.add_child(scroll)
-	column.add_child(_message)
-	_selection_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_selection_name.clip_text = true
-	_move_button.text = "Move"
-	_move_button.pressed.connect(func() -> void: move_requested.emit())
-	_rotate_button.text = "Turn"
-	_rotate_button.pressed.connect(func() -> void: rotate_requested.emit())
-	_store_button.text = "Store"
-	_store_button.pressed.connect(func() -> void: store_requested.emit())
-	_sell_button.pressed.connect(_sell_dialog.popup_centered)
-	_sell_dialog.confirmed.connect(func() -> void: sell_confirmed.emit())
-	_action_dialog.confirmed.connect(func() -> void: action_requested.emit(_asked_action))
-	for control: Control in [_selection_name, _move_button, _rotate_button, _store_button, _sell_button]:
-		_selection.add_child(control)
-	_selection.visible = false
-	column.add_child(_selection)
-	_production_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_production_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_collect_button.text = "Collect"
-	_collect_button.pressed.connect(func() -> void: collect_requested.emit())
-	_hurry_button.text = "Finish for %d cash" % Village.HURRY_COST
-	_hurry_button.pressed.connect(func() -> void: hurry_requested.emit())
-	_production.add_child(_production_text)
-	_production.add_child(_collect_button)
-	_production.add_child(_hurry_button)
-	_production.visible = false
-	column.add_child(_production)
-	for work_time in Village.WORK_MINUTES.size():
-		var button := Button.new()
-		var minutes := Village.WORK_MINUTES[work_time]
-		button.text = "%s ×%s" % ["%d min" % minutes if minutes < 60 else "%d h" % (minutes / 60), String.num(Village.WORK_MULTIPLIERS[work_time])]
-		button.pressed.connect(func() -> void: work_time_chosen.emit(work_time))
-		_work_times.add_child(button)
-	_work_times.visible = false
-	column.add_child(_work_times)
-	_units.visible = false
-	column.add_child(_units)
-	_training_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_training_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_train_button.pressed.connect(func() -> void: train_requested.emit())
-	_training.add_child(_training_text)
-	_training.add_child(_train_button)
-	_speed_up_button.pressed.connect(func() -> void: speed_up_requested.emit())
-	_training.add_child(_speed_up_button)
-	_unqueue_button.pressed.connect(func() -> void: unqueue_requested.emit())
-	_training.add_child(_unqueue_button)
-	_training.visible = false
-	column.add_child(_training)
-	_warehouse_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_warehouse_slot_button.pressed.connect(func() -> void: warehouse_slot_requested.emit())
-	for control: Control in [_warehouse_text, _warehouse_units, _warehouse_slot_button]:
-		_warehouse.add_child(control)
-	_warehouse.visible = false
-	column.add_child(_warehouse)
-	_actions_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var action_scroll := ScrollContainer.new()
-	action_scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
-	action_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_action_buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	action_scroll.add_child(_action_buttons)
-	_actions.add_child(_actions_text)
-	_actions.add_child(action_scroll)
-	_actions.visible = false
-	column.add_child(_actions)
-	add_child(_sell_dialog)
-	add_child(_action_dialog)
+func _init(ui: UiLibrary, config: GameConfig) -> void:
+	_ui = ui
+	_config = config
+	_gui = ui.make("GuiMC")
+	add_child(_gui)
+	_top_y = top_positions(_gui)
+	for path: String in HIDDEN:
+		_gui.set_part_visible(path, false)
+	# The bars take the clicks, so that a click on them does not reach the map.
+	for path: String in ["bgBar", "topLeft", "topRight", "experienceBar", "cash"]:
+		_gui.clip(path).take_mouse()
+	_gui.set_text("bgBar/herramientaCuadrado/cuadradoText", config.text("ICON_SQUARE_TOOL"))
+	_gui.set_part_visible("bgBar/herramientaCuadrado/spaceKeyText", false)
+	_clip_button("bgBar/normalMouse/btnArrow", func() -> void:
+		_close_menus()
+		tool_cancelled.emit())
+	_clip_button("bgBar/storeButton", _open_store)
+	_clip_button("bgBar/herramientaCuadrado", func() -> void:
+		_close_menus()
+		if not _locked:
+			selection_tool_requested.emit())
+	_clip_button("bgBar/achievementsButton", _toggle_menu.bind("bgBar/iconMenuWorld"))
+	_clip_button("bgBar/giftButton", _toggle_menu.bind("bgBar/iconMenuGift"))
+	_clip_button("bgBar/gamesButton", _toggle_menu.bind("bgBar/iconMenuGames"))
+	# The World menu; the client of 1.4.07 hides survival, which the port has.
+	for entry: Array in [["questButton", "questText", "ICON_MENU_WORLD_QUEST", quests_requested], ["pvpButton", "#text", "", pvp_requested],
+			["tournamentButton", "tournamentText", "ICON_MENU_WORLD_TOURNEY", tournament_requested], ["survivalButton", "survivalText", "ICON_MENU_WORLD_SURVIVAL", survival_requested]]:
+		_menu_entry("bgBar/iconMenuWorld", entry)
+	# The Gift menu: the item store and the collections. The port has no news and no list of units.
+	for entry: Array in [["giftButton", "giftsText", "ICON_MENU_GIFT_GIFTS", stored_items_requested], ["colButton", "colText", "ICON_MENU_GIFT_COLLECTIONS", collections_requested]]:
+		_menu_entry("bgBar/iconMenuGift", entry)
+	for path: String in ["bgBar/iconMenuGift/newsButton", "bgBar/iconMenuGift/newsText", "bgBar/iconMenuGift/unitsButton", "bgBar/iconMenuGift/unitsText"]:
+		_gui.set_part_visible(path, false)
+	# The town selector of the client is in the menu of the games, without the darts.
+	_menu_entry("bgBar/iconMenuGames", ["herramientaSelectorMundo", "txtSelectorMundo", "", towns_requested])
+	for path: String in ["bgBar/iconMenuGames/herramientaDarts", "bgBar/iconMenuGames/dartsText"]:
+		_gui.set_part_visible(path, false)
+	_clip_button("addCashButton", func() -> void: show_message("The port has no cash shop."))
+	var name_field := _gui.part("topRight/nameText")
+	name_field.mouse_filter = Control.MOUSE_FILTER_STOP
+	name_field.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	name_field.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _locked:
+			open_rename())
+	_clip_button("topRight/hudShield", func() -> void: pvp_requested.emit())
+	# The client puts the zoom slider under the bottom bar.
+	_zoom = ui.make("ZoomSliderMC")
+	_gui.add_child(_zoom)
+	_gui.move_child(_zoom, _gui.part("bgBar").get_index())
+	for pair: Array in [["zoomIn", MapCamera.ZOOM_STEP], ["zoomOut", 1.0 / MapCamera.ZOOM_STEP]]:
+		var step: float = pair[1]
+		var button := _zoom.clip(pair[0])
+		button.make_button()
+		button.pressed.connect(func() -> void:
+			if not _locked:
+				zoom_requested.emit(_zoom_level * step))
+	_zoom.clip("slider").make_button()
+	_zoom.clip("slider").gui_input.connect(_on_zoom_drag)
+	selection = SelectionPanel.new(ui, config, _windows)
+	_gui.clip("bgBar/recuadroInfo").add_child(selection)
+	_gui.clip("bgBar/recuadroInfo").position.y = PANEL_HIDDEN_Y
+	_gui.clip("bgBar/recuadroInfo").take_mouse()
+	# The town quest uses the troll timer of the client (trollTimerMC), which
+	# 1.4.07 does not show; see TownQuests.
+	_town_quest.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
+	_town_quest.add_theme_font_size_override("font_size", 12)
+	_town_quest.add_theme_color_override("font_color", Color.WHITE)
+	_town_quest.add_theme_color_override("font_outline_color", Color(0.2, 0.1, 0, 1))
+	_town_quest.add_theme_constant_override("outline_size", 4)
+	_town_quest.position = Vector2(-2, -24)
+	_town_quest.custom_minimum_size.x = 150
+	_town_quest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_gui.clip("bgBar/mcTrolls").add_child(_town_quest)
+	_gui.set_part_visible("bgBar/mcTrolls/buf", false)
+	_goal_box = GoalBox.new(ui, config)
+	_goal_box.goal_requested.connect(func(id: int) -> void: goal_requested.emit(id))
+	_goal_box.list_requested.connect(func() -> void: goal_requested.emit(0))
+	add_child(_goal_box)
+	move_child(_goal_box, 0)
+	_message.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
+	_message.add_theme_font_size_override("font_size", 15)
+	_message.add_theme_color_override("font_color", Color.WHITE)
+	_message.add_theme_color_override("font_outline_color", Color(0.2, 0.1, 0, 1))
+	_message.add_theme_constant_override("outline_size", 5)
+	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_message.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_message)
+	_message_timer.one_shot = true
+	_message_timer.timeout.connect(func() -> void: _message.visible = false)
+	add_child(_message_timer)
+	store = StoreWindow.new(ui, config)
+	store.blocked.connect(show_placement_result)
+	store.packs_requested.connect(func() -> void: packs_requested.emit())
+	store.stored_items_requested.connect(func() -> void: stored_items_requested.emit())
+	_windows.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_windows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var window_layer := CanvasLayer.new()
+	window_layer.layer = WINDOW_LAYER
+	window_layer.add_child(_windows)
+	add_child(window_layer)
+	visibility_changed.connect(func() -> void: window_layer.visible = visible)
+	_windows.add_child(store)
 	_rename_dialog.title = "Name of your empire"
 	_rename_dialog.add_child(_rename_edit)
 	_rename_dialog.confirmed.connect(func() -> void: rename_requested.emit(_rename_edit.text))
 	add_child(_rename_dialog)
-	add_child(panel)
-	# The goal box of the client is at the left, over its bottom bar; the
-	# spell book is there in the port, so the goals are at the top left.
-	var goals := PanelContainer.new()
-	goals.position = Vector2(PANEL_MARGIN, PANEL_MARGIN)
-	goals.custom_minimum_size.x = GOAL_BOX_WIDTH
-	var left := VBoxContainer.new()
-	left.add_child(_goal_box)
-	_town_quest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_town_quest.custom_minimum_size.x = GOAL_BOX_WIDTH
-	left.add_child(_town_quest)
-	goals.add_child(left)
-	add_child(goals)
-	_category.item_selected.connect(_show_category)
 
 
-## Replaces the items of the build menu and keeps the shown category. Call
-## refresh() after it. categories: [name, Array[GameConfig.ItemDef]] for each store category.
-func set_categories(categories: Array) -> void:
-	var shown := maxi(_category.selected, 0)
-	_category.clear()
-	for button: Button in _buttons.values():
-		button.queue_free()
-	_buttons.clear()
-	_button_category.clear()
-	for index in categories.size():
-		_category.add_item(categories[index][0])
-		for item: GameConfig.ItemDef in categories[index][1]:
-			var button := Button.new()
-			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			button.pressed.connect(func() -> void: item_selected.emit(item))
-			_menu.add_child(button)
-			_buttons[item] = button
-			_button_category[item] = index
-	_category.select(mini(shown, categories.size() - 1))
-	_show_category(_category.selected)
+func _ready() -> void:
+	get_viewport().size_changed.connect(_layout)
+	_layout()
 
 
-## Updates the resources and which items the player can buy.
+## The node of the bottom bar in which the neighbour bar goes (mcFriends of the client).
+func neighbour_anchor() -> Control:
+	return _gui.part("bgBar/mcFriends")
+
+
+## The node for the windows that belong to the HUD, over its bars.
+func windows() -> Control:
+	return _windows
+
+
+## The y of the parts of TOP_PARTS in a new GuiMC, for place_gui().
+static func top_positions(gui: UiClip) -> Dictionary:
+	var result := {}
+	for name: String in TOP_PARTS:
+		result[name] = gui.part(name).position.y
+	return result
+
+
+## Puts GuiMC where the client puts it on a full screen of this size: the
+## bottom bar at the bottom and the parts of TOP_PARTS at the top.
+static func place_gui(gui: UiClip, top_y: Dictionary, size: Vector2) -> void:
+	gui.position = Vector2(roundf(size.x / 2 - CLIENT_WIDTH / 2.0), size.y - BAR_HEIGHT)
+	var shift := CLIENT_Y - gui.position.y
+	for name: String in TOP_PARTS:
+		gui.part(name).position.y = top_y[name] + shift
+	gui.part("bgBar").position.y = 0
+
+
+func _layout() -> void:
+	var size := get_viewport().get_visible_rect().size
+	place_gui(_gui, _top_y, size)
+	_zoom.position = Vector2(size.x - ZOOM_FROM_RIGHT, size.y - ZOOM_FROM_BOTTOM) - _gui.position
+	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
+	_message.size = Vector2(CLIENT_WIDTH - 120, 60)
+
+
+func _clip_button(path: String, action: Callable) -> void:
+	var node := _gui.part(path)
+	if node is UiButton:
+		node.pressed.connect(action)
+	elif node is UiClip:
+		node.make_button()
+		node.pressed.connect(action)
+
+
+## [button, text field, text name or "", signal] of a menu of the bar.
+func _menu_entry(menu: String, entry: Array) -> void:
+	var requested: Signal = entry[3]
+	_clip_button("%s/%s" % [menu, entry[0]], func() -> void:
+		_close_menus()
+		if not _locked:
+			requested.emit())
+	if not (entry[2] as String).is_empty():
+		_gui.set_text("%s/%s" % [menu, entry[1]], _config.text(entry[2]))
+
+
+func _toggle_menu(menu: String) -> void:
+	var shown := not _gui.part(menu).visible
+	_close_menus()
+	_gui.set_part_visible(menu, shown and not _locked)
+
+
+func _close_menus() -> void:
+	for menu in _menus:
+		_gui.set_part_visible(menu, false)
+
+
+## The store opens also in the tutorial, whose steps build; main.gd allows only the items of the step.
+func _open_store() -> void:
+	_close_menus()
+	store.open()
+
+
+## Updates the resources, the experience, the population and the store.
 func refresh(village: Village) -> void:
-	var parts := ["Level %d" % village.get_level()]
-	var next_level_xp := village.get_next_level_xp()
-	parts.append("XP %d/%d" % [village.get_xp(), next_level_xp] if next_level_xp >= 0 else "XP %d" % village.get_xp())
-	for code: String in RESOURCE_NAMES:
-		parts.append("%s %d" % [RESOURCE_NAMES[code].capitalize(), village.get_resource(code)])
-	parts.append("Population %d/%d" % [village.population(), village.max_population()])
-	_resources.text = "  ".join(parts)
-	for item: GameConfig.ItemDef in _buttons:
-		var button: Button = _buttons[item]
-		var cost := "%d %s" % [item.cost, RESOURCE_NAMES.get(item.cost_type, item.cost_type)]
-		button.text = "%s  (%s)" % [item.name, cost]
-		if village.get_level() < item.min_level:
-			button.disabled = true
-			button.text += "  level %d" % item.min_level
-		else:
-			button.disabled = village.check_limits(item) != Village.Placement.OK
-			if button.disabled:
-				button.text += "  limit reached"
+	for field: Array in RESOURCE_FIELDS:
+		_gui.set_text(field[0], formatted(village.get_resource(field[1])))
+	var level := village.get_level()
+	var next_xp := village.get_next_level_xp()
+	var start_xp := _config.levels[level - 1].exp_required if level >= 1 and level - 1 < _config.levels.size() else 0
+	_gui.set_text("experienceBar/levelText", str(level))
+	_gui.set_text("experienceBar/exp", "%d/%d" % [village.get_xp(), next_xp] if next_xp >= 0 else str(village.get_xp()))
+	var bar := _gui.clip("experienceBar/expMask")
+	bar.scale.x = 1.0 if next_xp <= start_xp else clampf(float(village.get_xp() - start_xp) / (next_xp - start_xp), 0.0, 1.0)
+	var population := village.population()
+	var maximum := village.max_population()
+	_gui.set_text("topRight/visitorsText", "%d/%d" % [population, maximum])
+	var colour := POPULATION_OVER_COLOUR if population > maximum else (POPULATION_FULL_COLOUR if village.is_population_capped() else Color.BLACK)
+	_gui.part("topRight/visitorsText").add_theme_color_override("font_color", colour)
+	_gui.set_text("topRight/nameText", village.map_name())
+	_rename_edit.text = village.map_name()
+	var stored := 0
+	for count: int in village.stored_items().values():
+		stored += count
+	_gui.set_part_visible("bgBar/giftCounter", stored > 0)
+	_gui.set_text("bgBar/giftCounter/count", str(stored))
+	store.refresh(village)
 
 
-func _show_category(index: int) -> void:
-	for item: GameConfig.ItemDef in _buttons:
-		_buttons[item].visible = _button_category[item] == index
+## The shield of the player: the time that it lasts, or no shield.
+func show_shield(level: int, seconds: int) -> void:
+	_gui.set_part_visible("topRight/hudShield", level >= SHIELD_LEVEL)
+	var days := seconds / 86400
+	var rest := seconds % 86400
+	_gui.set_text("topRight/hudShield/timer/time", "No shield" if seconds <= 0 else "%s%02d:%02d:%02d" % ["%dd " % days if days > 0 else "", rest / 3600, rest % 3600 / 60, rest % 60])
 
 
-## Shows the item that the player clicked on the map, or hides the section when item is null.
-func show_selection(item: GameConfig.ItemDef, can_move: bool, can_sell: bool, can_rotate: bool, can_store: bool = false) -> void:
-	_selection.visible = item != null
-	if item == null:
-		return
-	_selection_name.text = item.name
-	_store_button.disabled = not can_store
-	_move_button.disabled = not can_move
-	_rotate_button.disabled = not can_rotate
-	_sell_button.disabled = not can_sell
-	var refund := Village.sell_refund(item)
-	_sell_button.text = "Sell"
-	if can_sell and refund > 0:
-		_sell_button.text = "Sell for %d %s" % [refund, RESOURCE_NAMES.get(item.cost_type, item.cost_type)]
-	_sell_dialog.dialog_text = "Sell %s? You get %s." % [item.name, "nothing back" if refund == 0 else "%d %s" % [refund, RESOURCE_NAMES.get(item.cost_type, item.cost_type)]]
-
-
-## Shows the production of the selected building. item is null when the
-## selection does not produce. product is what a collection gives, for example
-## "250 food". requirement tells which units the building needs, or is empty;
-## seconds_left is -1 when the building needs units or a work time.
-func show_production(item: GameConfig.ItemDef, seconds_left: float, product: String, wood_cost: int, can_hurry: bool, requirement: String) -> void:
-	_production.visible = item != null
-	_work_times.visible = item != null and seconds_left < 0 and requirement.is_empty()
-	if item == null:
-		return
-	_collect_button.visible = seconds_left == 0
-	_hurry_button.visible = can_hurry
-	if not requirement.is_empty():
-		_production_text.text = requirement
-	elif seconds_left < 0:
-		_production_text.text = "Choose a work time:"
-	elif seconds_left > 0:
-		_production_text.text = "%s in %s" % [product, duration(seconds_left)]
-	else:
-		_production_text.text = "Ready: %s" % product
-	if wood_cost > 0 and seconds_left >= 0:
-		_production_text.text += ", costs %d wood" % wood_cost
-
-
-## Shows the units in the selected building, each with a button to take it out.
-## names is empty when the building has no units or the selection is not a building.
-func show_units(names: Array[String]) -> void:
-	for child in _units.get_children():
-		child.queue_free()
-	_units.visible = not names.is_empty()
-	for index in names.size():
-		var button := Button.new()
-		button.text = "Take out %s" % names[index]
-		button.pressed.connect(func() -> void: unit_out_requested.emit(index))
-		_units.add_child(button)
-
-
-## Shows the unit warehouse when the player selected it. units is a list of
-## [item id, name, number]; it is null when the selection is not the warehouse.
-## slot_price is 0 when the player cannot buy more places.
-func show_warehouse(units: Variant, used: int, capacity: int, slot_price: int) -> void:
-	for child in _warehouse_units.get_children():
-		child.queue_free()
-	_warehouse.visible = units != null
-	if units == null:
-		return
-	_warehouse_text.text = "Unit Warehouse: %d of %d places used. Units here do not count for the population. Send a unit in by selecting it and clicking the warehouse." % [used, capacity]
-	for entry: Array in units:
-		var button := Button.new()
-		button.text = "Take out %s (%d)" % [entry[1], entry[2]]
-		var unit_id: int = entry[0]
-		button.pressed.connect(func() -> void: warehouse_unit_out_requested.emit(unit_id))
-		_warehouse_units.add_child(button)
-	_warehouse_slot_button.visible = slot_price > 0
-	_warehouse_slot_button.text = "Buy 1 more place for %d cash" % slot_price
-
-
-## Shows the training of the selected building. unit is null when the building
-## does not train. seconds_left is -1 when the queue is empty. speed_up_cost
-## is the cash that finishes the queue, or 0 when there is nothing to finish.
-func show_training(unit: GameConfig.ItemDef, costs: Dictionary, queued: int, seconds_left: float, speed_up_cost: int) -> void:
-	_training.visible = unit != null
-	if unit == null:
-		return
-	var prices := []
-	for code: String in costs:
-		prices.append("%d %s" % [costs[code], RESOURCE_NAMES.get(code, code)])
-	_train_button.text = "Train %s (%s)" % [unit.name, ", ".join(prices)]
-	_training_text.text = "No units in training." if queued == 0 else "%d in training, next in %s" % [queued, duration(seconds_left)]
-	_speed_up_button.visible = speed_up_cost > 0
-	_speed_up_button.text = "Finish all for %d cash" % speed_up_cost
-	_unqueue_button.visible = queued > 0
-	_unqueue_button.text = "Cancel the last %s" % unit.name
-
-
-## Shows a text and a button for each action, for example of a special
-## building. actions is a list of [id, label, enabled], or [id, label,
-## enabled, question] for an action that asks the question first; a button
-## press emits action_requested(id). An empty text and list hides the panel.
-func show_actions(text: String, actions: Array) -> void:
-	_actions.visible = not text.is_empty() or not actions.is_empty()
-	_actions_text.text = text
-	_actions_text.visible = not text.is_empty()
-	if actions == _shown_actions:
-		return
-	_shown_actions = actions.duplicate(true)
-	for child in _action_buttons.get_children():
-		child.queue_free()
-	for action: Array in actions:
-		var button := Button.new()
-		button.text = action[1]
-		button.disabled = not action[2]
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var id: String = action[0]
-		var question: String = action[3] if action.size() > 3 else ""
-		button.pressed.connect(func() -> void:
-			if question.is_empty():
-				action_requested.emit(id)
-				return
-			_asked_action = id
-			_action_dialog.dialog_text = question
-			_action_dialog.popup_centered())
-		_action_buttons.add_child(button)
-	_fit_actions()
-
-
-## Sizes the scroll area of the actions to the buttons, which can wrap their
-## text. The height is known when the containers have placed the buttons.
-func _fit_actions() -> void:
-	var scroll: ScrollContainer = _action_buttons.get_parent()
-	scroll.custom_minimum_size.y = ACTIONS_MAX_HEIGHT
-	for i in 2:
-		# The village can start again between the frames, see main.gd _reload_map().
-		if not is_inside_tree():
-			return
-		await get_tree().process_frame
-	scroll.custom_minimum_size.y = minf(_action_buttons.get_combined_minimum_size().y, ACTIONS_MAX_HEIGHT)
+## Writes numbers as the client does, with a comma between groups of three digits.
+static func formatted(value: int) -> String:
+	var digits := str(absi(value))
+	var groups: Array[String] = []
+	while digits.length() > 3:
+		groups.push_front(digits.right(3))
+		digits = digits.left(digits.length() - 3)
+	groups.push_front(digits)
+	return ("-" if value < 0 else "") + ",".join(groups)
 
 
 static func duration(seconds: float) -> String:
@@ -429,58 +342,77 @@ static func duration(seconds: float) -> String:
 	return "%ds" % total
 
 
-## Shows the goals of the goal box: [id, title, progress] for each, and the
-## map name for the rename dialog.
-## Shows the category of the build menu with the item, as the client opens its store for a goal.
+## Shows the panel of the selected item over the neighbours, or hides it.
+func show_panel(shown: bool) -> void:
+	var panel := _gui.clip("bgBar/recuadroInfo")
+	var target := PANEL_SHOWN_Y if shown else PANEL_HIDDEN_Y
+	if is_equal_approx(panel.position.y, target):
+		return
+	if _panel_tween != null:
+		_panel_tween.kill()
+	_panel_tween = create_tween()
+	_panel_tween.tween_property(panel, "position:y", target, PANEL_SLIDE_SECONDS)
+
+
+## Moves the knob of the zoom slider to the zoom of the camera, from the
+## top for ZOOM_MAX to the bottom for ZOOM_MIN.
+func show_zoom(level: float) -> void:
+	_zoom_level = level
+	var height := _zoom.clip("slideBar").bounds().size.y
+	_zoom.clip("slider").position.y = height * (1.0 - inverse_lerp(MapCamera.ZOOM_MIN, MapCamera.ZOOM_MAX, level))
+
+
+func _on_zoom_drag(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_zoom_dragging = event.pressed and not _locked
+	elif event is InputEventMouseMotion and _zoom_dragging:
+		var height := _zoom.clip("slideBar").bounds().size.y
+		var place := clampf(_zoom.get_local_mouse_position().y, 0.0, height)
+		zoom_requested.emit(lerpf(MapCamera.ZOOM_MAX, MapCamera.ZOOM_MIN, place / height))
+
+
+## Opens the store at the page of the item, as the client does for a goal.
 func show_build_item(item: GameConfig.ItemDef) -> void:
-	if _button_category.has(item):
-		_category.select(_button_category[item])
-		_show_category(_button_category[item])
-		_buttons[item].grab_focus()
+	store.open_at(item)
 
 
-## During the tutorial, the client hides or blocks its other buttons.
+## During the tutorial, the client blocks the menus and the tools of the selected item.
 func set_locked(locked: bool) -> void:
-	for button in _lists.get_children():
-		(button as Button).disabled = locked
-	for button: Button in [_move_button, _rotate_button, _store_button, _sell_button]:
-		button.visible = not locked
+	_locked = locked
+	selection.set_locked(locked)
+	if locked:
+		_close_menus()
 
 
-## Shows or hides the World button; main.gd applies the level rule of the client.
+## The town selector: from level 20 in the human town, always in the troll town.
 func show_world_button(shown: bool) -> void:
-	_world_button.visible = shown
+	_gui.set_part_visible("bgBar/gamesButton", shown)
+	if not shown:
+		_gui.set_part_visible("bgBar/iconMenuGames", false)
 
 
 func open_rename() -> void:
-	_rename_dialog.popup_centered()
+	_rename_dialog.popup_centered(Vector2i(320, 0))
 
 
-func show_goals(goals: Array, map_name: String) -> void:
-	_rename_edit.text = map_name
-	for child in _goal_box.get_children():
-		child.queue_free()
-	var title := Label.new()
-	title.text = "Goals"
-	_goal_box.add_child(title)
-	for entry: Array in goals:
-		var button := Button.new()
-		button.text = "%s  %s" % [entry[1], entry[2]]
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var id: int = entry[0]
-		button.pressed.connect(func() -> void: goal_requested.emit(id))
-		_goal_box.add_child(button)
+## goals: [id, title, progress] of the goals of the goal box.
+func show_goals(goals: Array) -> void:
+	_goal_box.show_goals(goals.map(func(entry: Array) -> Array: return [entry[0], "%s  %s" % [entry[1], entry[2]]]))
 
 
-## The quest in the town (TownQuests), or the time until the next one.
-func show_town_quest(text: String) -> void:
+## The quest in the town (TownQuests), or the time until the next one; an
+## empty text hides it.
+func show_town_quest(text: String, troll: bool) -> void:
 	_town_quest.text = text
-	_town_quest.visible = not text.is_empty()
+	_gui.set_part_visible("bgBar/mcTrolls", not text.is_empty())
+	_gui.clip("bgBar/mcTrolls/cara").show_frame(1 if troll else 0)
 
 
 func show_message(text: String) -> void:
 	_message.text = text
+	_message.visible = not text.is_empty()
+	if not text.is_empty():
+		_message_timer.start(MESSAGE_SECONDS)
 
 
 func show_placement_result(result: Village.Placement) -> void:

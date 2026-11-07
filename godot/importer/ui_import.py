@@ -7,7 +7,7 @@ port must place them itself. This module writes:
   <out>/ui/windows.swf          a copy of the SWF file in which the sprites of the windows do not
                                 place their named parts and text fields; the port draws the
                                 frames of the sprites, the named buttons and the fonts from it
-  <out>/ui/layout.json          {"symbols": {name: sprite id},
+  <out>/ui/layout.json          {"symbols": {name: sprite id}, "fonts": {font name: font id},
                                  "clips": {id: {"origin": [x, y] or null, "frames": [[part, ...] for each frame],
                                                 "labels": {label: frame (0-based)}}},
                                  "buttons": {id: {}}}
@@ -20,7 +20,8 @@ port must place them itself. This module writes:
 A part is {"name", "depth", "matrix": [a, b, c, d, x, y], and "clip": id (a
 sprite), "button": id (a button) or "text": settings (see SwfFile.edit_text)},
 with "alpha", "glow" or "mask" when the placement has them. Unnamed text
-fields are parts too, so that the port draws their text with the font.
+fields are parts too, so that the port draws their text with the font, and
+unnamed buttons, which the drawing of a sprite leaves out.
 """
 
 import json
@@ -65,14 +66,45 @@ SYMBOLS = [
 	# Tournament: the window before a match and the window of its result.
 	"PopupLoadingTournamentMC",
 	"PopupTournamentFinishedMC",
+	# The village screen: the HUD with its menus, the store with its tabs,
+	# item buttons and subcategories, the panels of a selected item
+	# (RecuadroInfoNew), the goal box, the neighbour bar and the zoom slider.
+	"GuiMC",
+	"StoreMC",
+	"TabMC",
+	"MenuTabMC",
+	"BuildButtonLargeMC",
+	"PastillaSubcategoriaMC",
+	"EP_House_MC",
+	"EP_Farm_MC",
+	"EP_NewBarracksMC",
+	"EP_Market_MC",
+	"EP_UnitMC",
+	"popUpMissionsMC",
+	"NewGoalMC",
+	"MenuTabFriendsMC",
+	"FriendButtonMC",
+	"PopOverVisitMC",
+	"ZoomSliderMC",
+	# Windows of the village: the goal list, the tutorial, the confirm window,
+	# the town window and the window of a quest in the town.
+	"PopupGoalListMC",
+	"GoalListLineMC",
+	"TutorialPopupMC",
+	"PopupConfirmMC",
+	"PopupRaceSelectorMC",
+	"PopupQuestInfo2MC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
 # show a book and a wizard; the pictures of the spells come with spell_images.
-# The alert with a picture tells the player about the spell book.
+# The alert with a picture tells the player about the spell book. The
+# neighbour bar shows the host of the tutorial with the picture of the king,
+# and the town window a picture of each town.
 IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"] \
 	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"] \
-	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"]
+	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
+	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
@@ -107,18 +139,23 @@ def _import_windows(swf_path, symbol_names, ui_dir):
 	clips = {}
 	drops = {}
 	buttons = {}
+	layers = {}
+	next_id = [swf.max_character_id() + 1]
 	for sprite_id in symbols.values():
-		_collect(swf, sprite_id, clips, drops, buttons)
+		_collect(swf, sprite_id, clips, drops, buttons, layers, next_id)
 	os.makedirs(ui_dir, exist_ok=True)
 	windows_path = os.path.join(ui_dir, WINDOWS_FILE)
+	new_sprites = {layer_id: swf.first_frame_placements(sprite_id, depths) for layer_id, (sprite_id, depths) in layers.items()}
 	with open(windows_path, 'wb') as f:
-		f.write(swf.without_placements(drops))
+		f.write(swf.without_placements(drops, new_sprites))
+	for layer_id in layers:
+		clips[layer_id] = {"origin": None, "frames": [[]]}
 	bases = SwfFile(windows_path)
 	for sprite_id, clip in clips.items():
 		bounds = bases.character_bounds(sprite_id)
 		clip["origin"] = None if bounds is None else [bounds[0] / 20, bounds[1] / 20]
 	with open(os.path.join(ui_dir, "layout.json"), 'w', encoding='utf-8') as f:
-		json.dump({"symbols": symbols, "clips": {str(k): v for k, v in clips.items()}, "buttons": {str(k): v for k, v in buttons.items()}}, f, indent='\t')
+		json.dump({"symbols": symbols, "fonts": {name: font_id for font_id, name in swf.fonts.items()}, "clips": {str(k): v for k, v in clips.items()}, "buttons": {str(k): v for k, v in buttons.items()}}, f, indent='\t')
 	return len(clips) + len(buttons)
 
 
@@ -131,10 +168,13 @@ def _resolve(swf, name):
 	return sprite_id
 
 
-def _collect(swf, sprite_id, clips, drops, buttons):
+def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 	"""Adds the sprite and its named sprites to clips, and its named buttons to
 	buttons. drops gets the depths that the base images leave out: named parts
-	and text fields."""
+	and text fields. A named mask, for example of a bar that the client
+	scales, gets the shapes under it in the first frame as a sprite of their
+	own: layers gets {new sprite id: (sprite id, depths)}, the part gets
+	"masked": the new sprite id, and the base image leaves the shapes out."""
 	if sprite_id in clips:
 		return
 	details = {}
@@ -165,7 +205,9 @@ def _collect(swf, sprite_id, clips, drops, buttons):
 			elif name is not None and char_id in swf.sprites:
 				part["clip"] = char_id
 				nested.append(char_id)
-			elif name is not None and char_id in swf.buttons:
+			elif char_id in swf.buttons:
+				# The drawing of a sprite leaves out its buttons, so unnamed
+				# buttons are parts too, for example the icons of the HUD menus.
 				part["button"] = char_id
 				buttons[char_id] = {}
 			else:
@@ -173,7 +215,23 @@ def _collect(swf, sprite_id, clips, drops, buttons):
 			dropped.add(depth)
 			parts.append(part)
 		clip["frames"].append(parts)
+	if places:
+		named = {part["depth"] for part in clip["frames"][0]}
+		for part in clip["frames"][0]:
+			clip_depth = details.get(part["depth"], {}).get("clip_depth")
+			if not part.get("mask") or part["name"] is None or clip_depth is None:
+				continue
+			masked = {depth for depth in places[0] if part["depth"] < depth <= clip_depth and depth not in named}
+			if masked:
+				layer_id = next_id[0]
+				next_id[0] += 1
+				layers[layer_id] = (sprite_id, masked)
+				dropped |= masked
+				for frame_parts in clip["frames"]:
+					for other in frame_parts:
+						if other["name"] == part["name"] and other.get("mask"):
+							other["masked"] = layer_id
 	if dropped:
 		drops[sprite_id] = dropped
 	for child_id in nested:
-		_collect(swf, child_id, clips, drops, buttons)
+		_collect(swf, child_id, clips, drops, buttons, layers, next_id)

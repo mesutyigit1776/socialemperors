@@ -1,6 +1,6 @@
 class_name SpellBookHud
 extends Control
-## The spell book of the client (PopupMagic) at the bottom left of the screen:
+## The spell book of the client (PopupMagic) above the left end of the HUD:
 ## the book, the mana of the player, and the button of the spell window.
 ##
 ## A click on the closed book opens it and shows up to three of the spells
@@ -16,8 +16,10 @@ signal cancel_requested
 signal shop_requested
 signal mana_requested
 
-## The client places the book 80 pixels above the bottom left corner of the screen.
-const PLACE_FROM_BOTTOM := 80.0
+## The client places the book 80 pixels above the origin of its HUD
+## (GuiManager.addMagicBox), which is 75 pixels above the bottom of its stage
+## and at the left edge of the 760 pixels of the HUD (see VillageHud).
+const PLACE_FROM_BOTTOM := 155.0
 ## Places of the three spells on the open book.
 const SPELL_PLACES: Array[Vector2] = [Vector2(51.5, -112), Vector2(126.65, -97), Vector2(154.5, -29)]
 const SPELLS_SHOWN := 3
@@ -96,7 +98,8 @@ func show_casting(casting: bool) -> void:
 
 
 func _place() -> void:
-	_book.position = Vector2(0, get_viewport_rect().size.y - PLACE_FROM_BOTTOM)
+	var size := get_viewport_rect().size
+	_book.position = Vector2(roundf(size.x / 2 - VillageHud.CLIENT_WIDTH / 2.0), size.y - PLACE_FROM_BOTTOM)
 
 
 func _on_book_pressed() -> void:
