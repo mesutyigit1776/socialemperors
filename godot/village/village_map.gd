@@ -43,6 +43,20 @@ const WIZARDRY := 416
 ## The client sells the land areas around the first area 13; the prices are
 ## GameConfig.land_prices, by the number of areas that the map has.
 const LAND_FOR_SALE: Array[int] = [7, 8, 9, 12, 14, 17, 18, 19]
+## The second town (PopupRaceSelector of the client, "buy_map" of the server):
+## a troll town, map SECOND_TOWN of the save, for gold or cash from the level
+## SECOND_TOWN_LEVEL of the map in which the player buys it. The client
+## contains these values (TOWN_PRICE_GOLD, TOWN_PRICE_CASH,
+## TROL_RACE_REQUIRED_LEVEL); the town_prices of the configuration are not used.
+const SECOND_TOWN := 1
+const SECOND_TOWN_RACE := "t"
+const SECOND_TOWN_LEVEL := 20
+const TOWN_PRICE_GOLD := 100000
+const TOWN_PRICE_CASH := 22
+## The first troll town, as the server's save migration makes it (fix_troll_empire): [item id, x, y].
+const TROLL_TOWN_ITEMS: Array[Array] = [[289, 51, 51], [325, 45, 51], [307, 55, 50], [307, 55, 52], [291, 50, 56], [580, 53, 54], [580, 53, 55]]
+const TROLL_TOWN_LAND := 13
+const TROLL_TOWN_NAME := "My Empire 1"
 ## The market of the map trades 100, 200 or 300 of wood, stone or food for
 ## gold. Its price starts at MARKET_BASE_COSTS for 100 and changes by
 ## MARKET_INCREMENT for each trade of the resource ("resourcesTraded" of the
@@ -256,6 +270,69 @@ func buy_land(area: int, with_cash: bool, neighbours: int) -> Placement:
 	_map["expansions"].append(area)
 	happened.emit(VillageEvent.Kind.LAND_BOUGHT, {"amount": owned_land.size()})
 	return Placement.OK
+
+
+## The towns that the player bought: privateState.maps of the save, one
+## {"r": race} for each town. A save without the list has only the first town.
+func _towns() -> Array:
+	var towns: Variant = _document["privateState"].get("maps")
+	return towns if towns is Array and not towns.is_empty() else [{"r": "h"}]
+
+
+func has_second_town() -> bool:
+	return _towns().size() > SECOND_TOWN
+
+
+## OK when the player can buy the second town in this map now, for cash or gold.
+func can_buy_second_town(with_cash: bool) -> Placement:
+	if has_second_town():
+		return Placement.NOT_ALLOWED
+	if get_level() < SECOND_TOWN_LEVEL:
+		return Placement.LEVEL_TOO_LOW
+	if get_resource("c" if with_cash else "g") < (TOWN_PRICE_CASH if with_cash else TOWN_PRICE_GOLD):
+		return Placement.NOT_ENOUGH_RESOURCES
+	return Placement.OK
+
+
+## Buys the troll town for cash or gold, as the server command "buy_map" does.
+## A save that has no map SECOND_TOWN gets the troll town that the server's
+## save migration makes. Changes nothing when the result is not OK.
+func buy_second_town(with_cash: bool, now: int) -> Placement:
+	var result := can_buy_second_town(with_cash)
+	if result != Placement.OK:
+		return result
+	if with_cash:
+		_add_resource("c", -TOWN_PRICE_CASH)
+	else:
+		_add_resource("g", -TOWN_PRICE_GOLD)
+	var towns := _towns()
+	towns.append({"r": SECOND_TOWN_RACE})
+	_document["privateState"]["maps"] = towns
+	if _document["maps"].size() <= SECOND_TOWN:
+		_add_troll_town(now)
+	return Placement.OK
+
+
+## Map SECOND_TOWN of fix_troll_empire of the server: the Troll Hall, the
+## coliseum, two houses, a tower and two villagers on land area TROLL_TOWN_LAND,
+## with the values that the rest of the server's save migration adds.
+func _add_troll_town(now: int) -> void:
+	var entries := []
+	for item: Array in TROLL_TOWN_ITEMS:
+		entries.append([item[0], item[1], item[2], 0, now, 0, [], {}])
+	_document["maps"].append({"id": SECOND_TOWN, "expansions": [TROLL_TOWN_LAND], "timestamp": now, "coins": 250, "xp": 4, "level": 1,
+			"stone": 250, "wood": 850, "food": 700, "race": SECOND_TOWN_RACE, "skin": 0, "idCurrentTreasure": 0, "timestampLastTreasure": 0,
+			"resourcesTraded": {}, "receivedAssists": {}, "increasedPopulation": 0, "expirableUnitsTime": {}, "universAttackWin": [],
+			"questTimes": {}, "lastQuestTimes": [], "items": entries, "warehouseAditionalCapacitySingle": 50, "warehousedUnits": {},
+			"timestampLastTrade": 0, "numTradesDone": 0, "store": {}, "resourceAlliesMarket": "n", "currentQuestVars": {}})
+	var info: Dictionary = _document["playerInfo"]
+	for key: String in ["map_names", "map_sizes"]:
+		if not info.get(key) is Array:
+			info[key] = []
+		while info[key].size() <= SECOND_TOWN:
+			info[key].append("" if key == "map_names" else 0)
+	info["map_names"][SECOND_TOWN] = TROLL_TOWN_NAME
+	info["map_sizes"][SECOND_TOWN] = 0
 
 
 ## The name of the map, which the player gives with rename().

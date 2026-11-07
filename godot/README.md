@@ -52,6 +52,10 @@ The weekly tournament of the original game is in the port without other players,
 
 You can also try a battle on any quest map: start the port with `--battle <file>`, for example `--battle <socialemperors folder>/villages/quests/100000013.save.json`. All items of that map except the trees, rocks and other neutral items are enemies, and the units of your village start in the land area with the fewest items. Shots use the graphics of the original game and fly as in the client: arrows and rocks in a curve, rocks and cannonballs with smoke and a blast where they land, fireballs and other shots straight or in an arc. They start at the point of the graphic from which the original shoots, and aim at the height of the target, as the client does. A data folder from an import before this change has no graphics of shots, and its shots start and aim at the feet of the items; import the files again to get them. The health bars and the selection rings are simple shapes; their graphics are in the main file of the client, from which the importer takes only the windows of the quests. `docs/GODOT_BATTLES.md` has the plan for the next stages: spells, the other quests, special abilities and the single-player modes.
 
+## The troll town
+
+As in the original game, you can buy a second town from level 20: the troll town. The World button opens the town window, which sells it for 100000 gold or 22 cash; the port then takes you to it. The window then has a button for each town, and you can travel between them at any time. Each town has its own level, experience, gold, wood, stone, food, land, buildings and army. Your cash, mana, goals, quests and the other values of the player belong to both towns. The troll town starts as the server makes it: a Troll Hall, a coliseum, two houses, a tower and two troll villagers on one land area. The build menu sells the troll buildings and units, quests and attacks start with the troll army, and the village attacks, wild animals and rewards are those of trolls. As in the original game, the troll town has no collections and no help from neighbours. The World button shows in the human town from level 20, and always in the troll town. `--town 1` starts the port in the troll town of the save.
+
 ## Neighbours and attacks
 
 The port has no server, so the other players are villages from files. The importer copies the neighbour villages of the server folder (`villages/*.json`, `villages/friend_static/`, and the server folders `friend/` and `enemy/` when they exist) and writes 10 mock neighbours: villages of made-up players from level 4 to 38, easy, normal, hard or brutal. Each is a town with a closed wall, towers in the wall (stronger villages also have the towers that the client sells for cash), siege engines behind the wall, and the buildings of its level inside, with a free tile between them; from level 21 the wall has gates, from level 12 the town has a castle, and the strongest have a large castle too. Larger villages own more land, and their town covers several land areas. From level 21 the town fills all its land (6 land areas, from level 31 all 9), with blocks of buildings and streets between them. `importer/mock_villages.py` makes them, with a fixed seed, and checks that no items overlap. When the generator changes, the next import replaces the mock villages. They are saves in the format of the server, so real saves can take their place: delete `neighbours/mock/` in the data folder and put other saves into `neighbours/friend/`. `neighbours/neighbour_source.gd` is the only part of the port that reads them; a version for a server would answer its calls with the requests of the server.
@@ -104,13 +108,13 @@ Build the extension (see "Graphics"), then open the `godot` folder in Godot 4.7,
 godot --path godot -- --data <data folder>
 ```
 
-Import the files again after an update of the port when it reports that a file in the data folder is missing; with the same `--out` folder, the tool skips the graphics that are still up to date. The port reads the data folder from `--data`, then from the `SE_DATA_DIR` environment variable, then from `user://imported`. Use `--village <file>` to open a different save, and `--screenshot <file.png>` to save an image and quit.
+Import the files again after an update of the port when it reports that a file in the data folder is missing; with the same `--out` folder, the tool skips the graphics that are still up to date. The port reads the data folder from `--data`, then from the `SE_DATA_DIR` environment variable, then from `user://imported`. Use `--village <file>` to open a different save, `--town 1` to start in its troll town, and `--screenshot <file.png>` to save an image and quit.
 
 The port writes each change to the village file that it opened. To play a server save, give its path, for example `--village saves/<USERID>.save.json`. Do not run the server with the same save at the same time.
 
 ## Check the rules
 
-`checks/village_check.gd` checks the placement rules, level-up, moving, selling, turning, collection, the special buildings, the goals, the tutorial, the neighbours, the allies buildings, PvP and the save format without a window. It needs a data folder from an import of the unchanged socialemperors files, because the tiles and the expected values come from them; the neighbour checks also need its `neighbours/` folder. It writes its files to `user://checks/`.
+`checks/village_check.gd` checks the placement rules, level-up, moving, selling, turning, collection, the special buildings, the goals, the tutorial, the neighbours, the allies buildings, PvP, the troll town and the save format without a window. It needs a data folder from an import of the unchanged socialemperors files, because the tiles and the expected values come from them; the neighbour checks also need its `neighbours/` folder. It writes its files to `user://checks/`.
 
 ```bash
 godot --headless --path godot --script res://checks/village_check.gd -- --data <data folder>
@@ -152,6 +156,9 @@ The exit code is the number of failed checks. Run the village check after you ch
 | `survival/` | Survival: the maps and their waves, the survival battle, and its windows. The AI of the enemies is `battle/ai/survival_ai.gd`. |
 | `tournament/` | The weekly tournament: the match with its score, its screen and the window of the bots. The AI of the bot's team is `battle/tournament_ai.gd`. |
 | `quest/` | Campaign quests: the islands, the island list rules, the quest battle with its goals and result, and the windows of the quests |
+| `neighbours/` | The other players: where their villages come from (`neighbour_source.gd`), the neighbour bar and the visit screen |
+| `pvp/` | Attacks on other players: the PvP window, the spy screen, the attack battle and its screen |
+| `towns/` | The town window, which sells the troll town and travels between the towns |
 | `spell_book/` | The spell book, the spell window, the mana window, aiming and casting, and the graphics of the spells on the map |
 | `ui/` | Shows the windows of the client that the importer imported (`ui_import.py`): their images, buttons, stars and text fields |
 | `checks/` | Headless checks of the village rules, the save format, the battle rules, the quests and the spells |

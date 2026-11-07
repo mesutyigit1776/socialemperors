@@ -164,19 +164,23 @@ The steps come in this order. Each step ends with checks, and, where it changes 
 3. Goals and the tutorial. Done: the 205 goals of the configuration with the rules of the client's goal classes (15 active goals, counts of the session, rewards as `reward_mission` and `complete_mission` write them), the goal box and window with the pictures of the goals, and the tutorial of a new empire with its 32 steps and its limits. The owner decided to add the village actions that the goals need: land, the market, the name of the empire, the store button, unit packs, the workers of buildings, the selection of several units, repairs of damaged buildings and the healing spring. Only the goals that need other players stay open. A replay of 30 commands on the server gives the same save. In Ruffle, the original client went through tutorial steps 0 to 10 with the same steps, texts and saved step numbers as the port; the automation could not place the house at step 10, so the later steps are checked only against the client code.
 4. Neighbours. Done: by the decision of the owner, the neighbours are the villages of `villages/` (Arthur and Guinevere, the friend village) and 10 mock villages that the importer makes (`godot/importer/mock_villages.py`), from level 4 to 38 and from easy to brutal. They are saves in the format of the server, and one class (`godot/neighbours/neighbour_source.gd`) reads them, so that a server can replace them. The port has the neighbour bar, visits with the help of 5 buildings, the help of neighbours from the save, the workers that the server hires from the neighbours, land for gold, the allies buildings, and PvP: the search, the attack with the loot rules of the client, the result for both villages, shields and the attack log. Also the fire of damaged buildings, which 4.3 did not have. The owner decided that the search finds villages of all levels; the server finds only villages from level 8. A replay of 56 commands on the server gives the same save for the player and for the attacked village. What other players do to the village (their help, potions, the Round Table) comes only from a server.
 
-**4.5. The troll village (the second town)**
+**4.5. The troll village (the second town)** (done)
 
-The client has a second town with the troll race, which the player buys and then travels to (PopupRaceSelector and TownManager). The port shows only the first map of the save. To do:
+The client has a second town with the troll race, which the player buys and then travels to (PopupRaceSelector and TownManager). Done:
 
-1. The world button and its window: before the purchase, the troll town for 100000 gold or 22 cash from level 20 (TROL_RACE_REQUIRED_LEVEL), as the server command `buy_map` checks; after it, the buttons to travel between the two towns.
-2. Travel: load map 1 of the save (the server makes it with `fix_troll_empire`: a Troll Hall, a coliseum, houses, a tower and villagers) and map 0 again. Each town has its own level, experience, resources, land and items; cash, the goals and the other data of privateState belong to the player.
-3. The troll town in the port: the troll store and units, quests and battles from that town, and the rules that depend on the race. A save from the port that has no map 1 gets one, as the server's save migration makes it.
-4. Checks, a replay of `buy_map` and the commands of the second town on the server, docs.
+1. The World button and the town window (`godot/towns/`): the troll town for 100000 gold or 22 cash from level 20, as the server command `buy_map` checks; after the purchase, a button for each town. The button shows in the human town from level 20 and always in the troll town, as in the client.
+2. Travel between map 0 and map 1 of the save. Each town has its own level, experience, resources, land and items; cash, the goals and the other data of privateState belong to the player. A save without map 1 gets the troll town of the server's save migration (`fix_troll_empire`) at the purchase.
+3. The troll town in play: the troll store, units, animals and village attacks, quests and attacks with the troll army, and the client's race rules: no collections and no received help in the troll town.
+4. Checks (`village_check.gd`), a server replay of `buy_map` and of commands in both towns with identical saves, a UI run, and the docs.
+
+**4.6. The quests in the town (QuestsInMap)**
+
+The client has quests on the player's own map, which the port does not have yet: the villages of prisoners and treasures (the princess, Prince Arthur, the kidnapped units, the rebel troll) and the custom quests of the events (Kaspar, the Golden Golem, the Black Yeti, the Mummy and others). The map keeps the current quest in `idCurrentTreasure` and `currentQuestVars`; the server commands are `collect_treasure` (once in 4 hours) and `set_quest_var`. Some quests depend on the race: the troll town skips the quests of humans, and a freed prisoner gives units of the player's race. To do: the quest rules from the client, the buildings and units of each quest on the map, the windows, checks and a server replay.
 
 **5. The look and the sound of the original game**
 
 1. The art and the fonts of the original windows and HUD, imported from the client files, and the screens built with them. This comes after the screens exist. The importer and `godot/ui/` can already show windows of the client; the quests use them.
-2. Music and sounds.
+2. Music and sounds. The troll town has its own music.
 
 **6. Release**
 

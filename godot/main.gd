@@ -17,6 +17,8 @@ extends Node2D
 ##                         used for checks
 ##   --village-attack <kind>  an attack (siege, stampede, army or bandits) whose
 ##                         wait is over comes to the village; used for checks
+##   --town <index>        start in this town of the save: 0 (default) or 1,
+##                         the troll town; used for checks
 
 ## The windows of the quests are over the village bar and the battle bar. The
 ## spell book and its windows of the village are over the map, under them.
@@ -65,6 +67,8 @@ static var _reload_message := ""
 static var _reloaded := false
 ## The counts of the goals in this session, which stay when the scene starts again; see GoalBook.
 static var _goal_steps := {}
+## The town of the save that the scene shows; the World window changes it (_travel()).
+static var _town := 0
 var _goals: GoalBook
 var _tutorial: Tutorial
 var _tutorial_box: TutorialBox
@@ -100,10 +104,12 @@ func _ready() -> void:
 	_data_dir = data_dir
 	add_child(_frames)
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
+	if _options.has("town"):
+		_town = int(_options["town"])
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
 	_store = Store.load_from_file(data_dir.path_join("shop.json"), _config) if _config != null else null
-	_village = Village.load_from_file(_village_path, _config) if _store != null else null
+	_village = Village.load_from_file(_village_path, _config, _town) if _store != null else null
 	if _village != null:
 		_neighbours = NeighbourSource.load_from(data_dir.path_join("neighbours"), _config)
 		_village.neighbour_ids.assign(_neighbours.neighbours(_village.player_id()).map(func(entry: Dictionary) -> String: return entry["pid"]))
@@ -151,6 +157,10 @@ func _ready() -> void:
 		_hud.warehouse_slot_requested.connect(_on_warehouse_slot_requested)
 		_hud.action_requested.connect(_on_action_requested)
 		_hud.collections_requested.connect(func() -> void:
+			# The client has the collections only in the human town.
+			if _village.race != "h":
+				_hud.show_message(_config.text("AVISO_COLECCION_FACCION").strip_edges())
+				return
 			_show_panel(SpecialActions.View.COLLECTIONS)
 			_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.popupCollections"}))
 		_hud.packs_requested.connect(func() -> void: _show_panel(SpecialActions.View.PACKS))
@@ -163,6 +173,7 @@ func _ready() -> void:
 		_hud.survival_requested.connect(_open_survival)
 		_hud.tournament_requested.connect(_open_tournament)
 		_hud.pvp_requested.connect(_open_pvp)
+		_hud.towns_requested.connect(_open_towns)
 		add_child(_hud)
 		_neighbour_bar.visit_requested.connect(_visit_neighbour)
 		_hud.add_child(_neighbour_bar)
@@ -738,6 +749,7 @@ func _update_store() -> void:
 			categories.append([name, offered])
 		_hud.set_categories(categories)
 	_hud.refresh(_village)
+	_hud.show_world_button(_village.race != "h" or _village.get_level() >= Village.SECOND_TOWN_LEVEL)
 	_hud.show_goals(_goals.shown_goals().map(func(goal: GameConfig.GoalDef) -> Array: return [goal.id, _goals.text(goal.title), _goals.progress_text(goal)]), _village.map_name())
 
 
@@ -1287,7 +1299,8 @@ func _on_visit_closed(clicks: Array, pid: String) -> void:
 ## shows a cart for each neighbour, and the player accepts or declines it.
 func _offer_received_assists() -> void:
 	var assists := _village.received_assists()
-	if assists.is_empty() or _tutorial.is_active():
+	# The client offers the help of neighbours only in the human town.
+	if assists.is_empty() or _tutorial.is_active() or _village.race != "h":
 		return
 	var pid: String = assists.keys()[0]
 	var dialog := ConfirmationDialog.new()
@@ -1336,6 +1349,33 @@ func _open_pvp() -> void:
 	window.attack_log_opened.connect(func() -> void: _record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"}))
 	_hud.add_child(window)
 	window.show_main(_now())
+
+
+## The town window: buy the troll town ("buy_map"), then travel to it, as the client does; or travel between the towns.
+func _open_towns() -> void:
+	if _tutorial.is_active():
+		return
+	var window := TownWindow.new(_village, _config)
+	window.buy_requested.connect(func(with_cash: bool) -> void:
+		var result := _village.buy_second_town(with_cash, _now())
+		if result != Village.Placement.OK:
+			_hud.show_message(_config.text("POPUP_RAZA_NIVEL_TROLL").strip_edges().replace("#0#", str(Village.SECOND_TOWN_LEVEL)) \
+					if result == Village.Placement.LEVEL_TOO_LOW else VillageHud.PLACEMENT_MESSAGES.get(result, ""))
+			return
+		window.queue_free()
+		_travel(Village.SECOND_TOWN, "You bought the troll town."))
+	window.travel_requested.connect(func(index: int) -> void:
+		window.queue_free()
+		_travel(index, ""))
+	_hud.add_child(window)
+
+
+## Saves, then loads the other town of the save (TownManager.loadTown of the client).
+func _travel(index: int, message: String) -> void:
+	if not _save():
+		return
+	_town = index
+	_reload_map(message)
 
 
 ## Pays the search ("get_enemy_new") and shows the enemy that the search

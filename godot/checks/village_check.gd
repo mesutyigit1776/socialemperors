@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1425,6 +1425,37 @@ func _check_pvp() -> bool:
 
 
 ## A copy of the neighbour folders of the import, so that the checks can write into it.
+## The troll town: the purchase of "buy_map", the map of fix_troll_empire, and two towns in one save.
+func _check_second_town() -> bool:
+	var path := _write_fixture("second_town", 19, _config.levels[18].exp_required, 150000)
+	_patch_private(path, {}, 30)
+	var village := Village.load_from_file(path, _config)
+	_check(not village.has_second_town() and village.can_buy_second_town(false) == Village.Placement.LEVEL_TOO_LOW, "the troll town needs level 20")
+	path = _write_fixture("second_town", 20, _config.levels[19].exp_required, 150000)
+	_patch_private(path, {}, 30)
+	village = Village.load_from_file(path, _config)
+	_check(village.buy_second_town(false, NOW) == Village.Placement.OK and village.get_resource("g") == 50000 and village.get_resource("c") == 30, "the troll town costs 100000 gold")
+	var document := village._document
+	_check(document["privateState"]["maps"] == [{"r": "h"}, {"r": "t"}] and document["maps"].size() == 2 and document["playerInfo"]["map_names"][1] == "My Empire 1", "the save lists the bought town and has its map")
+	_check(village.buy_second_town(true, NOW) == Village.Placement.NOT_ALLOWED, "the player buys the troll town only once")
+	_check(village.save_to_file(path) == OK, "the save with two towns is written")
+	var trolls := Village.load_from_file(path, _config, Village.SECOND_TOWN)
+	_check(trolls != null and trolls.race == "t" and trolls.get_level() == 1 and trolls.get_resource("g") == 250 and trolls.owned_land == PackedInt32Array([13]) and trolls.items.size() == 7, "the troll town starts as the server makes it")
+	_check(trolls.has_second_town() and not trolls.is_first_map() and trolls.get_resource("c") == 30, "the towns share the cash and the list of towns")
+	var house := _config.get_item(307)
+	_check(house.is_sold_to("t") and not house.is_sold_to("h") and trolls.buy(house, _free_tile(trolls, 307, Rect2i(39, 39, 13, 13)), NOW) == Village.Placement.OK, "the troll town builds troll buildings")
+	_check(trolls.save_to_file(path) == OK and Village.load_from_file(path, _config).get_resource("g") == 50000, "a purchase in the troll town does not change the gold of the first town")
+	# A save of the server already has the troll map; the purchase keeps it.
+	path = _write_fixture("second_town_cash", 20, _config.levels[19].exp_required, 0)
+	_patch_private(path, {"maps": [{"r": "h"}]}, 22)
+	village = Village.load_from_file(path, _config)
+	village._add_troll_town(NOW)
+	village._document["maps"][1]["coins"] = 999
+	_check(village.buy_second_town(false, NOW) == Village.Placement.NOT_ENOUGH_RESOURCES and village.buy_second_town(true, NOW) == Village.Placement.OK and village.get_resource("c") == 0, "the troll town costs 22 cash")
+	_check(village._document["maps"].size() == 2 and village._document["maps"][1]["coins"] == 999, "the purchase keeps a troll map that the save has")
+	return true
+
+
 func _neighbour_copy() -> String:
 	var target := "user://checks/neighbours"
 	for folder in NeighbourSource.FOLDERS:

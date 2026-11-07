@@ -36,6 +36,8 @@ signal quests_requested
 signal survival_requested
 signal tournament_requested
 signal pvp_requested
+## The player opens the town window (the World button).
+signal towns_requested
 signal packs_requested
 ## The player wants to put the selected item into the item store.
 signal store_requested
@@ -103,6 +105,7 @@ var _warehouse := VBoxContainer.new()
 var _warehouse_text := Label.new()
 var _warehouse_units := HFlowContainer.new()
 var _warehouse_slot_button := Button.new()
+var _world_button: Button
 var _actions := VBoxContainer.new()
 var _actions_text := Label.new()
 var _action_buttons := VBoxContainer.new()
@@ -128,12 +131,14 @@ func _init() -> void:
 	column.add_child(title)
 	column.add_child(_category)
 	var lists := _lists
-	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["PvP", pvp_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
+	for pair: Array in [["Collections", collections_requested], ["Item store", stored_items_requested], ["Quests", quests_requested], ["Survival", survival_requested], ["Tournament", tournament_requested], ["PvP", pvp_requested], ["World", towns_requested], ["Unit packs", packs_requested], ["Select units", selection_tool_requested]]:
 		var button := Button.new()
 		button.text = pair[0]
 		var requested: Signal = pair[1]
 		button.pressed.connect(func() -> void: requested.emit())
 		lists.add_child(button)
+		if requested == towns_requested:
+			_world_button = button
 	var rename := Button.new()
 	rename.text = "Rename"
 	rename.pressed.connect(_rename_dialog.popup_centered)
@@ -434,6 +439,11 @@ func set_locked(locked: bool) -> void:
 		(button as Button).disabled = locked
 	for button: Button in [_move_button, _rotate_button, _store_button, _sell_button]:
 		button.visible = not locked
+
+
+## Shows or hides the World button; main.gd applies the level rule of the client.
+func show_world_button(shown: bool) -> void:
+	_world_button.visible = shown
 
 
 func open_rename() -> void:
