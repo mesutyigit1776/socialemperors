@@ -1072,19 +1072,20 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 
 ## The client starts the map each time it loads it: at the start and after a
 ## quest, survival, a tournament match or an attack (MapInitializer.Init, then
-## the end of Base.UpdateGame3). It clears the border, places the idle enemies,
-## the resources and the wild animals, starts the attacks, gives the free
-## buildings and, from Village.PUBLISH_SCORE_LEVEL, publishes the experience
-## that it counts, which takes back the experience that the server gave for
-## these items.
+## the end of Base.UpdateGame3). After a check of the goals, it clears the
+## border, places the idle enemies, the resources and the wild animals,
+## starts the attacks, gives the free buildings and, from
+## Village.PUBLISH_SCORE_LEVEL, publishes the experience that it counts,
+## which takes back the experience that the server gave for these items.
 func _init_map() -> void:
 	var now := _now()
 	_known_level = _village.get_level()
+	# The client checks the goals first, with the items before the clean.
+	_goals.on_map_loaded()
 	_village.clean_border(_rng)
 	_enemies.on_map_loaded(now)
 	_village.spawn_resources(now, _rng)
 	_village.spawn_animals(now, _rng)
-	_goals.on_map_loaded()
 	_update_store()
 	if _village.get_level() >= Village.PUBLISH_SCORE_LEVEL:
 		_village.publish_score(_village.client_xp())
