@@ -13,7 +13,8 @@ extends BattleAbility
 ## [delay in frames, graphic, blast graphic or ""]: each attack fires these
 ## shots at the target instead of the normal shot, each with the attack),
 ## "hold" (when the shot leaves, electricity holds the target for 1 second
-## if its life is at most this number; 0: any target).
+## if its life is at most this number; 0: any target), "sound" (a sound of
+## SoundEffect at each normal attack, from onAttack of the delegate).
 const UNITS := {
 	818: {"shot": "p.arrow", "delay": 5},  # Skeleton Archer (ArcherSkeletonDelegate)
 	850: {"shot": "p.lightBall", "delay": 12},  # Bahamut Draggy
@@ -35,10 +36,10 @@ const UNITS := {
 	785: {"shot": "p.bullDragonBeam", "delay": 13, "beam": 30},  # Furious Bull Dragon
 	778: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # God Zeus
 	828: {"shot": "p.zeusLightning", "delay": 6, "scale": 0.8},  # Furious Zeus
-	710: {"shot": "p.lightMiniBeam"},  # Golden Draggie (GoldenDragonDelegate)
+	710: {"shot": "p.lightMiniBeam", "sound": SoundEffect.ATTACK_BIG_ARCHER},  # Golden Draggie (GoldenDragonDelegate)
 	765: {"melee": true},  # Hades
 	784: {"shot": "p.energyBallBullDragon", "delay": 12},  # Horned Draggy
-	705: {"shot": "p.lance", "cycle": [[105], [35]]},  # Celestial Lancer (LancerDelegate)
+	705: {"shot": "p.lance", "cycle": [[105], [35]], "sound": SoundEffect.ATTACK_BIG_ARCHER},  # Celestial Lancer (LancerDelegate)
 	2101: {"melee": true},  # Medieval Ether Messiah
 	2102: {"melee": true},  # Medieval Samurai
 	# Rodas Colossus: it hits like a melee unit, so its light beam never leaves.
@@ -136,7 +137,7 @@ const UNITS := {
 	2001: {"shot": "p.egyptianBall", "delay": 11},  # BahamutPaladinDraggyDelegate
 	2004: {"shot": "p.multicolredEnergyBall", "delay": 11},  # BahamutSupremeDraggyDelegate
 	892: {"shot": "p.napalm", "delay": 10},  # BlackBahamutDraggyDelegate
-	725: {"shot": "p.lightMiniBeam", "delay": 12},  # BlackDraggyDelegate
+	725: {"shot": "p.lightMiniBeam", "delay": 12, "sound": SoundEffect.ATTACK_BIG_ARCHER},  # BlackDraggyDelegate
 	2181: {"shot": "p.windBall", "delay": 12},  # ExtremeBullDraggyDelegate
 	2172: {"shot": "p.windBall", "delay": 12},  # ExtremeElectricDraggyDelegate
 	2178: {"shot": "p.windBall", "delay": 12},  # ExtremeFireDraggyDelegate
@@ -164,12 +165,12 @@ const UNITS := {
 	2049: {"shots": [[1, "p.crystalBall", "b.blueEnergy"]]},  # GalaxyDraggyDelegate
 	2040: {"shots": [[1, "p.catapultFireball", "b.earthFire"]]},  # SunDraggyDelegate
 	883: {"shot": "p.ballTitanHydros", "delay": 7},  # Limit Adder (LimitAdderDelegate); its limit help is in BattleAbility.add_limit().
-	733: {"shots": [[10, "p.goldenDragon", ""], [13, "p.goldenDragon", ""]]},  # Dracula (DraculaDelegate): a second shot 100 ms after the first
+	733: {"shots": [[10, "p.goldenDragon", ""], [13, "p.goldenDragon", ""]], "sound": SoundEffect.ATTACK_BIG_ARCHER},  # Dracula (DraculaDelegate): a second shot 100 ms after the first
 	885: {"shots": [[10, "p.turkSpear", ""]]},  # Turkish Horseman (TurkishHorsemanDelegate)
 	2115: {"shot": "p.dualPurple", "delay": 7},  # GodEvilMinionDelegate
 	2091: {"shot": "p.purpleBall", "delay": 7},  # GodSoulMinionDelegate
-	708: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]]},  # GoldenDragonSpecialDelegate: a second shot 100 ms later
-	835: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]]},  # GoldenDragonSpecialDelegate
+	708: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]], "sound": SoundEffect.ATTACK_BIG_ARCHER},  # GoldenDragonSpecialDelegate: a second shot 100 ms later
+	835: {"shots": [[12, "p.goldenDragon", ""], [15, "p.goldenDragon", ""]], "sound": SoundEffect.ATTACK_BIG_ARCHER},  # GoldenDragonSpecialDelegate
 	695: {"shot": "p.lightBeam", "delay": 12, "beam": 30, "hold": 350},  # LightDragonDelegate
 	834: {"shot": "p.lightBeam", "delay": 12, "beam": 30, "hold": 350},  # LightDragonDelegate
 	723: {"shot": "p.beamBlackDragonFire", "delay": 12, "beam": 30, "hold": 0},  # BlackDragonSpecialDelegate
@@ -185,12 +186,14 @@ const UNITS := {
 
 var _shots: Array = []
 var _hold := -1
+var _sound := -1
 
 
 func configure(item_id: int) -> void:
 	var data: Dictionary = UNITS.get(item_id, {})
 	_shots = data.get("shots", [])
 	_hold = data.get("hold", -1)
+	_sound = data.get("sound", -1)
 	shot_graphic = data.get("shot", "")
 	shot_delay = data.get("delay", 0)
 	if data.has("beam"):
@@ -211,6 +214,8 @@ func configure(item_id: int) -> void:
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
+	if _sound >= 0 and fighter.animation == BattleFighter.Pose.ATTACKING:
+		sim.sound_played.emit(_sound, -1)
 	var target := fighter.target
 	if _hold >= 0 and target != null:
 		sim.after(maxi(shot_delay, 1), func() -> void:

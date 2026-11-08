@@ -16,6 +16,9 @@ const TEXT_GUTTER := 2.0
 ## The key in _parts of the shapes under a mask, after the key of the mask.
 const MASKED_SUFFIX := "#masked"
 
+## The buttons that play SoundEffect.ROLL_OVER when the mouse comes over them.
+const ROLL_OVER_BUTTONS: Array[String] = ["yesBtn", "okButton"]
+
 var library: UiLibrary
 var sprite_id: int
 var frame := 0
@@ -57,6 +60,7 @@ func show_frame(new_frame: int) -> void:
 		var node: Control = _parts.get(key)
 		if node == null:
 			node = _make_part(part)
+			node.set_meta("part", key)
 			_parts[key] = node
 			add_child(node)
 		move_child(node, get_child_count() - 1)
@@ -181,6 +185,9 @@ func make_button(hover_frame := false) -> void:
 	if _hover_frame:
 		mouse_entered.connect(func() -> void: show_frame(1))
 		mouse_exited.connect(func() -> void: show_frame(0))
+	# The client plays a sound when the mouse comes over a Yes or OK button (GameStatic.startFloat).
+	if get_meta("part", "") in ROLL_OVER_BUTTONS:
+		mouse_entered.connect(func() -> void: SoundPlayer.play(SoundEffect.ROLL_OVER))
 
 
 ## The image of the clip takes the clicks on its rectangle, so that they do

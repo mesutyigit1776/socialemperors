@@ -13,4 +13,6 @@ func _init() -> void:
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 	if in_special(fighter, 0) and fighter.target != null and not fighter.target.dead:
 		sim.particle(fighter, fighter.target.tile, MagicParticles.LIGHTNING_HUGE, fighter.attack * 2, 0)
+	if fighter.animation == BattleFighter.Pose.ATTACKING:
+		sim.sound_played.emit(SoundEffect.ATTACK_BIG_ARCHER, -1)
 	return fighter.animation == BattleFighter.Pose.ATTACKING

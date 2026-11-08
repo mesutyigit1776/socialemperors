@@ -48,6 +48,12 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	_screen = BattleScreen.new(battle.sim, _view)
 	add_child(_screen)
 	_screen.stepped.connect(_on_stepped)
+	# The client plays the battle music while the items of the player are
+	# attacked in the village, and the music of the town again when nobody
+	# attacks (IsoFightingElement.recibirAtaque and IsoEngine).
+	battle.sim.hit.connect(func(target: BattleFighter, _attacker: BattleFighter, _damage: int, _critical: bool) -> void:
+		if target.team == BattleFighter.Team.PLAYER:
+			SoundPlayer.play_music(SoundPlayer.Music.BATTLE))
 	battle.ended.connect(func() -> void:
 		_screen.paused = true
 		closed.emit())
@@ -97,6 +103,8 @@ func _process(delta: float) -> void:
 
 func _on_stepped() -> void:
 	battle.update()
+	if not battle.sim.fighters.any(func(fighter: BattleFighter) -> bool: return fighter.attacking and not fighter.dead):
+		SoundPlayer.play_music(SoundPlayer.town_music(_village.race))
 	if battle.sim.frame % BattleSim.FRAMES_PER_SECOND == 0:
 		_update_status()
 

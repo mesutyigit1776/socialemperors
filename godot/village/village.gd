@@ -58,6 +58,8 @@ const HEROES: Array[int] = [535, 533, 534, 550, 554, 555, 556, 557]
 const GRAVEYARD_MAX_UNITS := 10000
 const GRAVEYARD_MAX_EACH := 100
 const KILL_GOLD := 5  ## The server gives this gold for each enemy unit that the player kills in the village.
+## The client publishes its experience at the load of the map from this level (mapInitialized).
+const PUBLISH_SCORE_LEVEL := 5
 const SURVIVAL_LIVES := 3
 const SURVIVAL_MAPS_OPEN := 3
 ## Units of these kinds stay in the village during a quest: villagers,
@@ -823,11 +825,20 @@ func is_enemy_unit(placed: PlacedItem) -> bool:
 ## Puts an enemy unit on the map, as the client does when it spawns the idle
 ## enemies around the village: the command "buy" without cost, for which the
 ## server also gives the experience of the item and lists the unit as bought
-## when it is not of the other race of the player.
+## when it is not of the other race of the player. The client does not count
+## this experience itself, so no level comes from it now; see publish_score().
 func add_enemy(item: GameConfig.ItemDef, tile: Vector2i, now: int) -> PlacedItem:
-	_add_xp(item.xp)
+	_map["xp"] = get_xp() + item.xp
 	_register_unit(item.id)
 	return _add_entry(item, tile, 0, now, {})
+
+
+## The command "rt_publish_score": the server sets the experience of the map
+## to the experience that the client has. The client sends it when the map has
+## loaded, from PUBLISH_SCORE_LEVEL, with the experience without the idle
+## enemies of the load (see add_enemy()).
+func publish_score(xp: int) -> void:
+	_map["xp"] = xp
 
 
 ## Puts an item of a quest in the town on the map with the server command

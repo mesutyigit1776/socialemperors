@@ -39,8 +39,8 @@ const CLIENT_Y := 525
 const TOP_PARTS := ["experienceBar", "topLeft", "topRight", "barraAttackArriba", "cash", "addCashButton"]
 ## The parts that the village does not show (StateNormal.enter and
 ## GuiManager.createButtonsHerramientas); the port has no collection panel,
-## options, map button, fast collect, remove tool or darts.
-const HIDDEN := ["barraAttackArriba", "questProgressButton", "panelCollection", "options_panel", "bgBar/btnExit", "bgBar/returnHome",
+## map button, fast collect, remove tool or darts.
+const HIDDEN := ["barraAttackArriba", "questProgressButton", "panelCollection", "bgBar/btnExit", "bgBar/returnHome",
 		"bgBar/iconMenu", "bgBar/iconMenuGift", "bgBar/iconMenuWorld", "bgBar/iconMenuGames", "bgBar/btnSelectAll", "bgBar/btnSelectSpecials",
 		"bgBar/bulldozer", "bgBar/recolectaRapido", "bgBar/mcTrolls", "bgBar/giftCounter", "bgBar/normalMouse/btnNoArrow"]
 ## The y of the panel of the selected item over the neighbours, and below the screen (GuiManager.showRecuadro).
@@ -99,6 +99,7 @@ var _zoom: UiClip
 var _zoom_level := 1.0
 var _zoom_dragging := false
 var _panel_tween: Tween
+var _options: OptionsPanel
 
 
 func _init(ui: UiLibrary, config: GameConfig) -> void:
@@ -115,6 +116,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_gui.set_text("bgBar/herramientaCuadrado/cuadradoText", config.text("ICON_SQUARE_TOOL"))
 	_gui.set_part_visible("bgBar/herramientaCuadrado/spaceKeyText", false)
 	_clip_button("bgBar/normalMouse/btnArrow", func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # GuiManager.returnMouse
 		_close_menus()
 		tool_cancelled.emit())
 	_clip_button("bgBar/storeButton", _open_store)
@@ -146,6 +148,8 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _locked:
 			open_rename())
 	_clip_button("topRight/hudShield", func() -> void: pvp_requested.emit())
+	_options = OptionsPanel.new(ui, _gui, _gui.clip("options_panel"))
+	add_child(_options)
 	# The client puts the zoom slider under the bottom bar.
 	_zoom = ui.make("ZoomSliderMC")
 	_gui.add_child(_zoom)
@@ -246,6 +250,7 @@ static func place_gui(gui: UiClip, top_y: Dictionary, size: Vector2) -> void:
 func _layout() -> void:
 	var size := get_viewport().get_visible_rect().size
 	place_gui(_gui, _top_y, size)
+	_options.place(size)
 	_zoom.position = Vector2(size.x - ZOOM_FROM_RIGHT, size.y - ZOOM_FROM_BOTTOM) - _gui.position
 	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
 	_message.size = Vector2(CLIENT_WIDTH - 120, 60)
@@ -264,6 +269,7 @@ func _clip_button(path: String, action: Callable) -> void:
 func _menu_entry(menu: String, entry: Array) -> void:
 	var requested: Signal = entry[3]
 	_clip_button("%s/%s" % [menu, entry[0]], func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # GuiManager.returnMouse
 		_close_menus()
 		if not _locked:
 			requested.emit())
@@ -273,6 +279,8 @@ func _menu_entry(menu: String, entry: Array) -> void:
 
 func _toggle_menu(menu: String) -> void:
 	var shown := not _gui.part(menu).visible
+	if not shown:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # The client clicks when its button closes a menu.
 	_close_menus()
 	_gui.set_part_visible(menu, shown and not _locked)
 
@@ -380,6 +388,7 @@ func show_build_item(item: GameConfig.ItemDef) -> void:
 func set_locked(locked: bool) -> void:
 	_locked = locked
 	selection.set_locked(locked)
+	_options.pause_allowed = not locked
 	if locked:
 		_close_menus()
 

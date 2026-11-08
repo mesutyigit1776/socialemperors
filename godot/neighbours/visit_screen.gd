@@ -66,7 +66,9 @@ func _init(ui: UiLibrary, neighbour: Village, entry: Dictionary, can_help: bool,
 	var home := _gui.clip("bgBar/returnHome")
 	home.visible = true
 	home.make_button()
-	home.pressed.connect(func() -> void: closed.emit(_clicks))
+	home.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # GuiManager.returnHome
+		closed.emit(_clicks))
 	layer.add_child(_gui)
 	_message.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
 	_message.add_theme_font_size_override("font_size", 15)
@@ -100,6 +102,7 @@ func _on_map_clicked(_tile: Vector2i, placed: Village.PlacedItem) -> void:
 		_message.text = _config.text("AVISO_SIN_AYUDAS").strip_edges()
 		return
 	_clicks.append([placed.tile.x, placed.tile.y, placed.item_id])
+	SoundPlayer.play(SoundEffect.COLLECTION)  # At the end of the help bar (FauxBar2).
 	_marked.append(placed)
 	_view.show_marks(_marked, [])
 	_message.text = "You helped the %s." % _config.get_item(placed.item_id).name

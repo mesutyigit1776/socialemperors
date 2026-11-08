@@ -119,6 +119,8 @@ func order(unit: Village.PlacedItem, tile: Vector2i, target: Village.PlacedItem)
 		walk.point = IsoGrid.tile_to_map(walk.path.pop_front())
 	walk.speed = maxi(_village.walking_speed(unit), 1)
 	_walks[unit] = walk
+	if walk.goal == Goal.TILE and BattleSim.MOVE_SOUNDS.has(unit.item_id):
+		SoundPlayer.play(BattleSim.MOVE_SOUNDS[unit.item_id])
 	return ""
 
 
@@ -274,6 +276,8 @@ func _arrive(walk: Walk) -> void:
 			_harvests[walk.target] = harvest
 		_harvests[walk.target].units.append(walk.unit)
 		_harvesting[walk.unit] = walk.target
+		# The client plays the sound when the unit starts to cut or to dig.
+		SoundPlayer.play(SoundEffect.LUMBER if _config.get_item(walk.target.item_id).subcat_functional == VillageView.SUBCAT_TREE else SoundEffect.STONE)
 		_view.set_item_visible(walk.unit, false)
 		village_changed.emit("%s harvests %s." % [unit_name, _config.get_item(walk.target.item_id).name], old_level)
 	else:

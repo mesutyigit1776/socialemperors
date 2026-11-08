@@ -208,6 +208,7 @@ func _bring_boss() -> void:
 			if tile == null:
 				return
 			var boss := _add(_config.get_item(ROCKDRILLER_BOSS), tile, BattleFighter.Team.ENEMY)
+			sim.sound_played.emit(SoundEffect.ROCKDRILLER, -1)
 			_bosses.append(boss)
 			_multiply_life(boss, ROCKDRILLER_LIFE_MULTIPLIERS[stars - 1])
 			if stars == 3:

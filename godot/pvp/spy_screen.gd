@@ -72,7 +72,9 @@ func _show_start_points() -> void:
 	_column.add_child(grid)
 	var start := Button.new()
 	start.text = "Start the attack"
-	start.pressed.connect(func() -> void: attack_requested.emit(_start))
+	start.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		attack_requested.emit(_start))
 	_column.add_child(start)
 
 

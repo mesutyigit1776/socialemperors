@@ -51,7 +51,9 @@ func show_goal(goal: GameConfig.GoalDef) -> void:
 	_add_picture(info.clip("foto"), goal.image)
 	_add_picture(info.clip("ninot"), goal.character)
 	_button(info.clip("btnTutorialize"), func() -> void: do_it.emit(goal))
-	_button(info.clip("btnGoalList"), show_list)
+	_button(info.clip("btnGoalList"), func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		show_list())
 	info.button("closeButt").pressed.connect(_close)
 	_centre(info.position)
 
@@ -88,7 +90,9 @@ func _show_page() -> void:
 		line.set_part_visible("btnPay", false)
 		line.set_part_visible("btnReward", false)
 		line.set_text("btnInfo/lbl", "+ " + _config.text("BTN_MORE_INFO"))
-		_button(line.clip("btnInfo"), show_goal.bind(goal))
+		_button(line.clip("btnInfo"), func() -> void:
+			SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall of GoalListLine
+			show_goal(goal))
 		anchor.add_child(line)
 		y += line.bounds().end.y + LINE_GAP
 	_window.set_part_visible("butPrev", _page > 0)

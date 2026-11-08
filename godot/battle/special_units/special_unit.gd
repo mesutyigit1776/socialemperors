@@ -32,6 +32,16 @@ static func add(ability: BattleAbility, id: int, name: String, thumb: String, ac
 	return button
 
 
+## The action of a button that also plays sounds of the client when it
+## starts: sounds is a list of [SoundEffect, delay in ms].
+static func with_sounds(action: Variant, sounds: Array) -> Callable:
+	var run: Callable = action.button_action() if action is SpecialAttacks.Attack else action
+	return func(sim: BattleSim, fighter: BattleFighter) -> void:
+		for sound: Array in sounds:
+			sim.sound_played.emit(sound[0], sound[1])
+		run.call(sim, fighter)
+
+
 ## The client lets a button work only while the target is a unit in range (hasTarget).
 static func has_target() -> Callable:
 	return func(sim: BattleSim, fighter: BattleFighter) -> bool:

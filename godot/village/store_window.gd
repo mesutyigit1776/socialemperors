@@ -74,6 +74,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	for arrow in ["shiftLeft", "shiftRight"]:
 		var clip := _items_clip.clip(arrow)
 		clip.make_button()
+		clip.pressed.connect(func() -> void: SoundPlayer.play(SoundEffect.BUTTON_CLICK))
 		clip.pressed.connect(_turn_page.bind(-1 if arrow == "shiftLeft" else 1))
 	for tab: Array in TABS:
 		var clip := ui.make("TabMC")
@@ -84,6 +85,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 		clip.set_text("icon/iconLbl", config.text(TAB_LABELS[mini(menu, TAB_LABELS.size()) - 1]))
 		clip.set_part_visible("tabColor", false)
 		clip.make_button()
+		clip.pressed.connect(func() -> void: SoundPlayer.play(SoundEffect.BUTTON_CLICK))  # Tab.mouseUsed
 		clip.pressed.connect(_open_menu.bind(menu))
 		_window.add_child(clip)
 		_tabs[menu] = clip
@@ -91,6 +93,8 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 		var button := ui.make("BuildButtonLargeMC")
 		button.position = BUTTON_ORIGIN + Vector2(BUTTON_STEP.x * (index % COLUMNS), BUTTON_STEP.y * (index / COLUMNS))
 		button.make_button()
+		# ItemButtonLarge clicks when the mouse comes over an item and when the player chooses it.
+		button.mouse_entered.connect(func() -> void: SoundPlayer.play(SoundEffect.BUTTON_CLICK))
 		button.pressed.connect(_choose.bind(index))
 		_items_clip.add_child(button)
 		_item_buttons.append(button)
@@ -177,6 +181,7 @@ func _show_subcategories() -> void:
 		var id: int = entry[0]
 		button.gui_input.connect(func(event: InputEvent) -> void:
 			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				SoundPlayer.play(SoundEffect.BUTTON_CLICK)
 				_subcategory = id
 				_start = 0
 				_show_items())
@@ -296,5 +301,6 @@ func _choose(index: int) -> void:
 	if result != Village.Placement.OK:
 		blocked.emit(result)
 		return
+	SoundPlayer.play(SoundEffect.BUTTON_CLICK)
 	hide()
 	item_selected.emit(item)

@@ -17,3 +17,7 @@ window/size/viewport_height=800
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[autoload]
+
+Sounds="*res://sound/sound_player.gd"

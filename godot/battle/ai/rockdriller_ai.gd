@@ -117,6 +117,7 @@ func _change_phase(sim: BattleSim, unit: BattleFighter) -> void:
 				driller.ai.boss = self
 	else:
 		phase = 1
+		sim.sound_played.emit(SoundEffect.ROCKDRILLER, -1)  # It comes out of the ground.
 		state = State.IDLE
 		condition = Condition.AGGRESSIVE
 		sim.set_speed(unit, 0)

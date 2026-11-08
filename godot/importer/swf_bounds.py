@@ -1,6 +1,6 @@
 """Reads the parts of SWF files that the importer needs: the exported symbols,
 the placements, bounds and text fields of the client windows (ui_import.py),
-and the frame labels of the spell graphics. The port reads the art and the
+the frame labels of the spell graphics and the sounds (sound_import.py). The port reads the art and the
 data of the frames itself, with the extension flash_art.
 """
 
@@ -16,6 +16,8 @@ SPRITE_TAG = 39
 BUTTON2_TAG = 34                       # DefineButton2
 PLACE_TAGS = {26, 70}                 # PlaceObject2, PlaceObject3
 SYMBOL_CLASS_TAG = 76
+SOUND_TAG = 14                         # DefineSound
+MP3_FORMAT = 2
 SHOW_FRAME_TAG = 1
 FRAME_LABEL_TAG = 43
 REMOVE_OBJECT2_TAG = 28
@@ -183,6 +185,7 @@ class SwfFile:
 		self.edit_texts = {}  # character id -> position of its DefineEditText tag
 		self.fonts = {}       # font id -> font name
 		self.buttons = {}     # button id -> (start, end) of its DefineButton2 tag
+		self.sounds = {}      # sound id -> (start, end) of its DefineSound tag
 		self._read_definitions(pos, len(body))
 		self._sprite_bounds = {}
 
@@ -208,6 +211,8 @@ class SwfFile:
 				self.sprites[char_id] = (start + 4, start + length)
 			elif code == BUTTON2_TAG:
 				self.buttons[struct.unpack_from('<H', data, start)[0]] = (start, start + length)
+			elif code == SOUND_TAG:
+				self.sounds[struct.unpack_from('<H', data, start)[0]] = (start, start + length)
 			elif code == SYMBOL_CLASS_TAG:
 				count = struct.unpack_from('<H', data, start)[0]
 				p = start + 2
@@ -217,8 +222,16 @@ class SwfFile:
 					self.symbols[data[p + 2:name_end].decode('utf-8')] = char_id
 					p = name_end + 1
 
+	def mp3_sound(self, char_id):
+		"Returns the MP3 frames of a DefineSound tag, which an MP3 file can hold as they are."
+		start, end = self.sounds[char_id]
+		if self.data[start + 2] >> 4 != MP3_FORMAT:
+			raise SwfError(f"sound {char_id} is not MP3")
+		# The id, the format byte and the sample count (7 bytes), then the seek samples (2 bytes).
+		return self.data[start + 9:end]
+
 	def max_character_id(self):
-		return max([*self.bounds, *self.sprites, *self.buttons, *self.edit_texts, *self.fonts])
+		return max([*self.bounds, *self.sprites, *self.buttons, *self.edit_texts, *self.fonts, *self.sounds])
 
 	def first_frame_placements(self, sprite_id, depths):
 		"""Returns the tags of the first frame of a sprite that place characters

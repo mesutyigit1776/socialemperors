@@ -174,27 +174,28 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 		"three_headed":
 			var in_range := func(_s: BattleSim, fighter: BattleFighter) -> bool:
 				return fighter.target != null and not fighter.target.dead and sim.distance(fighter, fighter.target) <= fighter.attack_range
-			add(ability, 0, "Energy balls", "2057_energyballs", SpecialAttacks.Frames.new(sim, unit, SP5, [24, 32], func() -> void:
+			add(ability, 0, "Energy balls", "2057_energyballs", with_sounds(SpecialAttacks.Frames.new(sim, unit, SP5, [24, 32], func() -> void:
 				var target := unit.target
 				if target != null and not target.dead:
-					sim.shoot(unit, target, "p.lightBall", unit.attack), 6), in_range, "No target", COOLDOWN_OLD)
+					sim.shoot(unit, target, "p.lightBall", unit.attack), 6), [[SoundEffect.THREE_HEADED_ENERGY_BALLS, 0]]), in_range, "No target", COOLDOWN_OLD)
 			# Three light beams; the target takes 3 times the attack.
-			add(ability, 1, "Ultra ray", "2057_ultraray", SpecialAttacks.Frames.new(sim, unit, SP4, [22], func() -> void:
+			add(ability, 1, "Ultra ray", "2057_ultraray", with_sounds(SpecialAttacks.Frames.new(sim, unit, SP4, [22], func() -> void:
 				var target := unit.target
 				if target == null or target.dead:
 					return
 				for i in 3:
 					sim.shoot_beam(unit, target, target.tile, "p.lightBeam", BattleSim.FRAMES_PER_SECOND, -1)
-				sim.receive_attack(target, int(atk * 3), unit)), in_range, "No target", COOLDOWN_OLD)
-			add(ability, 2, "Poison cloud", "2057_poison", SpecialAttacks.Frames.new(sim, unit, SP6, [53], func() -> void:
+				sim.receive_attack(target, int(atk * 3), unit)),
+				[[SoundEffect.THREE_HEADED_BEAM, 600], [SoundEffect.THREE_HEADED_BEAM, 633], [SoundEffect.THREE_HEADED_BEAM, 667]]), in_range, "No target", COOLDOWN_OLD)
+			add(ability, 2, "Poison cloud", "2057_poison", with_sounds(SpecialAttacks.Frames.new(sim, unit, SP6, [53], func() -> void:
 				for enemy in sim.items_near(unit.tile, 5, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
 						return item.is_unit() and not item.dead):
-					sim.poison(enemy, int(atk / 10), 10, 0, unit)), Callable(), "", COOLDOWN_OLD)
-			add(ability, 3, "Whirlwind", "2057_whirlwind", SpecialAttacks.Frames.new(sim, unit, SP7, [31, 36], func() -> void:
+					sim.poison(enemy, int(atk / 10), 10, 0, unit)), [[SoundEffect.THREE_HEADED_POISON, 1400]]), Callable(), "", COOLDOWN_OLD)
+			add(ability, 3, "Whirlwind", "2057_whirlwind", with_sounds(SpecialAttacks.Frames.new(sim, unit, SP7, [31, 36], func() -> void:
 				for enemy in sim.items_near(unit.tile, 3, 10, BattleAbility.enemy_side(unit), false, func(item: BattleFighter) -> bool:
 						return item.is_unit() and not item.dead and (item.ability == null or not item.ability.immune_to_push)):
 					sim.receive_attack(enemy, int(atk / 2), unit)
-					sim.absorb_and_push(enemy, unit, 4), 10), Callable(), "", COOLDOWN_OLD)
+					sim.absorb_and_push(enemy, unit, 4), 10), [[SoundEffect.THREE_HEADED_WHIRLWIND, 0]]), Callable(), "", COOLDOWN_OLD)
 			if rider:
 				limit_smash(ability, SP8, [29], 2, 6, 5)
 		"dual_gods":

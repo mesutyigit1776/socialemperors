@@ -108,6 +108,7 @@ func _start() -> void:
 	exit.set_text("lbl", _config.text("AUX_WITHDRAW"))
 	exit.make_button(true)
 	exit.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
 		_windows.add_child(TournamentAlert.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER"), _screen_size() / 2, battle.withdraw)))
 	_windows.add_child(exit)
 	var buttons := UnitButtonPanel.new(battle.sim, _ui, _config)

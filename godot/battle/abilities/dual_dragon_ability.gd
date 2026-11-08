@@ -94,6 +94,7 @@ func on_update(sim: BattleSim, fighter: BattleFighter) -> void:
 
 ## Fires beam 0 (the beam of attack 2) or beam 1.
 func _fire(sim: BattleSim, fighter: BattleFighter, which: int, id: int) -> void:
+	sim.sound_played.emit(SoundEffect.MAGIC_FIRE, -1)
 	var target := _different_target(sim, fighter)
 	if target == null:
 		return

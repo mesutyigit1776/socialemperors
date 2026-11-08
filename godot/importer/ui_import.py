@@ -94,6 +94,9 @@ SYMBOLS = [
 	"PopupConfirmMC",
 	"PopupRaceSelectorMC",
 	"PopupQuestInfo2MC",
+	# The pause of the options panel: the dark curtain and the window over it.
+	"GamePausedMC",
+	"CortinaMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows

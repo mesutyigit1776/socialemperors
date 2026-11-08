@@ -5,6 +5,8 @@ extends Sprite2D
 ## in a loop. Units and the shots and effects of battles use it.
 
 signal finished  ## A clip that plays once showed its last frame.
+## The clip of frame shows its frame clip_frame (both 0-based) now.
+signal clip_frame_shown(frame: int, clip_frame: int)
 
 const FRAME_SECONDS := 1.0 / 30.0
 
@@ -60,6 +62,7 @@ func play(frame: int, loop: bool) -> void:
 	_time = 0.0
 	_clip.draw_ahead()
 	_clip_node.texture = _clip.get_frame(0)
+	clip_frame_shown.emit(_frame, 0)
 
 
 func _process(delta: float) -> void:
@@ -74,4 +77,5 @@ func _process(delta: float) -> void:
 			set_process(false)
 			finished.emit()
 			return
+		clip_frame_shown.emit(_frame, _clip_frame)
 	_clip_node.texture = _clip.get_frame(_clip_frame)

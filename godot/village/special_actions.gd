@@ -17,6 +17,7 @@ class Outcome:
 	var reload: bool
 	var redraw: bool  ## The land or the items changed: the caller draws the map again.
 	var place: GameConfig.ItemDef
+	var sound := -1  ## A sound of SoundEffect that the client plays for the action, or -1.
 
 
 ## The land area for View.LAND, see IsoGrid.land_area_number().
@@ -61,12 +62,14 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 	match parts[0]:
 		"place":
 			outcome.place = _config.get_item(argument)
+			outcome.sound = SoundEffect.BUTTON_CLICK  # GiftButtonLarge
 			outcome.text = "Place %s. Right-click cancels." % outcome.place.name
 			return outcome
 		"collection", "collection_cash":
 			result = _village.complete_collection(argument, parts[0] == "collection_cash")
 			if result == Village.Placement.OK:
 				outcome.text = "You completed %s. %s is in your item store." % [_collection_name(argument), _config.get_item(_config.collection_rewards[argument]).name]
+				outcome.sound = SoundEffect.LEVEL_UP  # PopUpCollectionComplete
 		"activate":
 			result = _village.activate_nest(building, parts[1])
 			if result == Village.Placement.OK:
@@ -110,6 +113,7 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.resurrect(building, argument, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s came back." % _config.get_item(argument).name
+				outcome.sound = SoundEffect.COLLECTION
 		"potions":
 			result = _village.buy_potions()
 			if result == Village.Placement.OK:
@@ -118,6 +122,7 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.resurrect_hero(building, argument, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s came back." % _config.get_item(argument).name
+				outcome.sound = SoundEffect.COLLECTION
 		"power_up":
 			result = _village.power_up_soul_mix(building, _rng)
 			if result == Village.Placement.OK:

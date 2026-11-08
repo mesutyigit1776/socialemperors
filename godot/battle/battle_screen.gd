@@ -53,6 +53,7 @@ var _last_click_msec := 0
 func _init(battle: BattleSim, view: BattleView) -> void:
 	sim = battle
 	_view = view
+	BattleSounds.listen(sim)
 	sim.removed.connect(func(fighter: BattleFighter) -> void:
 		if fighter in _selected:
 			_selected.erase(fighter)
@@ -144,6 +145,7 @@ func _click(point: Vector2) -> void:
 	group.assign(_selected.filter(func(fighter: BattleFighter) -> bool: return fighter.is_unit() and fighter.team == BattleFighter.Team.PLAYER))
 	if not group.is_empty() and (item == null or item.team == BattleFighter.Team.ENEMY):
 		sim.order(group, tile)
+		SoundPlayer.play(SoundEffect.ROLL_OVER)  # The client plays it for each move order of the player.
 	elif item == null:
 		_select([])
 	else:

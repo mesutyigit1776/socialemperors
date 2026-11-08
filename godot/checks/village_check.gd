@@ -1746,6 +1746,17 @@ func _check_village_enemies() -> bool:
 	var groups := VillageAttacks.new(Village.load_from_file(path_20, _config), _config, rng).attacks()
 	_check(groups.map(func(group: VillageAttacks.Group) -> int: return group.ai.wait_frames) == [7 * 1800, 14 * 1800, 21 * 1800], "at level 20 three bandit groups come and wait 7, 14 and 21 minutes")
 	_check(groups.all(func(group: VillageAttacks.Group) -> bool: return group.attackers.size() == 5), "each bandit group has a unit for each 4 levels")
+	# The server gives the experience of an idle enemy without a level; from
+	# level 5 the client publishes its own experience after the load, which
+	# takes it back.
+	var with_xp: Array = VillageAttacks.enemy_ids(30, "h").filter(func(id: int) -> bool: return _config.get_item(id).xp > 0)
+	var next_xp := _config.levels[4].exp_required
+	var low := Village.load_from_file(_write_fixture("enemies_xp", 4, next_xp - 1, 500), _config)
+	var enemy := _config.get_item(with_xp[0])
+	low.add_enemy(enemy, Vector2i(5, 5), NOW)
+	_expect("an idle enemy at level 4", low, {"level": 4, "xp": next_xp - 1 + enemy.xp})
+	low.publish_score(next_xp - 1)
+	_expect("the published experience", low, {"level": 4, "xp": next_xp - 1})
 	return true
 
 

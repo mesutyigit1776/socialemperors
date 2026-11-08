@@ -50,6 +50,8 @@ func configure(item_id: int) -> void:
 
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
+	if _kind == "merlin" and fighter.animation == BattleFighter.Pose.ATTACKING:
+		sim.sound_played.emit(SoundEffect.ATTACK_CANNON, -1)  # MerlinRedDelegate
 	if in_special(fighter, 0):
 		_special(sim, fighter)
 		return true

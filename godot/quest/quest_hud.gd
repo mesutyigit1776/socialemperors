@@ -41,7 +41,9 @@ func _init(ui: UiLibrary, config: GameConfig, quest: QuestBattle) -> void:
 	_exit.scale = EXIT_SCALE
 	_exit.set_text("lbl", config.text("AUX_WITHDRAW"))
 	_exit.make_button(true)
-	_exit.pressed.connect(func() -> void: withdraw_requested.emit())
+	_exit.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		withdraw_requested.emit())
 	add_child(_exit)
 	for pair: Array in [[_counter_title, 14], [_counter, 20]]:
 		var label: Label = pair[0]

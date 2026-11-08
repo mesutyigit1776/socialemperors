@@ -89,6 +89,9 @@ var _spy: SpyScreen
 var _enemy: Dictionary = {}  # The enemy of the spy screen: {"pid", "village", "loot"}.
 var _pvp_screen: PvpScreen
 const DOUBLE_CLICK_MSEC := 1000
+## The time of a construction in the client: build_time of the item, which is
+## 0 for all items of the configuration, so 10 seconds.
+const CONSTRUCTION_SECONDS := 10.0
 const MAX_GROUP := 20  ## MAX_SELECTED_OBJECTS of the client.
 const GROUP_RINGS := 6
 
@@ -103,6 +106,7 @@ func _ready() -> void:
 	if data_dir.is_empty():
 		data_dir = "user://imported"
 	_data_dir = data_dir
+	SoundPlayer.load_from(data_dir)
 	add_child(_frames)
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 	if _options.has("town"):
@@ -198,6 +202,7 @@ func _ready() -> void:
 		_spell_layer.layer = SPELL_LAYER
 		add_child(_spell_layer)
 		_add_spell_book()
+		SoundPlayer.play_music(SoundPlayer.town_music(_village.race))
 		# The client spawns the wild animals when it loads the map.
 		if not _village.spawn_animals(_now(), _rng).is_empty():
 			_view.sync_items()
@@ -333,6 +338,8 @@ func _start_survival(map_id: String) -> void:
 		return
 	var army := SurvivalBattle.army(_village.quest_army(), _config)
 	var survival := SurvivalBattle.create(SurvivalMap.find(map_id), map, army, _config, _sprites, _rng, _village.get_level())
+	# The client plays the music of the quests in survival; it never plays its survival music.
+	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
 	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
 	_goals.watch_battle(survival.sim)
 	_survival_screen.village_changed.connect(_save)
@@ -472,6 +479,7 @@ func _land(quest_id: String, army: Dictionary) -> void:
 		_alert("Cannot read the map of this island. Import the game files again.")
 		return
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
+	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
 	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
 	_goals.watch_battle(quest.sim)
 	_quest_screen.village_changed.connect(_save)
@@ -511,6 +519,8 @@ func _show_village(shown: bool) -> void:
 		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 	_view.visible = shown
 	_hud.visible = shown
+	if shown:
+		SoundPlayer.play_music(SoundPlayer.town_music(_village.race))
 	_spell_layer.visible = shown
 	_camera.enabled = shown
 
@@ -579,6 +589,7 @@ func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
 		var error := _orders.order(_selected, tile, placed)
 		_hud.show_message(error)
 		if error.is_empty():
+			SoundPlayer.play(SoundEffect.ROLL_OVER)  # The client plays it for each move order of the player.
 			_select(null)
 			_tutorial.handle(Tutorial.Action.UNIT_ORDERED, _config.get_item(placed.item_id) if placed != null else null)
 		return
@@ -660,6 +671,7 @@ func _complete_training(building: Village.PlacedItem, now: int) -> bool:
 	var trained := unit != null
 	while unit != null:
 		_view.add_placed(unit)
+		SoundPlayer.play(SoundEffect.ROLL_OVER)  # The unit comes out of the building (IsoBuilding).
 		_hud.show_message("%s is trained." % _config.get_item(unit.item_id).name)
 		unit = _village.complete_training(building, now)
 	return trained
@@ -871,6 +883,8 @@ func _on_action_requested(id: String) -> void:
 			_hud.show_message("The spell window needs the windows of the client. Import the game files again; see godot/README.md.")
 		return
 	var outcome := _specials.run(id, _selected, _now())
+	if outcome.sound >= 0:
+		SoundPlayer.play(outcome.sound)
 	if outcome.place != null:
 		_select(null)
 		_placing_stored = _view.begin_placement(outcome.place)
@@ -945,6 +959,7 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 		_:
 			_hud.show_message("%s does not produce now." % item.name)
 			return
+	SoundPlayer.play(SoundEffect.COLLECTION)
 	_update_store()
 	if not _save():
 		return
@@ -1045,6 +1060,7 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_view.end_placement()
 	_view.add_placed(_village.items.back())
+	_play_placement_sounds(item)
 	_update_store()
 	if not _save():
 		return
@@ -1056,6 +1072,18 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		var knights := _tutorial.marked_items()
 		if not knights.is_empty():
 			_camera.position = IsoGrid.tile_to_map(knights[0].tile)
+
+
+## The client plays a sound for a new item, and builds a new building for 10
+## seconds with its own sounds (setGraphicConstruction and endConstruction).
+## The port shows the building at once, but plays the sounds at the same times.
+func _play_placement_sounds(item: GameConfig.ItemDef) -> void:
+	SoundPlayer.play(SoundEffect.ROLL_OVER)
+	if item.is_unit():
+		return
+	if not _tutorial.is_active():
+		SoundPlayer.play(SoundEffect.CONSTRUCTING)
+	get_tree().create_timer(CONSTRUCTION_SECONDS).timeout.connect(func() -> void: SoundPlayer.play(SoundEffect.CONSTRUCTION_END))
 
 
 ## The levels that the player reached since old_level, with their rewards.
@@ -1318,6 +1346,8 @@ func _order_group(tile: Vector2i, target: Village.PlacedItem) -> void:
 			sent += 1
 	_group.clear()
 	_view.show_group(_group)
+	if sent > 0:
+		SoundPlayer.play(SoundEffect.ROLL_OVER)
 	_hud.show_message("" if sent > 0 else "The units cannot go there.")
 
 
@@ -1401,6 +1431,8 @@ func _offer_received_assists() -> void:
 	var window := ConfirmWindow.new(_ui, _config, "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()])
 	window.confirmed.connect(func() -> void:
 		var helped := _village.accept_assist(pid)
+		if not helped.is_empty():
+			SoundPlayer.play(SoundEffect.COLLECTION)  # collectHurryUp
 		_hud.show_message("%s helped %d of your buildings." % [name, helped.size()])
 		_after_assist())
 	window.declined.connect(func() -> void:
@@ -1528,6 +1560,7 @@ func _start_attack(start_tile: Vector2i) -> void:
 	_save()
 	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], start_tile, _config, _sprites, _rng, _village.get_level())
 	_goals.watch_battle(battle.sim)
+	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
 	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
 	_pvp_screen.village_changed.connect(_save)
 	_pvp_screen.closed.connect(_on_attack_closed)
@@ -1567,6 +1600,8 @@ static func _now() -> int:
 
 ## Saves the village after a change. Shows the error and returns false when the save fails.
 func _save() -> bool:
+	if _enemies != null and _known_level < _village.get_level():
+		SoundPlayer.play(SoundEffect.LEVEL_UP)  # PopupLevelUp
 	# The client spawns the attacks of a new level when the player reaches it in the village.
 	while _enemies != null and _known_level < _village.get_level():
 		_known_level += 1

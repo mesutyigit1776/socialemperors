@@ -134,6 +134,7 @@ func _open_popover(index: int) -> void:
 	var visit := _popover.clip("buttonVisit")
 	visit.make_button(true)
 	visit.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # PopOverVisit.visitFriend
 		_close_popover()
 		visit_requested.emit(entry))
 	visit.mouse_exited.connect(_close_popover)

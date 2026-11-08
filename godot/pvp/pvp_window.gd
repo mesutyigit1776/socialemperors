@@ -45,12 +45,16 @@ func show_main(now: int) -> void:
 	var shields := HBoxContainer.new()
 	for entry: Dictionary in _config.pvp_shields:
 		var button := _button(shields, "%s (%d cash)" % [entry["name"], entry["price"]],
-				func() -> void: shield_requested.emit(entry["id"]))
+				func() -> void:
+					SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTallResources
+					shield_requested.emit(entry["id"]))
 		button.disabled = not _village.can_buy_shield(entry["id"], now)
 		button.tooltip_text = "Protects you for %s. Each shield once in %s." % [VillageHud.duration(entry["protection_time"]), VillageHud.duration(entry["cooldown"])]
 	_content.add_child(shields)
 	var buttons := HBoxContainer.new()
-	_button(buttons, _config.text("PVP_ATTACK_LOG").strip_edges(), _show_log)
+	_button(buttons, _config.text("PVP_ATTACK_LOG").strip_edges(), func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		_show_log())
 	_button(buttons, "Close", queue_free)
 	_content.add_child(buttons)
 

@@ -188,15 +188,24 @@ const UNITS := {
 const BEAM_FRAMES := 15  ## The client lets a beam of a dragon last 0.5 seconds.
 ## Item id -> frames of a beam, for the dragons whose beams last longer.
 const LONG_BEAMS := {2057: 90, 2058: 90}
+## The client plays MAGIC_FIRE when a beam leaves, except for the
+## Three-Headed Dragon, which roars when it starts to walk and has its own
+## sound when it dies; the three-headed dragons play THREE_HEADED_BEAM 18
+## frames after the start of each attack.
+const SILENT_BEAMS: Array[int] = [2057, 2058]
+const THREE_HEADED: Array[int] = [2057, 2058, 2132, 2134]
+const THREE_HEADED_BEAM_MS := 18 * 1000 / 30
 
 var _beaming := false
 var _beam := 0  # Counts the beams, so that an old beam does nothing.
 var _choices: Array = []  # [beam, blast] pairs, see UNITS.
 var _random := false
 var _turn := 0
+var _item_id := 0
 
 
 func configure(item_id: int) -> void:
+	_item_id = item_id
 	var data: Array = UNITS.get(item_id, ["p.energyBeam", 12])
 	if data[0] is Array:
 		_choices = data[0]
@@ -214,6 +223,8 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 		return false
 	_beaming = true
 	_beam += 1
+	if _item_id in THREE_HEADED:
+		sim.sound_played.emit(SoundEffect.THREE_HEADED_BEAM, THREE_HEADED_BEAM_MS)
 	var beam_id := _beam
 	var target := fighter.target
 	var blast := ""
@@ -227,6 +238,8 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			_beaming = false
 			return
 		var tile := target.tile
+		if not _item_id in SILENT_BEAMS:
+			sim.sound_played.emit(SoundEffect.MAGIC_FIRE, -1)
 		sim.shoot(fighter, target, shot_graphic, fighter.attack, func(_shot: BattleProjectile) -> void:
 			if blast != "":
 				sim.effect(blast, tile)
@@ -239,3 +252,13 @@ func on_update(_sim: BattleSim, fighter: BattleFighter) -> void:
 	if _beaming and fighter.moving:
 		_beaming = false
 		_beam += 1
+
+
+func on_start_move(sim: BattleSim, _fighter: BattleFighter) -> void:
+	if _item_id in SILENT_BEAMS:
+		sim.sound_played.emit(SoundEffect.THREE_HEADED_ROAR_SMALL, 0)
+
+
+func on_died(sim: BattleSim, _fighter: BattleFighter) -> void:
+	if _item_id in SILENT_BEAMS:
+		sim.sound_played.emit(SoundEffect.THREE_HEADED_DEATH, -1)

@@ -45,7 +45,12 @@ signal pushed(unit: BattleFighter, frames: int)
 ## The unit changes to new_team, see convert(). The signal comes before the
 ## change, as the client counts the unit as dead on its old side first.
 signal converted(unit: BattleFighter, new_team: BattleFighter.Team)
+## An ability plays a sound of the client (SoundEffect) after delay_ms, or
+## after a short random wait when delay_ms is -1; see BattleSounds.
+signal sound_played(effect: int, delay_ms: int)
 
+## The eagle and the ships make a sound when they get an order to walk (setMove).
+const MOVE_SOUNDS := {543: SoundEffect.MOVEMENT_EAGLE, 542: SoundEffect.MOVEMENT_SHIP, 582: SoundEffect.MOVEMENT_SHIP}
 ## A unit checks its attack every ATTACK_CHECK_FRAMES frames, and attacks when
 ## the frame is also a multiple of its attack interval.
 const ATTACK_CHECK_FRAMES := 5
@@ -240,6 +245,8 @@ func use_button(fighter: BattleFighter, id: int) -> bool:
 
 ## An order of the player: the unit walks to tile and does not attack on the way.
 func order_walk(unit: BattleFighter, tile: Vector2i) -> bool:
+	if MOVE_SOUNDS.has(unit.def.id):
+		sound_played.emit(MOVE_SOUNDS[unit.def.id], -1)
 	unit.attacking = false
 	set_target(unit, null)
 	unit.ai.state = BattleAI.State.FORCED_MOVE
@@ -331,6 +338,8 @@ func walk(unit: BattleFighter, tile: Vector2i) -> bool:
 		return false
 	unit.walk_point = IsoGrid.tile_to_map(nodes.pop_front())
 	unit.path = nodes
+	if unit.ability != null:
+		unit.ability.on_start_move(self, unit)
 	return true
 
 
@@ -578,6 +587,7 @@ func poison(unit: BattleFighter, damage: int, ticks: int, infects: int, attacker
 ## units not in the row or the column of the kamikaze fly 4 tiles away.
 func explode(unit: BattleFighter) -> void:
 	receive_attack(unit, EXPLOSION_DAMAGE, unit)
+	sound_played.emit(SoundEffect.ATTACK_CANNON, -1)
 	var done := {}
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):

@@ -28,6 +28,7 @@ func _init() -> void:
 
 func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 	if fighter.animation == BattleFighter.Pose.ATTACKING:
+		sim.sound_played.emit(SoundEffect.ATTACK_BIG_ARCHER, -1)
 		var target := fighter.target
 		sim.after(SECOND_SHOT_FRAMES, func() -> void:
 			if not fighter.dead and target != null and not target.dead:

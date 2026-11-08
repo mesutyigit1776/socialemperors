@@ -283,6 +283,9 @@ func _normal(sim: BattleSim, fighter: BattleFighter, target: BattleFighter) -> b
 						if target.is_unit() and not target.dead:
 							sim.poison(target, fighter.attack / 2, 3, 0, fighter)))
 			return false
+		"merlin_earth":
+			if fighter.animation == BattleFighter.Pose.ATTACKING:
+				sim.sound_played.emit(SoundEffect.ATTACK_CANNON, -1)
 		"werewolf":
 			if not _converted and target.is_unit() and sim.rng.randf() < 0.5:
 				sim.push_in_air(target, fighter, 1, 15)
@@ -308,6 +311,7 @@ func _convert(sim: BattleSim, fighter: BattleFighter, target: BattleFighter) -> 
 		return
 	var tile := target.tile
 	sim.kill(target, fighter)
+	sim.sound_played.emit(SoundEffect.MAGIC_HEAL, -1)
 	var wolf := sim.spawn(fighter.def, tile, fighter.team)
 	if wolf == null:
 		return

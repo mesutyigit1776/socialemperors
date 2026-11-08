@@ -192,6 +192,7 @@ func update_production(now: float, also_ready: Array[Village.PlacedItem] = []) -
 		var ready := _village.seconds_to_ready(placed, now) == 0 or placed in also_ready
 		if ready and not _ready_marks.has(placed):
 			_ready_marks[placed] = add_ready_mark(_nodes[placed], _config.get_item(placed.item_id).collect_type)
+			SoundPlayer.play(SoundEffect.READY_TO_COLLECT)  # addIconoCollect
 		elif not ready and _ready_marks.has(placed):
 			_ready_marks[placed].queue_free()
 			_ready_marks.erase(placed)

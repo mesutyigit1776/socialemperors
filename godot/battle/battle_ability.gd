@@ -245,6 +245,11 @@ func on_died(_sim: BattleSim, _fighter: BattleFighter) -> void:
 	pass
 
 
+## The unit starts to walk on a new path (onStartMove).
+func on_start_move(_sim: BattleSim, _fighter: BattleFighter) -> void:
+	pass
+
+
 ## The fighter can be the target of the attacks of others (isValidTarget).
 func is_valid_target() -> bool:
 	return true

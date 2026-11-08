@@ -220,6 +220,7 @@ func _add(fighter: BattleFighter) -> void:
 		return
 	var node := UnitSprite.new(sprite)
 	_item_layer.add_child(node)
+	BattleSounds.watch_graphic(fighter.def.id, node)
 	_nodes[fighter] = node
 	_directions[fighter] = VillageView.UNIT_START_DIRECTIONS[(fighter.tile.x + fighter.tile.y) % VillageView.UNIT_START_DIRECTIONS.size()]
 	_show_unit(fighter)

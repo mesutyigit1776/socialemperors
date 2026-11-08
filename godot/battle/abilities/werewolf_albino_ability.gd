@@ -47,6 +47,7 @@ func _transform(sim: BattleSim, fighter: BattleFighter) -> void:
 	var tile := target.tile
 	sim.kill(target, fighter)
 	sim.remove_item(target)
+	sim.sound_played.emit(SoundEffect.MAGIC_HEAL, -1)
 	var unit := sim.spawn(fighter.def, tile, fighter.team)
 	if unit == null:
 		return

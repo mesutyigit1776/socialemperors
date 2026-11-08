@@ -57,6 +57,7 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	var withdraw := Button.new()
 	withdraw.text = config.text("AUX_WITHDRAW").strip_edges()
 	withdraw.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
 		var question := ConfirmWindow.new(ui, config, config.text("AUX_SURE_WANT_TO_SURRENDER").strip_edges())
 		question.confirmed.connect(func() -> void:
 			battle.retreat()
