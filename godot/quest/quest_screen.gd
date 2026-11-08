@@ -73,6 +73,8 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	quest.treasure_opened.connect(_on_treasure_opened)
 	quest.ended.connect(_on_ended)
 	add_child(_windows)
+	# The options panel of the client (music, sounds, full screen, pause).
+	_windows.add_child(OptionsPanel.for_battle(_ui))
 	var rank := village.quest_rank(island.id)
 	var start_window := QuestStartWindow.new(ui, config, island, rank, QuestBook.new(village, config).max_stars(island.id))
 	start_window.started.connect(_on_started.bind(start_window))

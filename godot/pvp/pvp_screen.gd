@@ -49,6 +49,8 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 		_update_bar())
 	battle.ended.connect(_show_result)
 	add_child(_windows)
+	# The options panel of the client (music, sounds, full screen, pause).
+	_windows.add_child(OptionsPanel.for_battle(ui))
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH

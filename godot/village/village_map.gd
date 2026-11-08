@@ -124,6 +124,11 @@ var _trades_done: Variant = null  # The trades that the client counts, see marke
 var _config: GameConfig
 # Set when the player reaches SPELL_BOOK_LEVEL in the village; Village.add_free_buildings() then gives the Wizardry Academy.
 var _wizardry_due := false
+# The experience that the server gave for "buy" without cost (idle enemies,
+# free buildings) since the last "rt_publish_score". The client does not count
+# it, so the next publish takes it back; see Village.client_xp(). The save does
+# not keep it: the next session loads it as the experience of the client.
+var _unpublished_xp := 0
 var _occupied := PackedByteArray()  # Number of items that cover each tile, row by row.
 func get_level() -> int:
 	return int(_map["level"])
@@ -748,6 +753,14 @@ func _add_xp(amount: int, in_village: bool = true) -> void:
 			_wizardry_due = true
 
 
+## The command "buy" without cost for an item that the client places itself:
+## the server adds the experience of the item without a new level, and the
+## client does not count it (see _unpublished_xp).
+func _add_server_xp(amount: int) -> void:
+	_map["xp"] = get_xp() + amount
+	_unpublished_xp += amount
+
+
 func _add_resource(code: String, amount: int) -> void:
 	if not RESOURCE_KEYS.has(code):
 		# The levels in the configuration give only g, w, s, f and c. The server
@@ -800,6 +813,18 @@ func _tower_tiles_in_land_area(tile: Vector2i, ignored: PlacedItem) -> int:
 		if placed_item != null and placed != ignored and placed_item.subcat_functional == ConstructionLimits.SUBCAT_TOWER:
 			count += footprint(placed_item, placed.tile).intersection(area).get_area()
 	return count
+
+
+## The item store of the map, as the server keeps it: item id (text) -> number.
+func _stored() -> Dictionary:
+	if not _map.get("store") is Dictionary:
+		_map["store"] = {}
+	return _map["store"]
+
+
+func _add_stored(item_id: int) -> void:
+	_stored()[str(item_id)] = int(_stored().get(str(item_id), 0)) + 1
+	happened.emit(VillageEvent.Kind.STORED, {"item": item_id})
 
 
 ## The server keeps a list of the units of the player's race that the player

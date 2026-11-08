@@ -83,6 +83,9 @@ const PLACEMENT_MESSAGES := {
 var store: StoreWindow
 var selection: SelectionPanel
 var _goal_box: GoalBox
+var _shield_graphics: Array = []  # [shieldEnabled, shieldDisabled], see set_shield_graphics().
+var _shield: ShieldSprite
+var _shield_enabled := false
 var _ui: UiLibrary
 var _config: GameConfig
 var _gui: UiClip
@@ -325,6 +328,14 @@ func refresh(village: Village) -> void:
 ## The shield of the player: the time that it lasts, or no shield.
 func show_shield(level: int, seconds: int) -> void:
 	_gui.set_part_visible("topRight/hudShield", level >= SHIELD_LEVEL)
+	var enabled := seconds > 0
+	var graphic: SpriteLibrary.ItemSprite = _shield_graphics[0 if enabled else 1] if _shield_graphics.size() == 2 else null
+	if graphic != null and (_shield == null or _shield_enabled != enabled):
+		if _shield != null:
+			_shield.queue_free()
+		_shield = ShieldSprite.new(graphic, enabled)
+		_shield_enabled = enabled
+		_gui.part("topRight/hudShield/shieldAnchor").add_child(_shield)
 	var days := seconds / 86400
 	var rest := seconds % 86400
 	_gui.set_text("topRight/hudShield/timer/time", "No shield" if seconds <= 0 else "%s%02d:%02d:%02d" % ["%dd " % days if days > 0 else "", rest / 3600, rest % 3600 / 60, rest % 60])
@@ -389,6 +400,7 @@ func set_locked(locked: bool) -> void:
 	_locked = locked
 	selection.set_locked(locked)
 	_options.pause_allowed = not locked
+	_goal_box.marks_allowed = not locked
 	if locked:
 		_close_menus()
 
@@ -402,6 +414,17 @@ func show_world_button(shown: bool) -> void:
 
 func open_rename() -> void:
 	_rename_dialog.popup_centered(Vector2i(320, 0))
+
+
+## The host of the goal box: the imported GameShowHostMissionMC, or null.
+func show_goal_host(host: SpriteLibrary.ItemSprite) -> void:
+	_goal_box.show_host(host)
+
+
+## The graphics shieldEnabled and shieldDisabled of the shield (ShieldSprite); without them the shield has no picture.
+func set_shield_graphics(enabled: SpriteLibrary.ItemSprite, disabled: SpriteLibrary.ItemSprite) -> void:
+	if enabled != null and disabled != null:
+		_shield_graphics = [enabled, disabled]
 
 
 ## goals: [id, title, progress] of the goals of the goal box.

@@ -58,6 +58,7 @@ var _tournament_scores := {}  # Bot index -> [score, won] of the last match in t
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _town_quests: TownQuests  # The quest in the town, see TownQuestBook.
+var _daily_bonus: Dictionary = {}  # Village.start_daily_bonus() until the window shows.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
 var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## The client loads the map again after a use of the Time Machine or the
@@ -92,6 +93,15 @@ const DOUBLE_CLICK_MSEC := 1000
 ## The time of a construction in the client: build_time of the item, which is
 ## 0 for all items of the configuration, so 10 seconds.
 const CONSTRUCTION_SECONDS := 10.0
+## The tutorial builds its farm in 3 seconds; the client shortens all
+## constructions of the tutorial to a third.
+const TUTORIAL_FARM := 10
+const TUTORIAL_FARM_SECONDS := 3.0
+const SUBCAT_FARM := 122
+const SUBCAT_RANCH := 123
+## The graphics of the shield in the HUD (ShieldDisplay of the client).
+const SHIELD_ENABLED := "shieldEnabled"
+const SHIELD_DISABLED := "shieldDisabled"
 const MAX_GROUP := 20  ## MAX_SELECTED_OBJECTS of the client.
 const GROUP_RINGS := 6
 
@@ -130,7 +140,9 @@ func _ready() -> void:
 		_sprites = SpriteLibrary.new(data_dir, _frames)
 		_view = VillageView.new()
 		add_child(_view)
-		_view.fire_graphic = SpriteLibrary.new(data_dir, _frames, "fx").get_sprite(FireSprite.SYMBOL)
+		_view.effects = SpriteLibrary.new(data_dir, _frames, "fx")
+		_view.ui = _ui
+		_view.fire_graphic = _view.effects.get_sprite(FireSprite.SYMBOL)
 		_view.fire_flames = FireSprite.read_flames(data_dir)
 		_view.show_village(_village, _config, _sprites)
 		_view.placement_confirmed.connect(_on_placement_confirmed)
@@ -192,6 +204,8 @@ func _ready() -> void:
 		_hud.pvp_requested.connect(_open_pvp)
 		_hud.towns_requested.connect(_open_towns)
 		add_child(_hud)
+		_hud.show_goal_host(_view.effects.get_sprite(GoalBox.HOST_SYMBOL))
+		_hud.set_shield_graphics(_view.effects.get_sprite(SHIELD_ENABLED), _view.effects.get_sprite(SHIELD_DISABLED))
 		_hud.show_zoom(_camera.zoom.x)
 		_neighbour_bar = NeighbourBar.new(_ui, _config)
 		_neighbour_bar.visit_requested.connect(_visit_neighbour)
@@ -203,21 +217,10 @@ func _ready() -> void:
 		add_child(_spell_layer)
 		_add_spell_book()
 		SoundPlayer.play_music(SoundPlayer.town_music(_village.race))
-		# The client spawns the wild animals when it loads the map.
-		if not _village.spawn_animals(_now(), _rng).is_empty():
-			_view.sync_items()
-			_save()
 		_enemies = VillageEnemies.new(_village, _view, _config, _rng, _orders.is_busy)
 		_enemies.fight_needed.connect(func() -> void: _start_village_fight())
 		add_child(_enemies)
-		_known_level = _village.get_level()
-		if _enemies.on_map_loaded(_now()):
-			_view.sync_items()
-			_save()
 		_town_quests = TownQuests.new(_village, _config, _rng)
-		var kinds := {"siege": CollectiveAI.Kind.SIEGE, "stampede": CollectiveAI.Kind.BIG_MOUNTS, "army": CollectiveAI.Kind.ARMY, "bandits": CollectiveAI.Kind.BANDITS}
-		if kinds.has(_options.get("village-attack", "")):
-			_enemies.add_due_attack(kinds[_options["village-attack"]])
 		_goals.goal_completed.connect(_on_goal_completed)
 		if _tutorial.is_active():
 			_tutorial_box = TutorialBox.new(_ui)
@@ -228,9 +231,11 @@ func _ready() -> void:
 				_save())
 			_tutorial.finished.connect(_on_tutorial_finished)
 			_show_tutorial()
-		if _goals.on_map_loaded():
-			_save()
-		_update_store()
+		_daily_bonus = _village.start_daily_bonus(_now())
+		_init_map()
+		var kinds := {"siege": CollectiveAI.Kind.SIEGE, "stampede": CollectiveAI.Kind.BIG_MOUNTS, "army": CollectiveAI.Kind.ARMY, "bandits": CollectiveAI.Kind.BANDITS}
+		if kinds.has(_options.get("village-attack", "")):
+			_enemies.add_due_attack(kinds[_options["village-attack"]])
 		var clock := Timer.new()
 		clock.timeout.connect(_on_clock)
 		add_child(clock)
@@ -355,10 +360,7 @@ func _start_survival(map_id: String) -> void:
 ## The client gives the reward and the time to the server ("end_survival") and loads the village again.
 func _on_survival_closed(seconds: int, reward: int, map_id: String) -> void:
 	_village.end_survival(map_id, seconds, reward, _now())
-	_known_level = _village.get_level()
-	_enemies.on_map_loaded(_now())
-	_goals.on_map_loaded()
-	_save()
+	_init_map()
 	_survival_screen.queue_free()
 	_survival_screen = null
 	_show_village(true)
@@ -420,10 +422,7 @@ func _start_tournament_match(bot_index: int) -> void:
 	_tournament_screen.village_changed.connect(_save)
 	_tournament_screen.closed.connect(func(score: int, won: bool) -> void:
 		_tournament_scores[bot_index] = [score, won]
-		_known_level = _village.get_level()
-		_enemies.on_map_loaded(_now())
-		_goals.on_map_loaded()
-		_save()
+		_init_map()
 		_tournament_screen.queue_free()
 		_tournament_screen = null
 		_show_village(true)
@@ -500,10 +499,7 @@ func _on_quest_closed(result: Dictionary) -> void:
 	_village.end_quest(result)
 	# The client loads the village map again: new enemies come, and a new level
 	# of the quest brings no attacks of its own.
-	_known_level = _village.get_level()
-	_enemies.on_map_loaded(_now())
-	_goals.on_map_loaded()
-	_save()
+	_init_map()
 	_quest_screen.queue_free()
 	_quest_screen = null
 	_show_village(true)
@@ -1060,7 +1056,7 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_view.end_placement()
 	_view.add_placed(_village.items.back())
-	_play_placement_sounds(item)
+	_start_construction(_village.items.back(), item)
 	_update_store()
 	if not _save():
 		return
@@ -1074,16 +1070,80 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 			_camera.position = IsoGrid.tile_to_map(knights[0].tile)
 
 
-## The client plays a sound for a new item, and builds a new building for 10
-## seconds with its own sounds (setGraphicConstruction and endConstruction).
-## The port shows the building at once, but plays the sounds at the same times.
-func _play_placement_sounds(item: GameConfig.ItemDef) -> void:
+## The client starts the map each time it loads it: at the start and after a
+## quest, survival, a tournament match or an attack (MapInitializer.Init, then
+## the end of Base.UpdateGame3). It clears the border, places the idle enemies,
+## the resources and the wild animals, starts the attacks, gives the free
+## buildings and, from Village.PUBLISH_SCORE_LEVEL, publishes the experience
+## that it counts, which takes back the experience that the server gave for
+## these items.
+func _init_map() -> void:
+	var now := _now()
+	_known_level = _village.get_level()
+	_village.clean_border(_rng)
+	_enemies.on_map_loaded(now)
+	_village.spawn_resources(now, _rng)
+	_village.spawn_animals(now, _rng)
+	_goals.on_map_loaded()
+	_update_store()
+	if _village.get_level() >= Village.PUBLISH_SCORE_LEVEL:
+		_village.publish_score(_village.client_xp())
+	_view.sync_items()
+	_save()
+	_show_daily_bonus()
+
+
+## The client opens the window of the login bonus when it loads the game, or
+## after the tutorial at the next start of the map (DailyBonusManager).
+func _show_daily_bonus() -> void:
+	if not _daily_bonus.get("shown", false) or _tutorial.is_active() or not _ui.has_symbol("PopupNewDailyBonusMC"):
+		return
+	var window := DailyBonusWindow.new(_ui, _config, _daily_bonus)
+	_daily_bonus = {}
+	if window.reward().has("u"):
+		_village.add_daily_bonus_unit(int(window.reward()["u"]))
+		_save()
+	window.closed.connect(func(reward: Dictionary) -> void:
+		var parts: Array[String] = []
+		for code: String in reward:
+			if code == "u":
+				parts.append("a %s in the item store" % _config.get_item(int(reward[code])).name)
+			else:
+				parts.append("%d %s" % [int(reward[code]), VillageHud.RESOURCE_NAMES.get(code, code)])
+		if not parts.is_empty():
+			_hud.show_message("Login bonus: %s." % ", ".join(parts))
+		_hud.refresh(_village))
+	_windows.add_child(window)
+
+
+## The client plays a sound for a new item, and builds a new building for
+## CONSTRUCTION_SECONDS (a third of it in the tutorial) with the scaffold of
+## its size and a bar, and with its own sounds (setGraphicConstruction and
+## endConstruction). During this time the building takes no units.
+func _start_construction(placed: Village.PlacedItem, item: GameConfig.ItemDef) -> void:
 	SoundPlayer.play(SoundEffect.ROLL_OVER)
 	if item.is_unit():
 		return
-	if not _tutorial.is_active():
+	var seconds := CONSTRUCTION_SECONDS
+	if _tutorial.is_active():
+		seconds = (TUTORIAL_FARM_SECONDS if item.id == TUTORIAL_FARM else CONSTRUCTION_SECONDS) / 3.0
+	else:
 		SoundPlayer.play(SoundEffect.CONSTRUCTING)
-	get_tree().create_timer(CONSTRUCTION_SECONDS).timeout.connect(func() -> void: SoundPlayer.play(SoundEffect.CONSTRUCTION_END))
+	_village.start_construction(placed, Time.get_unix_time_from_system() + seconds)
+	_view.show_construction(placed, _scaffold(item), seconds, item.width == 1)
+	get_tree().create_timer(seconds).timeout.connect(func() -> void: SoundPlayer.play(SoundEffect.CONSTRUCTION_END))
+
+
+## The scaffold of the client for the building: farms and ranches have their
+## own; the others go by the width of the building, with the troll scaffolds
+## in the troll town.
+func _scaffold(item: GameConfig.ItemDef) -> String:
+	if item.subcat_functional == SUBCAT_RANCH and item.id != Village.NURSERY:
+		return "ConstructionRancho"
+	if item.subcat_functional == SUBCAT_FARM:
+		return "ConstructionGranja"
+	var width := clampi(item.width, 1, 4)
+	return "Construction%dx%d%s" % [width, width, "Trol" if _village.race == "t" and width > 1 else ""]
 
 
 ## The levels that the player reached since old_level, with their rewards.
@@ -1578,10 +1638,7 @@ func _on_attack_closed(result: Dictionary) -> void:
 		push_warning("Cannot write the attack into the village of %s." % _enemy["pid"])
 	if result["won"]:
 		_record(VillageEvent.Kind.ASSAULT_WON, {"amount": _village.attacks_won()})
-	_known_level = _village.get_level()
-	_enemies.on_map_loaded(_now())
-	_goals.on_map_loaded()
-	_save()
+	_init_map()
 	_pvp_screen.queue_free()
 	_pvp_screen = null
 	_enemy = {}

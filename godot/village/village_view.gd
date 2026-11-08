@@ -61,6 +61,10 @@ var _fires: Dictionary = {}  # Village.PlacedItem -> [FireMC frame, FireSprite],
 ## null without the import, and then a damaged building looks burnt.
 var fire_graphic: SpriteLibrary.ItemSprite
 var fire_flames: Array = []
+## The scaffolds of new buildings (see show_construction()) and the windows of
+## the client for their bar; null without an import of them.
+var effects: SpriteLibrary
+var ui: UiLibrary
 
 # Placement mode. _placing_item is null when the mode is off. _moving is the
 # item that moves, or null when the player builds a new item.
@@ -245,6 +249,21 @@ func _show_fire(placed: Village.PlacedItem, node: Node2D) -> void:
 	var fire := FireSprite.new(fire_graphic, fire_flames[state - 1])
 	node.add_child(fire)
 	_fires[placed] = [state, fire]
+
+
+## Shows the scaffold of the graphic symbol of effects instead of the new
+## building, with the bar of the client, for this many seconds. small: see
+## ConstructionSprite.
+func show_construction(placed: Village.PlacedItem, symbol: String, seconds: float, small: bool) -> void:
+	if not _nodes.has(placed):
+		return
+	var node: Sprite2D = _nodes[placed]
+	var construction := ConstructionSprite.new(effects.get_sprite(symbol) if effects != null else null, ui, seconds, small)
+	node.self_modulate.a = 0.0
+	node.add_child(construction)
+	construction.finished.connect(func() -> void:
+		node.self_modulate.a = 1.0
+		construction.queue_free())
 
 
 ## Removes the item from the map after Village.sell().

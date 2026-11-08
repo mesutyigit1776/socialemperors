@@ -24,6 +24,7 @@ const PLAYER_BAR_COLOR := Color(1, 0, 0)
 const BOT_BAR_COLOR := Color(0, 0, 1)
 const BOT_PICTURE_SCALE := 1.58
 const RESULT_PICTURE_SCALE := 0.7
+const TOURNAMENT_ZOOM := 0.1
 
 var battle: TournamentBattle
 var _village: Village
@@ -57,6 +58,8 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	add_child(_view)
 	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land))
 	_camera.position = IsoGrid.tile_to_map((TournamentBattle.PLAYER_ORIGIN + TournamentBattle.BOT_ORIGIN) / 2)
+	# The client shows the whole field at zoom 0.1, below the limit of the mouse wheel.
+	_camera.zoom = Vector2.ONE * TOURNAMENT_ZOOM
 	add_child(_camera)
 	_screen = BattleScreen.new(battle.sim, _view)
 	_screen.paused = true
@@ -65,6 +68,8 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	battle.changed.connect(_update_bar)
 	battle.ended.connect(_show_result)
 	add_child(_windows)
+	# The options panel of the client (music, sounds, full screen, pause).
+	_windows.add_child(OptionsPanel.for_battle(_ui))
 
 
 func _ready() -> void:

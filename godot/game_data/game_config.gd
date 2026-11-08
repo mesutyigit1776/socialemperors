@@ -128,6 +128,9 @@ var variable_collect_ids: Array[int] = []
 ## The client spawns wild animals at each start until the player has this number
 ## of each kind for the day, see Village.spawn_animals().
 var animals_per_day: int
+## The rewards of the login bonus ("daily_bonus"), by day from 1: {"day",
+## "reward" (resource code or "u" -> amount or unit id), "img"}.
+var daily_bonus: Array[Dictionary] = []
 ## The Unit Warehouse holds this number of units at first. The player can buy
 ## one more place for warehouse_slot_price cash, up to warehouse_max_capacity.
 var warehouse_start_capacity: int
@@ -323,6 +326,10 @@ static func load_from_file(path: String) -> GameConfig:
 	if not _parse_spells(config, data.get("magics"), globals):
 		push_error("Game configuration '%s' has no correct spells (magics) or mana settings in globals." % path)
 		return null
+	for entry: Variant in data.get("daily_bonus", []):
+		if entry is Dictionary and to_int(entry.get("reward_day")) != null and entry.get("reward") is Dictionary:
+			config.daily_bonus.append({"day": to_int(entry["reward_day"]), "reward": entry["reward"], "img": str(entry.get("img", ""))})
+	config.daily_bonus.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["day"] < b["day"])
 	config.unit_packs.assign(data.get("unit_packs", []).filter(func(pack: Variant) -> bool:
 		return pack is Dictionary and pack.get("price") is Dictionary and pack.get("pack_num") is Dictionary and pack.get("pack_category") is Dictionary \
 				and [pack.get("id"), pack.get("store_order"), pack.get("units_given"), pack.get("max_purchable")].all(func(value: Variant) -> bool: return to_int(value) != null)))

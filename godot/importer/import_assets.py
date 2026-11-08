@@ -243,6 +243,12 @@ def write_fire_flames(swf_path, out_path):
 
 
 # The library of magic particles that the client loads (ExternalClass.LIB_MAGICPARTICLES).
+# The scaffolds of a new building for its time of construction
+# (IsoElement.setGraphicConstruction), by its size, race and kind.
+CONSTRUCTION_SWF = os.path.join("assets", "swf", "120608_dynamic.swf")
+CONSTRUCTION_SYMBOLS = ["Construction1x1", "Construction2x2", "Construction3x3", "Construction4x4", "Construction2x2Trol", "Construction3x3Trol", "Construction4x4Trol", "ConstructionGranja", "ConstructionRancho"]
+GOAL_HOST_SYMBOL = "GameShowHostMissionMC"
+SHIELD_SYMBOLS = ["shieldEnabled", "shieldDisabled"]
 MAGIC_PARTICLES_SWF = os.path.join("assets", "swf", "20131010_magicParticles.swf")
 MAGIC_PARTICLES_SYMBOL = "MagicParticleMC"
 
@@ -369,6 +375,11 @@ def main():
 	# (MagicParticle of the client), with the clip that plays.
 	jobs.append((f"fx/{MAGIC_PARTICLES_SYMBOL}", os.path.join(source, MAGIC_PARTICLES_SWF), MAGIC_PARTICLES_SYMBOL, os.path.join(out_dir, "fx", MAGIC_PARTICLES_SYMBOL), True))
 	jobs.append((f"fx/{FIRE_SYMBOL}", os.path.join(source, CLIENT_SWF), FIRE_SYMBOL, os.path.join(out_dir, "fx", FIRE_SYMBOL), True))
+	jobs += [(f"fx/{name}", os.path.join(source, CONSTRUCTION_SWF), name, os.path.join(out_dir, "fx", name), True) for name in CONSTRUCTION_SYMBOLS]
+	# The shield of the HUD, in files of their own.
+	jobs += [(f"fx/{name}", os.path.join(source, "assets", "swf", f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in SHIELD_SYMBOLS]
+	# The host of the goal box (MissionPopup); the server gives the client a male player.
+	jobs.append((f"fx/{GOAL_HOST_SYMBOL}", os.path.join(source, CLIENT_SWF), GOAL_HOST_SYMBOL, os.path.join(out_dir, "fx", GOAL_HOST_SYMBOL), True))
 	# The graphics of the spells, which the battles show like the effects.
 	jobs += [(f"fx/{name}", os.path.join(sprite_dir, f"{name}.swf"), name, os.path.join(out_dir, "fx", name), True) for name in sorted(spell_labels)]
 

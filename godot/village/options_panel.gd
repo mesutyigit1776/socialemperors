@@ -9,9 +9,15 @@ extends Node
 ## The pause (Base.pauseGame) stops the game under a dark curtain with the
 ## window GamePausedMC until the player clicks its button.
 
-## The panel is this far above the bottom bar (StateNormal.enter), and this
-## far from the right edge of the screen when it is in and when it is out.
+## The panel is this far above the bottom bar (StateNormal.enter), in battles
+## 100 pixels lower (StateAssault and StateTournament), and this far from the
+## right edge of the screen when it is in and when it is out.
 const PANEL_Y := -435.0
+const BATTLE_PANEL_Y := -335.0
+## The client puts GuiMC at the bottom of the stage, VillageHud.CLIENT_Y on
+## its stage of 600 pixels; VillageHud puts it VillageHud.BAR_HEIGHT above the
+## bottom, so the panel goes down by the difference.
+const GUI_SHIFT := VillageHud.BAR_HEIGHT - (600.0 - VillageHud.CLIENT_Y)
 const IN_FROM_RIGHT := 30.0
 const OUT_FROM_RIGHT := 90.0
 const SLIDE_SECONDS := 0.5
@@ -23,18 +29,21 @@ const PAUSE_LAYER := 20
 var pause_allowed := true
 var _ui: UiLibrary
 var _panel: UiClip
-var _gui: UiClip
+var _gui: Control
+var _panel_y := PANEL_Y
 var _out := false
 var _slide: Tween
 var _timer := Timer.new()
 var _pause: CanvasLayer
 
 
-## panel: options_panel of gui, the GuiMC of the HUD.
-func _init(ui: UiLibrary, gui: UiClip, panel: UiClip) -> void:
+## panel: options_panel of gui, the GuiMC of the HUD, or a node at the place
+## of GuiMC (see for_battle()).
+func _init(ui: UiLibrary, gui: Control, panel: UiClip, panel_y := PANEL_Y) -> void:
 	_ui = ui
 	_gui = gui
 	_panel = panel
+	_panel_y = panel_y
 	_timer.one_shot = true
 	_timer.timeout.connect(_slide_to.bind(false))
 	add_child(_timer)
@@ -53,11 +62,34 @@ func _init(ui: UiLibrary, gui: UiClip, panel: UiClip) -> void:
 	_show_states()
 
 
+## The panel on a battle screen, which has no GuiMC of the village: a node
+## for the layer of the screen with the panel at the place where the client
+## keeps it. The spy screen keeps the panel at the place of the village.
+static func for_battle(ui: UiLibrary, panel_y := BATTLE_PANEL_Y) -> Control:
+	var screen := Control.new()
+	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var gui := Control.new()
+	gui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(gui)
+	var panel := ui.make("GuiMC/options_panel")
+	gui.add_child(panel)
+	var options := OptionsPanel.new(ui, gui, panel, panel_y)
+	screen.add_child(options)
+	var layout := func() -> void:
+		var size := screen.get_viewport_rect().size
+		gui.position = Vector2(roundf(size.x / 2 - VillageHud.CLIENT_WIDTH / 2.0), size.y - VillageHud.BAR_HEIGHT)
+		options.place(size)
+	screen.ready.connect(layout)
+	screen.resized.connect(layout)
+	return screen
+
+
 ## Puts the panel at the right edge of a screen of this size.
 func place(size: Vector2) -> void:
 	if _slide != null:
 		_slide.kill()
-	_panel.position = Vector2(_x(size, _out), PANEL_Y)
+	_panel.position = Vector2(_x(size, _out), _panel_y + GUI_SHIFT)
 
 
 func _button(name: String, action: Callable) -> void:

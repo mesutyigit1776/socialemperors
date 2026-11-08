@@ -67,6 +67,8 @@ func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: U
 			_attacked_until = battle.sim.frame + ATTACKED_FRAMES
 			_update_bar())
 	add_child(_windows)
+	# The options panel of the client (music, sounds, full screen, pause).
+	_windows.add_child(OptionsPanel.for_battle(_ui))
 
 
 func _ready() -> void:

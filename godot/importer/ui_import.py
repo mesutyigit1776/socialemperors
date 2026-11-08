@@ -97,6 +97,12 @@ SYMBOLS = [
 	# The pause of the options panel: the dark curtain and the window over it.
 	"GamePausedMC",
 	"CortinaMC",
+	# The options panel of the battle screens, which have no GuiMC.
+	"GuiMC/options_panel",
+	# The bar of a new building during its construction.
+	"FauxBarMC",
+	# The window of the login bonus.
+	"PopupNewDailyBonusMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
@@ -108,6 +114,9 @@ IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "
 	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"] \
 	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
 	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"]
+# The login bonus window loads its background and the pictures of the days
+# from assets/externalized/DailyBonus; the port keeps the same folders.
+EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
@@ -127,6 +136,10 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:
 		shutil.copyfile(os.path.join(source, "assets", "images_new", image), os.path.join(ui_dir, "images", image))
+	for image in EXTERNALIZED_IMAGES:
+		target = os.path.join(ui_dir, "images", image)
+		os.makedirs(os.path.dirname(target), exist_ok=True)
+		shutil.copyfile(os.path.join(source, "assets", "externalized", image), target)
 	os.makedirs(os.path.join(ui_dir, "thumbs"), exist_ok=True)
 	for thumb in unit_thumbs:
 		path = os.path.join(source, "assets", "buildingthumbs", thumb)
@@ -173,8 +186,8 @@ def _resolve(swf, name):
 
 def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 	"""Adds the sprite and its named sprites to clips, and its named buttons to
-	buttons. drops gets the depths that the base images leave out: named parts
-	and text fields. A named mask, for example of a bar that the client
+	buttons. drops gets the (depth, character id, instance name) of the
+	placements that the base images leave out: named parts and text fields. A named mask, for example of a bar that the client
 	scales, gets the shapes under it in the first frame as a sprite of their
 	own: layers gets {new sprite id: (sprite id, depths)}, the part gets
 	"masked": the new sprite id, and the base image leaves the shapes out."""
@@ -215,7 +228,7 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 				buttons[char_id] = {}
 			else:
 				continue
-			dropped.add(depth)
+			dropped.add((depth, char_id, name))
 			parts.append(part)
 		clip["frames"].append(parts)
 	if places:
@@ -229,11 +242,18 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 				layer_id = next_id[0]
 				next_id[0] += 1
 				layers[layer_id] = (sprite_id, masked)
-				dropped |= masked
+				dropped |= {(depth, places[0][depth][0], places[0][depth][2]) for depth in masked}
 				for frame_parts in clip["frames"]:
 					for other in frame_parts:
 						if other["name"] == part["name"] and other.get("mask"):
 							other["masked"] = layer_id
+	# A part below all shapes of the base image, for example a faded panel
+	# behind the drawing, is "under": the port draws it before the base image.
+	for frame, frame_parts in zip(places, clip["frames"]):
+		base = [depth for depth in frame if (depth, frame[depth][0], frame[depth][2]) not in dropped]
+		for part in frame_parts:
+			if base and part["depth"] < min(base):
+				part["under"] = True
 	if dropped:
 		drops[sprite_id] = dropped
 	for child_id in nested:

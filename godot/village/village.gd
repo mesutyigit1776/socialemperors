@@ -60,6 +60,8 @@ const GRAVEYARD_MAX_EACH := 100
 const KILL_GOLD := 5  ## The server gives this gold for each enemy unit that the player kills in the village.
 ## The client publishes its experience at the load of the map from this level (mapInitialized).
 const PUBLISH_SCORE_LEVEL := 5
+## The login bonus counts days of play by the days of the timestamps (UTC).
+const DAY_SECONDS := 86400
 const SURVIVAL_LIVES := 3
 const SURVIVAL_MAPS_OPEN := 3
 ## Units of these kinds stay in the village during a quest: villagers,
@@ -255,9 +257,10 @@ func place_stored(item: GameConfig.ItemDef, tile: Vector2i, now: int, frame: int
 ## Places a free dragon nest, and from GameConfig.soul_mixer_min_level a free
 ## Soul Mixer, when the map and the item store have none, as the client does
 ## when it loads the map and at a new level. It sends "buy" without cost, which
-## gives the experience of the item. Also places the Wizardry Academy when the
-## player reached SPELL_BOOK_LEVEL in the village since the last call; the
-## client gives it then even when the map has one. Returns the new buildings.
+## gives the experience of the item on the server only (_add_server_xp()).
+## Also places the Wizardry Academy when the player reached SPELL_BOOK_LEVEL in
+## the village since the last call; the client gives it then even when the map
+## has one. Returns the new buildings.
 func add_free_buildings(now: int) -> Array[PlacedItem]:
 	var added: Array[PlacedItem] = []
 	for id: int in FREE_BUILDING_TILES:
@@ -269,16 +272,15 @@ func add_free_buildings(now: int) -> Array[PlacedItem]:
 		var tile := _free_place_near(item, FREE_BUILDING_TILES[id])
 		if tile == ANY_TILE:
 			continue
-		_add_xp(item.xp)
+		_add_server_xp(item.xp)
 		added.append(_add_entry(item, tile, 0, now, _new_item_attributes(item)))
 		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
-	# After the other buildings, whose experience can bring the level.
 	if _wizardry_due:
 		_wizardry_due = false
 		var wizardry := _config.get_item(WIZARDRY)
 		var place := _free_place_near(wizardry, WIZARDRY_TILE)
 		if place != ANY_TILE:
-			_add_xp(wizardry.xp)
+			_add_server_xp(wizardry.xp)
 			added.append(_add_entry(wizardry, place, 0, now, _new_item_attributes(wizardry)))
 			happened.emit(VillageEvent.Kind.BUILT, {"item": WIZARDRY})
 	return added
@@ -828,17 +830,24 @@ func is_enemy_unit(placed: PlacedItem) -> bool:
 ## when it is not of the other race of the player. The client does not count
 ## this experience itself, so no level comes from it now; see publish_score().
 func add_enemy(item: GameConfig.ItemDef, tile: Vector2i, now: int) -> PlacedItem:
-	_map["xp"] = get_xp() + item.xp
+	_add_server_xp(item.xp)
 	_register_unit(item.id)
 	return _add_entry(item, tile, 0, now, {})
 
 
 ## The command "rt_publish_score": the server sets the experience of the map
 ## to the experience that the client has. The client sends it when the map has
-## loaded, from PUBLISH_SCORE_LEVEL, with the experience without the idle
-## enemies of the load (see add_enemy()).
+## loaded, from PUBLISH_SCORE_LEVEL, with client_xp().
 func publish_score(xp: int) -> void:
 	_map["xp"] = xp
+	_unpublished_xp = 0
+
+
+## The experience that the client counts: the experience of the save without
+## the experience that the server gave for the items that the client placed
+## without cost since the last publish (idle enemies, free buildings).
+func client_xp() -> int:
+	return get_xp() - _unpublished_xp
 
 
 ## Puts an item of a quest in the town on the map with the server command
@@ -1351,11 +1360,6 @@ static func _weighted_key(weights: Dictionary, value: float) -> Variant:
 	return weights.keys().back()
 
 
-func _add_stored(item_id: int) -> void:
-	_stored()[str(item_id)] = int(_stored().get(str(item_id), 0)) + 1
-	happened.emit(VillageEvent.Kind.STORED, {"item": item_id})
-
-
 ## The last tutorial step that the player reached (playerInfo
 ## "completed_tutorial"). The tutorial runs while it is 0 on the first map.
 func tutorial_step() -> int:
@@ -1612,13 +1616,6 @@ func _gifted(item_id: int) -> bool:
 	return gifts is Dictionary and gifts.keys().any(func(key: Variant) -> bool: return str(key) == str(item_id))
 
 
-## The item store of the map, as the server keeps it: item id (text) -> number.
-func _stored() -> Dictionary:
-	if not _map.get("store") is Dictionary:
-		_map["store"] = {}
-	return _map["store"]
-
-
 ## The quest in the town (TownQuests): its number in the chain of 30 quests
 ## ("idCurrentTreasure"), the time when the last one ended
 ## ("timestampLastTreasure") and its state ("currentQuestVars").
@@ -1676,3 +1673,54 @@ func collect_quest_treasure(placed: PlacedItem) -> void:
 ## with "store_add_items".
 func store_quest_reward(item_id: int) -> void:
 	_add_stored(item_id)
+
+
+## The login bonus of the server (daily_bonus.py with "daily_bonus_repeatable"
+## off, as server_config.json has it), at the start of a session. When a new
+## day began since the last reward, the day of the bonus is the next one. When
+## the map has loaded ("game_status" "MapLoaded"), the server gives the reward
+## of that day (GameConfig.daily_bonus) to the first town, except units, which
+## the client adds with "store_add_items" when it shows its window (see
+## add_daily_bonus_unit()). The bonus ends after the last day. Returns what the
+## window of the client shows: "days_logged" and "last_rewarded" before the
+## reward, and "shown", whether the client opens the window.
+func start_daily_bonus(now: int) -> Dictionary:
+	var state: Dictionary = _document["privateState"]
+	# The values of a save without the bonus, as the server's migration adds them.
+	for pair: Array in [["numDayLogged", 1], ["lastDayRewarded", 0], ["nextDayReward", 1], ["showDailyBonus", 1], ["_tsNewDailyBonus", 0]]:
+		if not state.has(pair[0]):
+			state[pair[0]] = pair[1]
+	if now / DAY_SECONDS - int(state["_tsNewDailyBonus"]) / DAY_SECONDS > 0:
+		state["numDayLogged"] = int(state["lastDayRewarded"]) + 1
+		state["showDailyBonus"] = 1
+	if int(state["numDayLogged"]) > _config.daily_bonus.size():
+		state["showDailyBonus"] = 0
+	var day := int(state["numDayLogged"])
+	var shown := {"days_logged": day, "last_rewarded": int(state["lastDayRewarded"])}
+	shown["shown"] = int(state["showDailyBonus"]) != 0 or shown["last_rewarded"] == 0
+	if int(state["showDailyBonus"]) == 0 or day == shown["last_rewarded"] or day < 1 or day > _config.daily_bonus.size():
+		return shown
+	var reward: Dictionary = _config.daily_bonus[day - 1]["reward"]
+	for code: String in reward:
+		if code != "u":
+			_add_first_town_resource(code, int(reward[code]))
+	state["lastDayRewarded"] = day
+	state["nextDayReward"] = mini(day + 1, _config.daily_bonus.size())
+	state["_tsNewDailyBonus"] = now
+	if day + 1 > _config.daily_bonus.size():
+		state["showDailyBonus"] = 0
+	return shown
+
+
+## The unit of the login bonus goes to the item store ("store_add_items").
+func add_daily_bonus_unit(unit_id: int) -> void:
+	_add_stored(unit_id)
+	_register_unit(unit_id)
+
+
+func _add_first_town_resource(code: String, amount: int) -> void:
+	if _map_index == 0 or not RESOURCE_KEYS.has(code) or RESOURCE_KEYS[code][0] != "map":
+		_add_resource(code, amount)
+		return
+	var first: Dictionary = _document["maps"][0]
+	first[RESOURCE_KEYS[code][1]] = int(first.get(RESOURCE_KEYS[code][1], 0)) + amount

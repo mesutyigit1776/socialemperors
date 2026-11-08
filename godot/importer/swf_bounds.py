@@ -250,8 +250,10 @@ class SwfFile:
 
 	def without_placements(self, drops, new_sprites=None):
 		"""Returns an uncompressed copy of the SWF file in which the sprites
-		{sprite id: set of depths} no longer place anything at these depths.
-		new_sprites {sprite id: placement tags} adds sprites of one frame."""
+		{sprite id: set of (depth, character id, instance name)} no longer
+		place these characters at these depths; other characters and other
+		instances at the same depths, for example in other frames, stay. new_sprites {sprite id: placement tags}
+		adds sprites of one frame."""
 		data = self.data
 		parts = []
 		copied = self._first_tag
@@ -262,10 +264,18 @@ class SwfFile:
 			if sprite_id not in drops:
 				continue
 			content = bytearray(data[start:start + 4])
+			placed = {}  # depth -> (character id, instance name)
 			for inner_code, inner_header, inner_start, inner_end in _raw_tags(data, start + 4, end):
-				if inner_code in PLACE_TAGS:
-					depth_pos = inner_start + (2 if inner_code == 70 else 1)
-					if struct.unpack_from('<H', data, depth_pos)[0] in drops[sprite_id]:
+				if inner_code == REMOVE_OBJECT2_TAG:
+					placed.pop(struct.unpack_from('<H', data, inner_start)[0], None)
+				elif inner_code in PLACE_TAGS:
+					depth, char_id, name = _placed_character(data, inner_code, inner_start)
+					old_char, old_name = placed.get(depth, (None, None))
+					if char_id is not None:
+						# A new character at the depth has no name until the tag gives one.
+						old_char, old_name = char_id, None
+					placed[depth] = (old_char, name if name is not None else old_name)
+					if (depth, *placed[depth]) in drops[sprite_id]:
 						continue
 				content += data[inner_header:inner_end]
 			parts.append(data[copied:header])
@@ -454,3 +464,36 @@ class SwfFile:
 			elif code == SHOW_FRAME_TAG:
 				frame += 1
 		return labels
+
+
+def _placed_character(data, code, start):
+	"""Returns (depth, character id, instance name) of a PlaceObject2 or
+	PlaceObject3 tag; the character id is None for a move of the character at
+	the depth, and the name is None when the tag sets none."""
+	flags = data[start]
+	flags3 = 0
+	p = start + 1
+	if code == 70:
+		flags3 = data[p]
+		p += 1
+	depth = struct.unpack_from('<H', data, p)[0]
+	p += 2
+	# The SWF specification also names (HasImage and HasCharacter) as a
+	# condition for the class name; the Flash tools write HasImage without a
+	# class name, so only HasClassName counts.
+	if code == 70 and flags3 & 0x08:
+		p = data.index(b'\0', p) + 1
+	char_id = None
+	if flags & 0x02:
+		char_id = struct.unpack_from('<H', data, p)[0]
+		p += 2
+	if flags & 0x04:
+		_, p = _read_matrix(data, p)
+	if flags & 0x08:
+		_, p = _read_color_transform_alpha(data, p)
+	if flags & 0x10:
+		p += 2
+	name = None
+	if flags & 0x20:
+		name = data[p:data.index(b'\0', p)].decode('utf-8', 'replace')
+	return depth, char_id, name

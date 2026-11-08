@@ -7,9 +7,16 @@ signal zoomed
 
 var panning := true  ## False while a drag does something else, for example a selection box.
 
+## The zoom of the client (Base): it starts each game at START_ZOOM, and the
+## mouse wheel changes it by ZOOM_STEP between ZOOM_MIN and ZOOM_MAX.
 const ZOOM_STEP := 1.1
-const ZOOM_MIN := 0.25
-const ZOOM_MAX := 2.0
+const ZOOM_MIN := 0.15
+const ZOOM_MAX := 1.4
+const START_ZOOM := 0.7
+
+
+func _init() -> void:
+	zoom = Vector2.ONE * START_ZOOM
 
 
 func _unhandled_input(event: InputEvent) -> void:

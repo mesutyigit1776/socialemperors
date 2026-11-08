@@ -106,6 +106,25 @@ const WILD_ANIMALS := {
 	88: {"id": 571, "count": 6, "level": 11, "race": "h", "homes": [227]},
 	90: {"id": 584, "count": 7, "level": 0, "race": "t", "homes": [340, 341, 342]},
 }
+## The land that the client keeps when it clears the border of the map: the
+## 3 x 3 land areas in the middle.
+const INNER_LAND := Rect2i(IsoGrid.LAND_TILES, IsoGrid.LAND_TILES, IsoGrid.MAP_TILES - 2 * IsoGrid.LAND_TILES, IsoGrid.MAP_TILES - 2 * IsoGrid.LAND_TILES)
+## The resources of the map that the client places when it loads the map:
+## [ids, counted ids, groups, smallest group, largest group (not included)].
+## The client counts only the first three kinds of gold and stone and the
+## regenerating gold (80) and stone (81).
+const GOLD: Array[int] = [73, 74, 75, 76]
+const STONES: Array[int] = [69, 70, 71, 72]
+const TREES: Array[int] = [19, 20, 21]
+const RESOURCE_GROUPS := [
+	[GOLD, [73, 74, 75, 80], 3, 5, 7],
+	[STONES, [69, 70, 71, 81], 3, 5, 7],
+	[TREES, TREES, 10, 16, 20],
+]
+const TREES_ALONE := 100
+## A single tree goes to a random free tile this many rings around its point.
+const ALONE_TREE_RINGS := 5
+const RING_TILE_BIAS := Vector2i(200, 200)
 ## A unit of the player captures a wild animal at this distance in tiles or nearer.
 const CAPTURE_RANGE := 4
 ## The server counts the animals of these kinds at each load of the save
@@ -146,6 +165,7 @@ const SOUL_MIXER := 1529
 # that come out of buildings.
 var _captured: Dictionary = {}
 var _health: Dictionary = {}  # PlacedItem -> life below the full life, see health().
+var _construction_ends: Dictionary = {}  # PlacedItem -> unix time, see start_construction().
 
 
 ## Wild animals on the owned land belong to the player when the client loads the map.
@@ -168,6 +188,7 @@ func sell(placed: PlacedItem, now: int) -> Placement:
 func _remove(placed: PlacedItem) -> void:
 	_captured.erase(placed)
 	_health.erase(placed)
+	_construction_ends.erase(placed)
 	super(placed)
 
 
@@ -189,6 +210,13 @@ func set_health(placed: PlacedItem, value: int) -> void:
 
 func is_damaged(placed: PlacedItem) -> bool:
 	return _health.has(placed)
+
+
+## The client builds a new building for some seconds after its placement
+## (IsoElement.inConstruction); until the time end, the building takes no
+## units. The save does not have it.
+func start_construction(placed: PlacedItem, end: float) -> void:
+	_construction_ends[placed] = end
 
 
 ## A villager of the player repairs a damaged building of the player; the
@@ -506,11 +534,106 @@ func spawn_animals(now: int, rng: RandomNumberGenerator) -> Array[PlacedItem]:
 				tile = free_tile_around(Rect2i(tile, Vector2i.ONE))
 			if tile == ANY_TILE:
 				break
-			_add_xp(animal.xp)
+			_add_server_xp(animal.xp)
 			_register_unit(animal.id)
 			result.append(_add_entry(animal, tile, 0, now, {}))
 			counts[str(subcat)] = int(counts.get(str(subcat), 0)) + 1
 	return result
+
+
+## The client clears the land at the border of the map each time it loads the
+## map (cleanBorderTiles): the units of the player's race go to a free tile
+## near the town hall, and the other items there go away with "sell" without
+## refund, also the idle enemies, wild animals, trees and stones that it
+## places there again after. The items of the quest in the town stay; the
+## client has no such quest (see TownQuests). Returns true when the map changed.
+func clean_border(rng: RandomNumberGenerator) -> bool:
+	var changed := false
+	var hall := town_hall()
+	var home := hall.tile if hall != null else Vector2i(IsoGrid.MAP_TILES / 2, IsoGrid.MAP_TILES / 2)
+	for placed in items.duplicate():
+		if INNER_LAND.has_point(placed.tile) or quest_roles.has(placed):
+			continue
+		changed = true
+		var item := _config.get_item(placed.item_id)
+		if item != null and item.is_unit() and item.race == race and is_own_unit(placed) and not _is_animal(placed):
+			var tile := _nearest_free_tile(home)
+			if tile != ANY_TILE and move_unit(placed, tile, placed.frame) == Placement.OK:
+				continue
+			# The client puts the unit into the item store when no tile is free.
+			_add_stored(placed.item_id)
+		_remove(placed)
+	return changed
+
+
+## Places the trees, stones and gold that the map needs on the land that the
+## player does not own, as the client does when it loads the map
+## (spawnInitResources and spawnRemainingResources): groups of each kind until
+## the map has about RESOURCE_GROUPS of them, and single trees until it has
+## TREES_ALONE trees. It sends "buy" without cost for each item. Returns the new
+## items.
+func spawn_resources(now: int, rng: RandomNumberGenerator) -> Array[PlacedItem]:
+	var counts := {}
+	for placed in items:
+		counts[placed.item_id] = int(counts.get(placed.item_id, 0)) + 1
+	var areas: Array[int] = []
+	for number in range(1, IsoGrid.LAND_AREAS * IsoGrid.LAND_AREAS + 1):
+		if not number in owned_land:
+			areas.append(number)
+	var result: Array[PlacedItem] = []
+	if areas.is_empty():
+		return result
+	var trees := 0
+	for kind: Array in RESOURCE_GROUPS:
+		var counted := 0
+		for id: int in kind[1]:
+			counted += int(counts.get(id, 0))
+		if kind[0] == TREES:
+			trees = counted
+		var groups := maxi(kind[2] - floori(counted / ((kind[3] + kind[4]) / 2.0)), 0)
+		var size: int = kind[3] + floori(rng.randf() * (kind[4] - kind[3]))
+		for group in groups:
+			var point := _random_tile_in(areas, rng)
+			for i in size:
+				var tile := _nearest_free_tile(point)
+				if tile == ANY_TILE:
+					break
+				result.append(_add_resource_item(kind[0], tile, now, rng))
+	for i in maxi(TREES_ALONE - trees, 0):
+		var point := _random_tile_in(areas, rng)
+		var tile := point if is_free(point) else random_free_tile_near(point, ALONE_TREE_RINGS, rng)
+		if tile != ANY_TILE:
+			result.append(_add_resource_item(TREES, tile, now, rng))
+	return result
+
+
+func _add_resource_item(ids: Array, tile: Vector2i, now: int, rng: RandomNumberGenerator) -> PlacedItem:
+	var item := _config.get_item(ids[rng.randi_range(0, ids.size() - 1)])
+	_add_server_xp(item.xp)
+	return _add_entry(item, tile, 0, now, {})
+
+
+func _random_tile_in(areas: Array[int], rng: RandomNumberGenerator) -> Vector2i:
+	var number := areas[rng.randi_range(0, areas.size() - 1)]
+	var area := Vector2i((number - 1) % IsoGrid.LAND_AREAS, (number - 1) / IsoGrid.LAND_AREAS)
+	return area * IsoGrid.LAND_TILES + Vector2i(rng.randi_range(0, IsoGrid.LAND_TILES - 1), rng.randi_range(0, IsoGrid.LAND_TILES - 1))
+
+
+## The tile when it is free, else the free tile of the nearest ring around it
+## that has one; of the free tiles of that ring, the client takes the one
+## nearest to RING_TILE_BIAS (encontrarTileProximaLibre). ANY_TILE when the map
+## has no free tile.
+func _nearest_free_tile(tile: Vector2i) -> Vector2i:
+	if is_free(tile):
+		return tile
+	for ring in range(1, IsoGrid.MAP_TILES):
+		var best := ANY_TILE
+		for free in _free_tiles_in_ring(Rect2i(tile, Vector2i.ONE), ring):
+			if best == ANY_TILE or (free - RING_TILE_BIAS).length_squared() < (best - RING_TILE_BIAS).length_squared():
+				best = free
+		if best != ANY_TILE:
+			return best
+	return ANY_TILE
 
 
 ## Moves a unit to a free tile and gives it the direction frame (1 to 8), as the
@@ -575,7 +698,7 @@ func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
 ## time of a building when the first unit comes in (in the nursery, the second),
 ## so the port sets the time of the building then. The server does not change it.
 func push_unit(unit: PlacedItem, building: PlacedItem, now: int) -> Placement:
-	if not can_enter(unit, building) or can_mount(unit, building):
+	if not can_enter(unit, building) or can_mount(unit, building) or float(_construction_ends.get(building, 0.0)) > now:
 		return Placement.NOT_ALLOWED
 	if building.item_id == UNIT_WAREHOUSE:
 		var stored := _warehoused()

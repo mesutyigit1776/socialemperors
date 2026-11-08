@@ -63,7 +63,11 @@ func show_frame(new_frame: int) -> void:
 			node.set_meta("part", key)
 			_parts[key] = node
 			add_child(node)
+		# The parts come in the order of their depths, above the base image,
+		# except the parts under all shapes of the base image.
 		move_child(node, get_child_count() - 1)
+		if part.get("under", false):
+			move_child(node, _base.get_index())
 		var m: Array = part["matrix"]
 		# The matrix of Flash is [a, b, c, d, x, y]: a turn, then a scale.
 		var x_scale := Vector2(m[0], m[1]).length()

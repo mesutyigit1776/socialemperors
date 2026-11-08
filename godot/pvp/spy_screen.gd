@@ -14,6 +14,8 @@ signal home_requested
 const GRID := 5
 const FIRST_POINT := 10
 const POINT_STEP := 20
+## The client shows the village of the enemy at this zoom (Base.UpdateGame3).
+const SPY_ZOOM := 0.5
 
 var _view := VillageView.new()
 var _camera := MapCamera.new()
@@ -26,6 +28,7 @@ func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int,
 	add_child(_view)
 	_view.show_village(enemy, config, sprites)
 	_camera.position = start_position
+	_camera.zoom = Vector2.ONE * SPY_ZOOM
 	add_child(_camera)
 	var layer := CanvasLayer.new()
 	var panel := PanelContainer.new()

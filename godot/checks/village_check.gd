@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1757,6 +1757,62 @@ func _check_village_enemies() -> bool:
 	_expect("an idle enemy at level 4", low, {"level": 4, "xp": next_xp - 1 + enemy.xp})
 	low.publish_score(next_xp - 1)
 	_expect("the published experience", low, {"level": 4, "xp": next_xp - 1})
+	return true
+
+
+## What the client does each time it loads the map: it clears the border,
+## places the trees, stones and gold, and its "rt_publish_score" takes back
+## the experience that the server gave for the items that it placed itself.
+func _check_map_start() -> bool:
+	var village := Village.load_from_file(_write_fixture("map_start", 8, 1000, 500), _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 6
+	var knight := village.item_at(KNIGHT_TILE)
+	var border := Vector2i(10, 50)
+	_check(village.move_unit(knight, border, 1) == Village.Placement.OK, "a knight walks to the border")
+	var enemy := village.add_enemy(_config.get_item(SMALL_TROLL), Vector2i(90, 50), NOW)
+	village.clean_border(rng)
+	_check(not enemy in village.items, "the border loses the idle enemy")
+	_check(knight in village.items and VillageUnits.INNER_LAND.has_point(knight.tile), "the knight of the player comes back from the border")
+	_check(village.items.all(func(placed: Village.PlacedItem) -> bool: return VillageUnits.INNER_LAND.has_point(placed.tile)), "nothing is left at the border")
+	var xp := village.get_xp()
+	var placed := village.spawn_resources(NOW, rng)
+	var count := func(ids: Array) -> int: return village.items.filter(func(item: Village.PlacedItem) -> bool: return item.item_id in ids).size()
+	_check(count.call(VillageUnits.GOLD) >= 15 and count.call(VillageUnits.STONES) >= 15, "3 groups of gold and of stones come (%d, %d)" % [count.call(VillageUnits.GOLD), count.call(VillageUnits.STONES)])
+	_check(count.call(VillageUnits.TREES) >= VillageUnits.TREES_ALONE + 10 * 16, "10 groups of trees and 100 single trees come (%d)" % count.call(VillageUnits.TREES))
+	_check(placed.all(func(item: Village.PlacedItem) -> bool: return not IsoGrid.land_area_number(item.tile / IsoGrid.LAND_TILES) in village.owned_land), "the resources stand on land that the player does not own")
+	# A group of gold or stone can count less than the average group, so the
+	# client can add a group at the next load; the trees are enough.
+	_check(village.spawn_resources(NOW, rng).all(func(item: Village.PlacedItem) -> bool: return not item.item_id in VillageUnits.TREES), "the next load places no more trees")
+	var enemy_xp: Array = VillageAttacks.enemy_ids(30, "h").filter(func(id: int) -> bool: return _config.get_item(id).xp > 0)
+	village.add_enemy(_config.get_item(enemy_xp[0]), Vector2i(5, 5), NOW)
+	var free := village.add_free_buildings(NOW)
+	var free_xp: int = free.reduce(func(sum: int, item: Village.PlacedItem) -> int: return sum + _config.get_item(item.item_id).xp, 0)
+	_check(village.get_xp() == xp + _config.get_item(enemy_xp[0]).xp + free_xp and village.client_xp() == xp, "the server counts the experience of the idle enemy and the free buildings; the client does not")
+	village.publish_score(village.client_xp())
+	_expect("after the publish", village, {"level": 8, "xp": xp})
+	return true
+
+
+## The login bonus of the server: a reward for each new day of play, five days.
+func _check_daily_bonus() -> bool:
+	var village := Village.load_from_file(_write_fixture("daily_bonus", 8, 1000, 500), _config)
+	var start := {"g": 500, "w": village.get_resource("w"), "s": village.get_resource("s"), "f": village.get_resource("f")}
+	var state := village.start_daily_bonus(NOW)
+	_check(state == {"days_logged": 1, "last_rewarded": 0, "shown": true}, "a new save shows the first day")
+	_expect("the first day", village, {"g": start["g"] + 250, "w": start["w"] + 250, "s": start["s"] + 250, "f": start["f"] + 250})
+	_check(village.start_daily_bonus(NOW + 60) == {"days_logged": 1, "last_rewarded": 1, "shown": true}, "a second start on the same day shows the window without a reward")
+	_expect("the same day", village, {"g": start["g"] + 250})
+	_check(village.start_daily_bonus(NOW + Village.DAY_SECONDS)["days_logged"] == 2, "the next day is day 2")
+	village.add_daily_bonus_unit(int(_config.daily_bonus[1]["reward"]["u"]))
+	_check(village.stored_items().get(int(_config.daily_bonus[1]["reward"]["u"]), 0) == 1, "the unit of day 2 goes to the item store")
+	var cash := village.get_resource("c")
+	_check(village.start_daily_bonus(NOW + 4 * Village.DAY_SECONDS)["days_logged"] == 3 and village.get_resource("c") == cash + 10, "a pause of some days gives the next day, day 3, with 10 cash")
+	var potions := village.get_resource("p")
+	village.start_daily_bonus(NOW + 5 * Village.DAY_SECONDS)
+	_check(village.get_resource("p") == potions + 25, "day 4 gives 25 potions")
+	village.start_daily_bonus(NOW + 6 * Village.DAY_SECONDS)
+	_check(not village.start_daily_bonus(NOW + 7 * Village.DAY_SECONDS)["shown"], "after day 5 the bonus ends")
 	return true
 
 

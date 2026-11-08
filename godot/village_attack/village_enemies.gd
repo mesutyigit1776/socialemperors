@@ -32,16 +32,11 @@ func _init(village: Village, view: VillageView, config: GameConfig, rng: RandomN
 
 
 ## The map loaded, as at the start of the game and after a quest: new idle
-## enemies and new attacks; the attacks of before are gone. From
-## Village.PUBLISH_SCORE_LEVEL the client then publishes its experience, which
-## takes back the experience of the new idle enemies. Returns true when the
-## save changed.
+## enemies and new attacks; the attacks of before are gone. Returns true when
+## the save changed.
 func on_map_loaded(now: int) -> bool:
 	var attacks := VillageAttacks.new(_village, _config, _rng)
-	var client_xp := _village.get_xp()
 	var placed := attacks.spawn_idle_enemies(now)
-	if _village.get_level() >= Village.PUBLISH_SCORE_LEVEL:
-		_village.publish_score(client_xp)
 	groups = attacks.attacks()
 	_show()
 	return not placed.is_empty()
