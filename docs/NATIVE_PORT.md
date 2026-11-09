@@ -212,6 +212,8 @@ The 1.4.07 client has a chain of 30 quests on the player's own map, but it never
 
 Open decisions of the owner: mobile builds (touch changes the unit control in battles) and the mini-games of the nests and the Rider Academy (the port counts them as won).
 
+`docs/PORT_GAPS.md` lists the open items after 6.1 for the decisions of the owner: the parts of the original game that the port does not have (among them the first purchase offer, which the server turns on), the result of the tutorial after step 10 in the original client, the ship and zeppelin explorations, server bugs found on the way, and the size of the HUD on large screens.
+
 ## 5. Risks
 
 - **Ruffle gaps:** if Ruffle cannot run the game well, option A fails, and option B becomes the main native option for the original client. Phase 1, step 2 tests this first.

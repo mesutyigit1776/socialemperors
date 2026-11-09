@@ -24,7 +24,8 @@ Work: small is up to a few days, medium is about one week, large is more than on
 | [Achievement publish](#facebook-parts) | Yes | Yes | No | Small | Yes, without the post |
 | [Cash shop and other Facebook parts](#facebook-parts) | Yes | No | Message only | — | No |
 | [Save migration](#save-migration) | — | Yes (`version.py`) | Defaults where needed | Small to medium | Yes |
-| [Ship and zeppelin explorations](#tutorial-and-explorations) | Yes | No maps | No | See the section | No maps |
+| [Tutorial after step 10](#the-tutorial-after-step-10) | Yes | Yes | Yes, with 3 differences | Small | Yes |
+| [Ship and zeppelin explorations](#ship-and-zeppelin-explorations) | Yes | No maps | No | See the section | No maps |
 | [HUD on modern screens](#the-hud-on-modern-screens) | — | — | Fixed 760-pixel HUD | Medium to large | Yes |
 
 ## First purchase offer ("open me")
@@ -146,7 +147,30 @@ Work: small to medium. A loader that fills the missing fields of an old save, wi
 
 ## Tutorial and explorations
 
-The check of the tutorial after step 10 in the original client and the search for the maps of the ship and zeppelin explorations (`100000009`, `100000016`) are running. Their results go in this section.
+### The tutorial after step 10
+
+Step 4.3 compared the tutorial with the original client only up to step 10, because the automation could not place the house. The house must go on tile (55, 55), and the click that gives this tile is not at the centre of the green marked place on the screen. With the correct click, the original client in Ruffle went through all 32 steps on the save of a new empire. The server saved the steps 1 to 13 and 15 to 31 (14 does not show), and the save ends with `completed_tutorial` 31.
+
+The port was then run on the same save with a script that calls its functions (not with mouse clicks). These agree with the client: the order of the steps, the skip of step 14, the tiles of the house (55, 55) and the farm (52, 44), the texts of the boxes of steps 0 to 13, goals 1, 2, 3, 4, 5 and 11 rewarded, gold, food and stone at the end, and the dragon nest. Both count any tree for the last step, not only the three marked trees.
+
+Differences from the client:
+
+1. **Steps 11 and 20.** The client saves step 11 (after the house) and step 20 (after the farm) when the construction ends; step 11 also waits for a move of the map. The port saves them when the building is placed. Work: small.
+2. **The nest steps at the end.** After the tutorial the client sends 9 `next_step` commands for the new dragon nest, and the server accepts them, because a new empire has `dragonNestActive` 1. The save of the client ends with `stepNumber` 9; the port leaves it at 0. The comment in `village.gd` (`add_tutorial_nest`) says that the server refuses these commands; that is not correct. Work: small.
+3. **Steps 15 to 31.** The client shows only the arrow. The port shows its own short text with the arrow (`ARROW_TEXTS` in `tutorial/tutorial.gd`, a choice of the port), and it also darkens the screen behind the goal window, which the client does not do in the tutorial. Removing the text is a decision of the owner; the dark screen is a small fix.
+4. Wood and experience at the end were a little lower in the port (1135 against 1175 wood, 30 against 32 experience), and the goals were completed in another order. The villager of the client cut 5 trees by itself and the port script cut 3, which explains the difference in wood; the experience was not traced.
+
+Not checked: if the client saves step 17 at the first click on the goal box or at the "+Info" click, because the server got steps 16 and 17 in one batch.
+
+### Ship and zeppelin explorations
+
+The client gets the maps of the ship (`100000009`) and the zeppelin (`100000016`) from the game server when the player starts the exploration, not from its files. No copy is in `assets/`, in the `villages/` folders, or in the forks of `AcidCaos/socialemperors` that were checked (18 of the forks; one other fork has the same 35 quest maps as this repository). `server.py` also does not send these ids to the quest code, because they are not in its list of quest ids. Web searches found no copy of the maps and no pictures of their layout; the web archive and the fan wiki could not be opened from this session.
+
+So the explorations cannot be checked against the original game. To add them the port needs one of these:
+
+- a copy of the two maps from an old capture of the Social Point servers on the web archive, or from a fork that was not checked;
+- pictures or videos of the explorations, to make the maps again by hand;
+- new maps made for the port, with the client's rules for the ship and zeppelin quests (the map does not move in these quests, and the zoom is 0.7).
 
 ## The HUD on modern screens
 
