@@ -169,8 +169,8 @@ var _construction_ends: Dictionary = {}  # PlacedItem -> unix time, see start_co
 
 
 ## Wild animals on the owned land belong to the player when the client loads the map.
-func _read(path: String, config: GameConfig, map_index: int) -> bool:
-	if not super(path, config, map_index):
+func _read(data: Dictionary, path: String, config: GameConfig, map_index: int) -> bool:
+	if not super(data, path, config, map_index):
 		return false
 	for placed in items:
 		if _is_animal(placed) and IsoGrid.land_area_number(placed.tile / IsoGrid.LAND_TILES) in owned_land:

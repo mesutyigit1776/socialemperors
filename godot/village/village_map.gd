@@ -512,17 +512,24 @@ func item_at(tile: Vector2i) -> PlacedItem:
 	return null
 
 
-## Reads map map_index of the save at path. Returns false and reports an error
-## when the file is missing or not a valid save. Village.load_from_file() calls it.
-func _read(path: String, config: GameConfig, map_index: int) -> bool:
+## The save document at path. Returns {} and reports an error when the file is
+## missing or not a save.
+static func read_save(path: String) -> Dictionary:
 	var text := FileAccess.get_file_as_string(path)
 	if text.is_empty():
 		push_error("Cannot read village '%s' (%s)." % [path, error_string(FileAccess.get_open_error())])
-		return false
+		return {}
 	var data: Variant = JSON.parse_string(text)
 	if not (data is Dictionary and data.get("maps") is Array and data.get("playerInfo") is Dictionary and data.get("privateState") is Dictionary):
 		push_error("Village '%s' is not a save: it has no maps, playerInfo or privateState." % path)
-		return false
+		return {}
+	return data
+
+
+## Uses map map_index of the save document data, from read_save(path).
+## Returns false and reports an error when the map is not valid.
+## Village.load_from_file() calls it.
+func _read(data: Dictionary, path: String, config: GameConfig, map_index: int) -> bool:
 	var maps: Array = data["maps"]
 	if map_index < 0 or map_index >= maps.size() or not maps[map_index] is Dictionary:
 		push_error("Village '%s' has no map %d." % [path, map_index])
@@ -827,11 +834,12 @@ func _add_stored(item_id: int) -> void:
 	happened.emit(VillageEvent.Kind.STORED, {"item": item_id})
 
 
-## The server keeps a list of the units of the player's race that the player
-## had. It ignores buildings, which collection rewards and stored items can be.
+## The server keeps a list of the units that the player had, see
+## SaveMigration.counts_as_bought(). It ignores buildings, which collection
+## rewards and stored items can be.
 func _register_unit(unit_id: int) -> void:
 	var item := _config.get_item(unit_id)
-	if not item.is_unit() or item.race == ("h" if race == "t" else "t"):
+	if not SaveMigration.counts_as_bought(item, race):
 		return
 	if not _document["privateState"].get("boughtUnits") is Array:
 		_document["privateState"]["boughtUnits"] = []

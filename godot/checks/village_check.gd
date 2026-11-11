@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -156,6 +156,8 @@ func _check_placement_and_save() -> bool:
 		# The timestamp is the time of the purchase.
 		entry[4] = 0.0
 	expected_map["items"].append_array([[YELLOW_TREE, 53, 46, 0, 0, 0, [], {}], [GREEN_TREE, 56, 47, 0, 0, 0, [], {}]])
+	# The load fills the empty list of bought units, as the server's save migration does.
+	expected["privateState"]["boughtUnits"] = [512, 516]
 	# JSON reads every number as a float, so compare two parsed documents.
 	expected = JSON.parse_string(JSON.stringify(expected))
 	_check(saved == expected, "the save changes only the resources, the XP, the level and the new items")
@@ -1454,6 +1456,55 @@ func _check_second_town() -> bool:
 	_check(village.buy_second_town(false, NOW) == Village.Placement.NOT_ENOUGH_RESOURCES and village.buy_second_town(true, NOW) == Village.Placement.OK and village.get_resource("c") == 0, "the troll town costs 22 cash")
 	_check(village._document["maps"].size() == 2 and village._document["maps"][1]["coins"] == 999, "the purchase keeps a troll map that the save has")
 	return true
+
+
+## The repairs of the server's save migration (SaveMigration): the list of
+## the bought units with the race rule of each town, the gifts of old saves,
+## the Heroes Grave without its graveyard list, and a save of an old server.
+func _check_save_migration() -> bool:
+	const TROLL := 525
+	const DEVIOUS_TROLL := 526
+	var path := _write_fixture("migration", 20, _config.levels[19].exp_required, 150000)
+	var village := Village.load_from_file(path, _config)
+	_check(village._document["privateState"]["boughtUnits"] == [512, 516], "a save without bought units gets the units of its map")
+	_check(village.buy_second_town(false, NOW) == Village.Placement.OK and village.save_to_file(path) == OK, "the save with the troll town is written")
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var trolls: Dictionary = document["maps"][1]
+	trolls["items"].append([TROLL, 40, 40, 0, NOW, 0, [], {}])
+	trolls["store"] = {"513": 1}
+	var gifts := []
+	gifts.resize(DEVIOUS_TROLL + 1)
+	gifts.fill(0)
+	gifts[DEVIOUS_TROLL] = 2
+	document["privateState"].merge({"boughtUnits": [], "gifts": gifts, "deadHeroes": {"534": 1, "509": 2}}, true)
+	document["privateState"].erase("resurrectableUnits")
+	_write_document(path, document)
+	var private: Dictionary = Village.load_from_file(path, _config)._document["privateState"]
+	# The troll town counts its troll units but not the human unit in its item
+	# store; the gifts and the dead heroes count with each race.
+	_check(private["boughtUnits"] == [512, 516, 580, TROLL, DEVIOUS_TROLL, 534], "the bought units follow the race of each town: %s" % [private["boughtUnits"]])
+	_check(private["gifts"] == {str(DEVIOUS_TROLL): 2.0}, "a list of gifts becomes a dictionary without the zeros")
+	_check(private["deadHeroes"] == {"534": 1.0} and private["resurrectableUnits"] == [], "the Heroes Grave keeps only the heroes")
+
+	document = _initial.duplicate(true)
+	document["version"] = "old"
+	document["maps"][0]["level"] = 40
+	for entry: Array in document["maps"][0]["items"]:
+		entry.resize(5)
+	document["privateState"]["mana"] = 5
+	_write_document(path, document)
+	village = Village.load_from_file(path, _config)
+	private = village._document["privateState"]
+	var mana := (41 - _config.start_level_mana_reward) * _config.mana_reward_per_level
+	_check(village.items.size() == _initial["maps"][0]["items"].size() and not village._document.has("version"), "the items of a save of an old server load")
+	_check(int(private["mana"]) == 5 + mana and int(private["monsterNestActive"]) == 1, "a save of an old server gets the mana of its levels and the monster nest")
+	return true
+
+
+func _write_document(path: String, document: Dictionary) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(document, "\t", false))
+	file.close()
 
 
 ## The quests in the town (TownQuests): the race filter, the rewards, a camp

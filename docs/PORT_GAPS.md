@@ -24,7 +24,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 
 | Item | Work |
 |---|---|
-| [Save migration](#save-migration) | Small to medium |
+| [Save migration](#save-migration) | Done |
 | [First purchase offer ("open me")](#first-purchase-offer-open-me) | Small to medium |
 | [Unit list and unit collections](#unit-list-and-unit-collections) | Medium |
 | [News window](#news-window) | Medium |
@@ -57,7 +57,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge, with the save migration first.
+2. Group 2 without the Island Forge (the save migration is done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -72,7 +72,7 @@ Group 2 is about two to three weeks of work (*estimate*). With group 3 and the p
 4. **HUD on wide screens.** Only a UI scale, or also a new layout. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Add it with a new event date, or leave it out. See [Island Forge](#island-forge-collect-game).
-7. **Server bugs.** Fix them in the server or leave them. Only the rule of `fix_bought_units` changes the port, through the save migration. See [Server bugs](#server-bugs).
+7. **Server bugs.** Fix them in the server or leave them. The port already uses the correct rule of `fix_bought_units` in its save migration. See [Server bugs](#server-bugs).
 8. **Cash without payment.** The port has no cash shop. See [Facebook and payment parts](#facebook-and-payment-parts).
 
 ## Group 1: fixes
@@ -107,9 +107,15 @@ On troll island 1 the port showed a gray line between two land pieces. The clien
 
 ### Save migration
 
-The server runs `version.py` `migrate_loaded_save` on each save that it loads. It fills missing fields, rebuilds `boughtUnits` from the maps when the list is empty, fixes collections, the forge and events, the graveyard, banned units, survival maps, quest ranks and some goals. The port has no general migration; it reads defaults where it needs them, and ports the troll empire fix (`village_map.gd`).
+The server runs `version.py` `migrate_loaded_save` on each save that it loads. The port now does the same repairs when it loads a save (`godot/village/save_migration.gd`):
 
-Work: a loader that fills the missing fields of an old save, with the correct race rule for `boughtUnits` (see [Server bugs](#server-bugs), item 1). This matters most for the unit list.
+- When `boughtUnits` is missing or empty, the port makes the list again from the units on the maps, in buildings, in the item stores and warehouses, the gifts and the dead heroes. It uses the correct race rule (see [Server bugs](#server-bugs), item 1) and reads only the towns that the player owns. The server adds the troll town to each save, also when the player did not buy it.
+- Old saves: a list of gifts becomes a dictionary, `collectionsCompleted` is made from the collections when it is empty, and the Heroes Grave keeps only heroes when the save has no graveyard list.
+- Saves of old server versions (with the key `version`): the items get their missing values and the time of the load, the player gets the mana of the levels, the monster nest becomes active and the graveyard is emptied.
+
+The port does not write the plain defaults that the server adds for missing values. The code that reads a value uses the same default. The troll town is added when the player buys it, and the goal box completes the land goals at the start. The port does not need the darts values, the list of banned units (empty on the server) or the removal of old fields.
+
+Check: the port and the server, with the race rule fixed, give the same results on 8 saves of the repository (from `villages/` and `saves/`), the 10 mock neighbours and two made-up saves (two towns with old gifts, and an old server save). This was a script run; it is not part of the checks. `village_check.gd` checks the race rule, the old gifts, the Heroes Grave and an old server save.
 
 ### First purchase offer ("open me")
 
@@ -294,7 +300,7 @@ Not in the 1.4.07 client: chat and guilds. "Allies" in this game are the allies 
 
 These were found by reading the code and are not fixed (decision 7).
 
-1. `version.py` `fix_bought_units`: for a troll map the line that should set the ignored race to "h" is a comparison (`==`), so the troll units are left out and the human units are counted. `engine.py` `register_bought_unit` has the correct rule.
+1. `version.py` `fix_bought_units`: for a troll map the line that should set the ignored race to "h" is a comparison (`==`), so the troll units are left out and the human units are counted. `engine.py` `register_bought_unit` has the correct rule, and the port's save migration uses it.
 2. The client sends `add_items_store` for the Arabic deals; `command.py` has only `store_add_items`.
 3. `weekly_reward` and `comeback_reward` have no handler (the icons are off).
 4. `get_game_config.py` lists `unit_collections` in `patch_ignore`, but no patch has that name.

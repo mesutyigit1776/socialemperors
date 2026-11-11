@@ -126,10 +126,15 @@ const PACK_DISCOUNTS: Array[Array] = [[8, 0.85], [2, 0.9]]
 var _soul_mixes: Dictionary = {}
 
 
-## Returns null and reports an error when the file is missing or not a valid save.
+## Returns null and reports an error when the file is missing or not a valid
+## save. The save gets the repairs of the server's save migration first.
 static func load_from_file(path: String, config: GameConfig, map_index: int = 0) -> Village:
+	var data := VillageMap.read_save(path)
+	if data.is_empty():
+		return null
+	SaveMigration.migrate(data, config, HEROES, int(Time.get_unix_time_from_system()))
 	var village := Village.new()
-	return village if village._read(path, config, map_index) else null
+	return village if village._read(data, path, config, map_index) else null
 
 
 ## The number of items of the collection that the player has; index is 1 to
