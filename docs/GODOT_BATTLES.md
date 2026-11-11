@@ -1,6 +1,6 @@
-# Battles in the Godot port: plan
+# Battles in the Godot port
 
-Status: stages 1 to 7 done. Branch `godot-port`.
+This file records the battle rules of the port and where they come from in the client, the errors of the client that the port keeps or corrects, the differences from the client, and the comparisons with the client in Ruffle. All battle modes are in the port: the campaign, the spells, the special abilities, the fights in the own village, survival, the tournament and PvP. The work that remains is in `docs/PORT_GAPS.md`.
 
 ## How the original game does battles
 
@@ -43,7 +43,7 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 ### Data that the port has or needs
 
 - The 36 quest maps are village saves in `villages/quests/`. The importer copies them to `<data>/quests/`. Two of them (`100000053`, `100000054`) store the level as text; the loader reads it as a number, as the client does.
-- Each frame of a unit graphic is one action in one direction: frame = action × 5 + direction. The actions are idle, walking, attacking, dying, harvesting, repairing, and from 6 the special attacks. Each frame contains a nested clip that plays the animation; the importer exports these clips (stage 2).
+- Each frame of a unit graphic is one action in one direction: frame = action × 5 + direction. The actions are idle, walking, attacking, dying, harvesting, repairing, and from 6 the special attacks. Each frame contains a nested clip that plays the animation; the importer exports these clips.
 - The client starts a shot at a named point of the graphic of the shooter, else at 0.6 or 0.75 of its height, and aims at a part of the height of the target (`BattleGraphic`). The importer reads the bounds of each frame and the named points.
 - Projectiles and effects are in 231 files in `assets/fx/`, one symbol in each, with the name of the file. The importer exports all of them; `BattleProjectile` names the graphic of each shooter, as the client does.
 - The quest goals and scripted events are in the client quest classes, not in the data. Each class also keeps the start tile of the army, the land of the island and the units of the map that join the player (`QuestIsland`).
@@ -57,22 +57,9 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 - `QuestBattle` reads a quest map, places the player's units, checks the goals and ends the battle; `QuestScreen` shows it.
 - At the end, the battle writes the results through `Village.end_quest()`, which does what the server command does.
 - Special abilities are added one unit at a time behind one interface, as the client does with its delegates.
-- `docs/NATIVE_PORT.md`, section 4a, has the roadmap of the whole port. A comparison with the original game in Ruffle comes after stage 3.
+- `docs/NATIVE_PORT.md`, section 3, has the roadmap of the whole port.
 
-## Stages
-
-Each stage is a milestone with headless checks and, where it changes the save, a server replay.
-
-1. **Battle core, headless.** Fighters from the configuration, the damage rules, frames, melee and ranged attacks, projectile travel time, towers and other attacking buildings, healers, death, and the basic AI states. Checks with a fixed seed: damage values, attack timing, target choice, who wins small fights.
-2. **Battle view.** Attack and death animations, projectiles and effects (importer: `assets/fx/`), health bars, and orders to units during a battle (select, move, attack).
-3. **Campaign quests.** The island list and its rules: open islands, stars, the limit of quests in a row. The army is all fighting units of the village map; teams are only for some later islands and tournaments. The map of the island, the sides, the copies of the enemies for more stars, the goals of the troll and civilisation islands, and the end: gold, experience, honour, stars and lost units, as `end_quest` writes them.
-4. **Spells.** The spell book: mana, buying and using spells (`buy_magic`, `use_magic`), shields. Quests use them, so they come before the quest scripts.
-5. **Quests one at a time.** For each of the other quests whose maps the server has: port the client quest class and the special abilities of the units and bosses on the map, and add the island to `QuestIsland.ISLANDS`. Each quest is then complete and playable, and the quests can be compared with the original game one at a time. The 12 islands of stage 3 also get the special abilities of their units here.
-6. **Other special abilities.** The units that a player can own (store, nests, Soul Mixer, riders, collections) that no quest map has.
-7. **Single-player modes.** Events such as the heavy siege on the own village, then survival and tournament, as far as they work without other players.
-8. **Multiplayer, last or never.** PvP attacks and neighbour visits need other players' saves and a server. The port has no server, so this stage waits for a decision of the owner.
-
-### Stage 1 result
+## Battle core
 
 `godot/battle/` has the rules of the client without graphics. `checks/battle_check.gd` checks them with fixed random seeds.
 
@@ -94,9 +81,9 @@ The rules come from the client:
 - Siege units do half the damage to units and take 1.25 times the damage from units. Element units do 1.35 times the damage to the element that they beat.
 - A dead unit stays on its tile for 4 seconds. A destroyed enemy building leaves the map.
 
-Not in stage 1: special attacks (except the healer), spells, units in buildings, doors in walls, buildings under construction, and what a death gives or costs in each game mode. A unit whose path becomes blocked while it walks stops, as in the client; no check covers this case.
+A unit whose path becomes blocked while it walks stops, as in the client; no check covers this case.
 
-### Stage 2 result
+## Battle view and controls
 
 | File | Contents |
 |---|---|
@@ -107,15 +94,14 @@ Not in stage 1: special attacks (except the healer), spells, units in buildings,
 | `battle_graphic.gd` | `BattleGraphic`: the points of a graphic where shots start and aim, as the client measures them. |
 | `sprites/clip_sprite.gd` | `ClipSprite`: plays the animation of one frame of a graphic, for units, shots and effects. |
 
-The importer reads the quest maps, so that their items have graphics, and the graphics of the shots and effects. `BattleView` moves the shots as the client does, with the trails (smoke) and the blasts of rocks and cannonballs. The health bar and the selection mark are simple shapes; their graphics are in the main file of the client, from which the importer takes only the windows of the quests (stage 3). The shots of units with special attacks come with these units in later stages.
+The importer reads the quest maps, so that their items have graphics, and the graphics of the shots and effects. `BattleView` moves the shots as the client does, with the trails (smoke) and the blasts of rocks and cannonballs. The health bar and the selection mark are simple shapes; their graphics are in the main file of the client and are not imported yet (`docs/PORT_GAPS.md`).
 
-### Stage 3 result
+## Campaign quests
 
 `godot/quest/` has the campaign quests, and `godot/ui/` shows the windows of the client with their original graphics.
 
 | File | Contents |
 |---|---|
-| `quest/quest_island.gd` | `QuestIsland`: the data of the 12 islands in the port, which the client keeps in its quest classes: the kind of quest, the gold key, the start tile, the land and the free units. Only these islands can start. |
 | `quest/quest_book.gd` | `QuestBook`: the island list rules: open islands, the level of some islands, the stars, and the limit of quests in a row. |
 | `quest/quest_battle.gd` | `QuestBattle`: one quest: the sides, the landing of the army, the copies of the enemies, the gold and experience, the goals, the end and the units that come back. |
 | `quest/quest_screen.gd` | `QuestScreen`: the island on the screen with the start window, the battle bar and the result window. |
@@ -135,19 +121,16 @@ The rules come from the client:
 Changes from the original game:
 
 - **Quest limit.** The original game allows 3 quests in a row (4 with the Odin statue) while less than 6 hours lie between them. The owner chose 2 hours. `QuestBook.QUEST_WINDOW_SECONDS` sets the time and `QuestBook.QUEST_LIMIT_ENABLED` turns the limit off; the comment there explains both. The alert of the limit names the hours of the port.
-- **Islands that the port does not have yet** show the lock of the game and a sign "Not in the port yet" in the style of the name ribbon, and cannot start. To open an island, port its quest class and add it to `QuestIsland.ISLANDS`.
+- **Islands and spells that the port does not have** show the lock of the game and a sign "Not in the port yet" in the style of the name ribbon, and cannot start. All 28 islands of the island list and all 15 spells are in the port, so the sign shows nowhere now.
 - **Sharing.** After a quest the client offers to share the result on Facebook. The port shows the OK button at once, as the client does after the player skips the sharing.
 
-Not exact yet:
+Not exact:
 
 - The client builds the screen for a stage 760 pixels wide. The port keeps the battle bar at the top centre and the Withdraw button at the bottom right. The client draws the counter of the enemies in its code, and its place on the screen is not clear from the code; the port shows it at the top right.
-- In the scripted test, an army of 70 units lost on the Viking island; a win on a civilisation island is checked only headless. The special abilities of the units and the doors of walls came in stage 5.
 
-Also in this stage: the client puts the registration point of a building graphic half the width of the frame left of the position and the height of the frame above it. Stage 2 also moved it by the top-left corner of the frame, which put the shots of such buildings in the wrong place; `BattleGraphic` now follows the client. The land of a quest island keeps the place of the first frame of the land graphic for all frames, as the client does, so that the coasts meet.
+Registration point: the client puts the registration point of a building graphic half the width of the frame left of the position and the height of the frame above it. `BattleGraphic` follows the client, so that the shots of buildings start at the correct place. The land of a quest island keeps the place of the first frame of the land graphic for all frames, as the client does, so that the coasts meet.
 
-### Stage 4 progress
-
-Stage 4 has five steps: 4a the spell rules of the save, 4b the states that spells give, 4c the 15 spells, 4d the spell book and the other windows with the original art, and 4e the checks by hand and the documents. All five steps are done.
+## Spells
 
 | File | Contents |
 |---|---|
@@ -170,7 +153,7 @@ The rules come from the client:
 
 The port counts the timers of the client in frames at 30 frames per second.
 
-The spells (4c) follow their classes in the client. The player casts on a tile, the corner of the marked square with the largest x and y. Each effect waits for its delay and then for the frame of its graphic with the label "attack" (10 frames without a label).
+The spells follow their classes in the client. The player casts on a tile, the corner of the marked square with the largest x and y. Each effect waits for its delay and then for the frame of its graphic with the label "attack" (10 frames without a label).
 
 | Spell | What it does in the client |
 |---|---|
@@ -186,7 +169,7 @@ The spells (4c) follow their classes in the client. The player casts on a tile, 
 | Age of Colossus | The units of the player within 5, 7 or 9 tiles of the tile get bigger for 30, 45 or 60 seconds. |
 | 2x Speed, 2x Range | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square get double speed or range for 15, 30 or 45 seconds. 2x Range stops at the first building of the player, with an error of the client: the units before it keep the double range, the units after it get nothing. |
 | Black Hole | Like Hell Abyss, at once and then every second for 15, 20 or 30 seconds. |
-| Instant Limit | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square that have a limit bar get a full bar (stage 6). |
+| Instant Limit | Up to 20 units of the player within 3, 4 or 5 tiles of the middle of the square that have a limit bar get a full bar (see "Special abilities"). |
 
 Errors of the client, each with a switch in the code:
 
@@ -195,7 +178,7 @@ Errors of the client, each with a switch in the code:
 
 Not ported: when a freeze ends, the client lets the frozen unit hit a unit of the player on the same tile for 10 points.
 
-The screens of the spells (4d) use the art of the client:
+The screens of the spells use the art of the client:
 
 | File | Contents |
 |---|---|
@@ -212,174 +195,26 @@ The rules of the screens come from the client:
 - A spell without enough mana opens the mana window. While the player aims, the marker of the area is centred half a tile below the tile under the mouse, and the items of the side of the spell on the square from that tile to the left and up glow.
 - The graphics of most spells stop at their last frame; Ether Shield and Black Hole repeat their last part, and Sacred Rain repeats all. A particle fades in 1 second, most 1 second after it acts.
 
-Not exact yet:
+Not exact:
 
 - The banner of a cast and the book are placed for a stage of 760 x 600 pixels: the book at the bottom left, the banner over the bottom centre.
 - The client turns the shapes of some parts of its windows with a skew; the port turns and scales them, but does not skew them.
 - In the village a cast shows its graphic on the tile and costs its mana, but changes no units. The client also brings summoned units at home, which it does not save.
 
-Step 4e added the gift of the client at level 15 and checked the whole stage by a played quest:
+The gift of the client at level 15, and a played quest:
 
 - At level 15 the client gives a free Wizardry Academy on the free 3 x 3 place nearest to tile (59, 59), with "buy" without cost, which gives the experience of the building. It shows the alert of the spell book with its picture. The building opens the spell window. The client gives it only for a level that the player reaches in the own village, also to troll players, and also when the village has one already. A level from the experience of a quest gives nothing, because the client adds that experience during the quest, outside its normal mode. `Village.add_free_buildings()` places it.
-- The panel of the port, which is not art of the client, moved to the top right, so that it does not cover the spell book.
 - A scripted quest on troll island 1 with a level 50 player and 24 units: the script opened the book with a click, cast 10 spells with the mouse (Age of Colossus, 2x Speed, Sacred Rain and Golem's Wrath on the army; Hell Abyss, Fire Havoc, Black Hole, Poisonous Flood, Deadly Frostbite and Ultimate Hail on the enemies), sent the army at the last enemies, and clicked the treasure. The quest ended with a win after 26 seconds: 2247 gold, 22 experience, 1 unit dead and back. The 10 casts cost 89 mana, 200 to 111, and each counted once. The golem was not in the result. The save after the quest had the mana, the casts, the gold, the experience and the rank of the island.
 
-## How to check the result
+## The islands of the campaign
 
-- Headless checks with a fixed seed for the rules.
-- Server replays of `end_quest` and the other commands, as for the village.
-- The same quest in the original client (Ruffle) and in the port. The results cannot be equal, because both use random numbers, but the course of the battle must be similar: the same targets, about the same duration and losses. See the next section.
-
-## Comparison with the original client
-
-The first comparison (step 2.3 of `docs/NATIVE_PORT.md`) played troll island 1 (quest `100000006`, 1 star) in the original client and in the port, with the same village (level 50, 24 units: 12 spearmen, 10 light archers, 2 light knights) and the same orders.
-
-Method:
-
-- Client: `tools/ruffle_quest.js` runs the client `SocialEmpires1.4.07sec_fixed.swf` with the Ruffle build in `templates/js/ruffle/`, in headless Chromium, against the Python server. It clicks the orders on the screen. The client runs its battle in ENTER_FRAME, and Ruffle drops frames when the software rendering is slow; so the script gives Ruffle a clock that moves one frame per animation callback and counts the callbacks. The results are in game frames (30 per second), as in the port. The script records the frames at which the gold and experience counters change, which is when an enemy dies.
-- Port: `godot/checks/quest_compare.gd` plays the same plan headless and prints each death with its frame.
-- The plan: no orders until the army stands still, then select all and attack the Battle Troll (59, 44), then the War Troll (44, 39), then the Big Troll (30, 36), then collect the chest. Between the orders the army stands still in both games, so the time between the orders does not change the result.
-
-Result of 3 runs of the client and 4 runs of the port (frames after the order):
-
-| Event | Client | Port |
-|---|---|---|
-| Battle Troll dies | 193 to 219 | 178 to 202 |
-| Boar Rider (comes to help) dies | 257 to 275 | 246 to 275 |
-| War Troll dies | 399 to 460 | 353 to 423 |
-| First Big Troll dies | 331 to 369 | 285 to 318 |
-| Second Big Troll dies | 374 to 458 | 332 to 429 |
-| Own units dead | 4 to 5 | 3 to 7 |
-| Units lost after the quest | 1 to 2 | 1 to 2 |
-| Gold, experience | 2247, 22 | 2247, 22 |
-
-- The targets are the same in every run: the High Elf at the landing, the Battle Troll, the Boar Rider, which comes to help it, the War Troll, and the two Big Trolls. In both games the light knights die to the War Troll and the Big Trolls. The gold, the experience, the win and the format of `end_quest` are the same.
-- The fights after the second and third orders take 10 to 15 % longer in the client. A probable cause is the path search of the client: when a search takes longer than a time budget in milliseconds (`getTimer`), it gives no path, and the unit cannot search again for 1 to 3 seconds of real time. Ruffle in WebAssembly is slower than Flash Player, so in this test more searches stop. The port has no time budget. Not confirmed.
-
-Difference found: the client runs the battle while the start window is open. On this island the High Elf stands next to the landing, so the army fights it while the player chooses the stars; after 30 seconds in the window, the elf is dead before the battle starts. The client shares the gold of the quest among the enemies only when the player starts, so this elf then gives no gold. The port now follows the client: the battle runs under the start window, and the player can give orders only after the start. An enemy that dies before the start gives no gold, as in the client. The quest ends only after the start. `QuestScreen.RUN_UNDER_START_WINDOW` set to false makes the battle wait for the start button.
-
-### Played islands
-
-After stage 6, a scratch script played all 28 islands through the game window (`main.tscn` with `--quest`), as a player does. It used a village of level 60 with 38 units (gods, colossi, dragons, heroes, archers and knights) and 1 star. It waited 3 seconds under the start window, pressed the start button, and then, every 2 seconds: it sent each idle unit to the nearest enemy unit that it can reach (then the town hall, then other targets), used each portrait button that it could use, and collected keys and treasures. On the islands with a team it chose 20 units in the team window. Each island ran for at most 20000 frames.
-
-- 24 islands were won: the 4 troll and 8 civilisation islands, the Yeti, Golem and Rockdriller islands, both dragon islands, the Heroes island (all 7 doors), and hard islands 1, 2, 3, 5, 6 and 7.
-- Hard island 4 and the 3 god islands were lost: all units of the army or team died. The quest then ended with the result window, as it must.
-- Second runs, through the game window, with stronger villages that obey the island rules. Hard island 4 has no team, so the whole army goes: with 5 goddesses (2369, 2350) and 15 dragon riders added to the 38 units, it was won at 1 star (2810 frames). On the god islands the team window took 20 units. A team of 5 goddesses and 15 dragon riders did not end any god island in 25 minutes. A team of 5 goddesses and 15 Supreme Bahamut Dragons (2003) won all 3 god islands at 1 star: `100000090` at 8113 frames, `100000091` at 9129 and `100000092` at 6905.
-- Stars, with the village of the Supreme Bahamut Dragons (the whole army where an island has no team, else a team of 20). Each run was won with 0 enemies left:
-
-| Island | Stars | Frames | Gold | Experience |
-|---|---|---|---|---|
-| `100000006` | 2 | 1929 | 3217 | 40 |
-| `100000002` | 2 | 4785 | 6741 | 60 |
-| `100000012` | 2 | 3897 | 6576 | 283 |
-| `100000041` | 2 | 7657 | 22235 | 710 |
-| `100000090` | 2 | 10044 | 34722 | 1204 |
-| `100000007` | 3 | 3066 | 6000 | 90 |
-| `100000021` | 3 | 4047 | 6870 | 195 |
-| `100000011` | 3 | 5859 | 24980 | 70 |
-| `100000045` | 3 | 5871 | 29976 | 324 |
-| `100000091` | 3 | 14133 | 37770 | 1800 |
-| `100000092` | 3 | 12162 | 37714 | 1962 |
-
-  With more stars the enemies are more (a copy of each enemy unit for each extra star) and the gold is more: on `100000002` 4494 gold at 1 star and 6741 at 2 stars.
-- On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
-- The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
-
-Not tested: a play by a person. A script, not a person, played all the runs above. The comparison of each island with the client is in "Third comparison" below.
-
-### Second comparison: hard island 1
-
-Hard island 1 (Celestial Isle, `100000041`) was played in the client in Ruffle and in the port with the same village (the 38 units above) and the same plan: three orders "select all, attack" on the Celestial Mech at (60, 65), the Reaper at (57, 57) and an archer at (53, 50), at 130, 459 and 606 frames after the start. One run of each.
-
-| | Client | Port |
-|---|---|---|
-| Island and goal in the start window | Celestial Isle, "Defeat the Celestial Empire!" | the same |
-| First enemy dies (frames after the start) | about 392 | 469 |
-| Enemies dead 845 frames after the start | 16 (1280 gold, 64 experience) | 15 (1200 gold, 60 experience) |
-
-The gold and the experience of each kill are the same (80 gold and 4 experience). The port kills one enemy fewer in this time, and its first kill comes later; the order of the army and the walk to the enemies 30 tiles away decide this time, and the path search of the client in Ruffle is not exact in time (see above). The client counts the frames of the page, so its numbers have an error of about 20 frames.
-
-### Third comparison: each island with no orders
-
-All 28 islands of the list were opened in the client in Ruffle and in the port, with the same village (the 38 units above, level 60). Hard island 1 and troll island 1 were compared before (see above); this comparison also opened them again.
-
-Method:
-
-- Client: a scratch script drives the client in Ruffle (headless Chromium, the frame clock of `tools/ruffle_quest.js`). It opens the island from the island map, chooses the team on the islands with teams (the first unit of the list, 20 times), waits under the start window, presses Start Battle with 1 star, zooms out three steps and takes screenshots at three times, about 300, 700 and 1100 frames after the start.
-- Port: a scratch script opens the same island through the game window (`main.tscn` with `--quest`), chooses the team in the same way, waits under the start window, starts with 1 star, sets the view of the client (760 / 0.15 map pixels wide, on the start tile) and takes screenshots at the same frames after the start. It prints the gold, the experience and each death.
-- God island 3 asks for 5 gods or colossi, and the village has 4. For this island both games used a smaller village with 5 gods and colossi and 12 knights: the team has 17 units, and the question about fewer than 20 units was answered with Yes.
-- No orders: a click on a far enemy did not work in the client (the camera stops at the map bounds, and a click on a key or on an own unit selects it). So the comparison shows the start window, the island, the enemies and what happens without orders: the enemies that attack the army, and the gold and experience.
-
-Result: on all islands, the start window (title, goal, picture), the land, the walls, the buildings, the enemies and their places, and the team rules are the same. Where the enemies attack the army at once (Atlantis, hard island 4, troll island 4), they do so in both games; elsewhere nobody fights. The gold of each kill is the same; a kill under the start window gives experience and no gold in both games.
-
-Differences found, now fixed:
-
-- The Desert island has no goal text; the client keeps the text of the window art ("Collect the 4 gems to discover the desert mistery!"), and the port wrote an empty text. Fixed in `quest/quest_start_window.gd`.
-- The port did not draw the Golden Dragon Bosses and the Huge Egg of the second dragon island, nor other units that bosses and abilities call: the importer took only the units on the maps, in the villages and in the store. The importer now takes all units and the Huge Egg. In the test data, the sprite folder grew from 1267 to 1334 graphics.
-- The alerts of the team window used the small general alert of the port, in which "- Colossus" did not show, and a second OK replaced Yes and No. The team window now uses the alert of the client for this window (`AlertTournamentMC`), with Yes and No.
-
-Differences that stay:
-
-- The client draws the land blocks without land on the second dragon island black; the port draws sea there. The client draws blue dotted lines on the borders of the land blocks; the port does not. Only the picture changes.
-- The order of the units in the team window: in quest mode the client sorts the list by `life`, but it does not put `life` into the list in this mode, so its order comes from the order of a Flash object. The port sorts by life (as the client does in the tournament mode).
-- The time under the start window is different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it are not at the same point at the start.
-- Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
-
-Battles with an order on each island are in "Fourth comparison" below.
-
-### Fourth comparison: one order on each island
-
-All 28 islands were played again in the client in Ruffle and in the port, with the same village and the same team choices, now with one order: "select all" and a click on an enemy (an enemy unit where one shows on the screen, else the nearest wall or tower), at the same frame after the start. The client run moves the camera with a slow mouse drag when the enemy is not on the screen. The port runs at normal speed and gives the same order to the enemy nearest to the clicked tile. The results compare the gold and the experience counters and the screenshots at the same frames after the order.
-
-Two faults of the client in Ruffle, not of the port, changed the first runs:
-
-- The path search of the client stops after 50 ms of real time (`AStar.CANCEL_TIME`) and gives no path; the unit then waits 1 to 3 seconds. Ruffle is much slower than Flash Player, so on the Dune island the army did not move at all, and on other islands it walked late. With a clock that runs 10 times slower in the page (`performance.now` and `Date.now`), the search has time, and the client army walks the same path as in the port.
-- A click near the army selects an own unit instead of giving the order, and the map edge stops a drag, so the camera does not move as far as asked. These runs were made again with another target or with the click point read from the screenshot.
-
-Result (frames after the order; gold and experience of the quest):
-
-| Island | Target | Client | Port |
-|---|---|---|---|
-| `100000006` | Battle Troll (59,44) | 280: 374, 11 | 216 after a late order: 374, 11 |
-| `100000007` | Axethrower (53,35) | 237: 450, 9 | 235: 450, 9 |
-| `100000008` | Skeleton (28,44) | 306: 80, 12 | 297: 60, 9; 332: 80, 12 |
-| `100000012` | Boar Rider (32,41), click point read from the screen, slow clock | kills at 134, 186, 222, 276; 338: 160, 17 | kills at 210, 215, 223, 252; 338: 160, 17 |
-| `100000002` | Boar Rider (18,36), camera pan | 326: 528, 12 | 336: 528, 12 |
-| `100000003` | Battle Troll (70,40), drag pan, slow clock | 456: 543, 12 (3 kills) | 456: 543, 12 (3 kills) |
-| `100000011` | Axethrower (81,11), drag pan, slow clock, click point read from the screen | kills at 278, 311, 395, 417; 454: 832, 12 | kills at 235, 272, 331, 356, 410; 454: 1040, 15 |
-| `100000013` | Chinese Tower (55,59), drag pan | 373: tower under attack, not dead, 0 gold | 387: tower dies |
-| `100000014` | Aztec Warrior (55,74) | 274: 294, 18 (6 kills) | 267: 196, 12; 281: 6 kills (294, 18) |
-| `100000015` | Elite Knight (60,63) | 290: 90, 9 (3 kills) | 290: 120, 11 (4 kills) |
-| `100000018` | Ranger (62,86), drag pan | 228: army at the Ranger, not dead yet | 236: Ranger dies |
-| `100000019` | Wall IV (73,30), drag pan | 332: army attacks the wall, wall stands | 324: wall falls |
-| `100000020` | Wall IV (38,59) | 255: army fights at the wall (screenshot does not show if it is down) | 158: wall falls, then the Fire Tower hits kamikazes |
-| `100000021` | Viking Wall (63,53) | 452: army at the wall (screenshot does not show if it is down) | 354: wall falls |
-| `100000022` | Egyptian Wall (39,9) behind a palm forest | first run: army did not move (client path search stopped at its 50 ms limit in Ruffle); with a 10 times slower clock: 493: army walks south around the forest | 493: the same path around the forest |
-| `100000023` | Atlantis Warrior (80,90) among the army; client click selected an own unit, the fight starts by itself | 141: 84, 12 (4 kills) | 133: 105, 16 (5 kills) |
-| `100000028` | Huge Egg (45,56) | 475: the army goes north, not to the egg; nothing dies | the same: army goes north, nothing dies |
-| `100000033` | Golden Dragon Boss (16,79) | 332: army attacks the boss, boss alive, 0 gold | the same |
-| `100000041` | Celestial Tower (71,67) | 315: tower destroyed, 80, 0 | 283: tower destroyed; 299: one Lancer more (160, 4) |
-| `100000042` | Hermes Swordsman (64,47) | 316: 345, 12 | 310: 345, 12 |
-| `100000043` | Sword Skeleton (65,50) | 248: 192, 8 (2 kills) | 240: 96, 4; 251: 2 kills |
-| `100000044` | Draggy (80,57); client click selected an own unit, the enemies attack by themselves | at the order 192, 8; 122: 288, 11 | at the order 192, 8; 116: 288, 11 |
-| `100000045` | Tiger Spider (72,54) | 154: army fights the spiders, 0 gold | 148: the same, 0 gold, no kill |
-| `100000046` | Mini Anubis (15,69), team of 20 | 244: army at the target group, 0 gold | 219: first kill (35, 4); 234: 35, 4 |
-| `100000047` | Imperial Elf Sword (82,25), team of 20 | 304: 192, 12 (3 kills) | 299: 64, 4 (1 kill) |
-| `100000090` | Infernal Wall (16,75), team of 20 | 212: army attacks the wall, wall stands | 204: wall stands; 213: wall falls |
-| `100000091` | Infernal Warrior (32,9), team of 20, drag pan | 200: team fights the warriors, 0 gold | 200: the same, 0 gold; 221: first kill |
-| `100000092` | Infernal Demon (59,76), team of 17 | 187: 0, 4 (1 kill) | 180: 0, 8 (2 kills) |
-
-Conclusion: on every island the army goes the same way, attacks the same enemies, and each kill gives the same gold and experience in both games. The time of a kill differs by up to about 10 % in either direction, and so the number of kills at a given frame differs by one or two on the busy islands; the path search of the client in Ruffle (see above) and the random numbers of both games cause this. No difference in the rules was found.
-
-### Stage 5 result
-
-All 28 islands of the island list are in the port. The "not in the port" sign shows on no island of the list. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; they are in stage 7. The collection islands (`100000051` to `100000055`) are not in the list either: they belong to the collect game of the client (`CollectGameManager`), an event with its own dates, collection rules and prizes, and are not in the port yet.
+All 28 islands of the island list are in the port. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; see "Single-player modes". The collection islands (`100000051` to `100000055`) are not in the list either: they belong to the collect game of the client (`CollectGameManager`), the Island Forge event, which is not in the port (`docs/PORT_GAPS.md`).
 
 | File | Contents |
 |---|---|
 | `quest/quest_island.gd` | The data of the 28 islands: the kind (`Family`), start tiles, land, free units, item rewards, pictures of the start window, and the team rules. |
 | `quest/quest_battle.gd` | `QuestBattle`: the rules of `QuestBase` of the client, with hooks for each kind. `create()` chooses the subclass. |
-| `quest/kinds/troll_quest.gd`, `civilisation_quest.gd` | The 12 islands of stage 3. |
+| `quest/kinds/troll_quest.gd`, `civilisation_quest.gd` | The 4 troll and 8 civilisation islands. |
 | `quest/kinds/key_quest.gd` | The Yeti, Golem and Rockdriller islands: groups of units, keys, the boss, penguins on the Arctic island. |
 | `quest/kinds/dragon_quest.gd`, `dragon_2_quest.gd` | The two dragon islands: the egg, the rocks, the dragons, and the eggs that take the life of the Deadly Dragon. |
 | `quest/kinds/heroes_quest.gd` | The Heroes island: 7 areas with doors that open when their units are dead. |
@@ -403,15 +238,15 @@ Changes from the original game:
 - **Team window.** As in the client, the alerts of this window use its own window (`AlertTournamentMC`), and the question for a team of fewer than 20 units has Yes and No. The port hides the formations of the tournaments in this window, because they do not change a quest.
 - **Collection items** that the player finds in a quest go to the village when the quest ends. The client sends them at once with `add_collectable`.
 
-Not in this stage:
+Differences from the client:
 
-- The attacks that the player starts with the buttons of the portraits (limit attacks, smash, healing beams) came in stage 6, see "Stage 6 result". Enemy units do not use them in the client either.
+- Enemy units do not use the attacks of the portrait buttons, as in the client.
 - The minions of Titan Lythos have full size; the client draws them at 0.3 of their size.
 - The port does not draw the cracks of the Mole.
 
-Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. The played tests and the second comparison with the client are in "Played islands" below.
+Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. The played tests and the comparisons with the client are in "Comparison with the original client".
 
-### Stage 6 result
+## Special abilities
 
 All delegates of the client and all special unit classes (`isounits/`) that change a battle are in the port. The units that a player can own (store, nests, Soul Mixer, riders, collections) fight as in the client, also when no quest map has them.
 
@@ -433,15 +268,15 @@ The rules come from the client. Where the client has an error that the player ca
 - The smash of the 4-Weapons Gladiator kills a small unit when the unit lands; a unit that cannot fly does not die.
 - A star particle of a healer also gives an attack of 0 to an enemy on its tile.
 
-Not in this stage, because they do not change the battle:
+Not in the port (`docs/PORT_GAPS.md`):
 
 - Effects that the client only draws: the domes of protection (1357 to 1359), the colour of the Swamp Minion and of the Huge Egg when it is hit, the extra rocks of the Catapult, the red bubble of Anubis, the bigger balls of the Mother Monster, the white flash of Instant Limit, and the heads of the Three-Headed Dragon in turn.
-- The arrows of the units in a Fortress: the port has no units in buildings, so the Fortress shoots only its cannonballs.
+- The arrows of the units in a Fortress, and the refuges: the port has no units in buildings in battles, so the Fortress shoots only its cannonballs.
 - The Dummy (`DummyDelegate`, item 1533) is not in the configuration.
 
 Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.
 
-### Stage 7 result
+## Single-player modes
 
 The single-player modes of the client are in the port: the enemies of the own village, survival, and the weekly tournament against its bots. The heavy siege of the client (dragons that attack the village and leave for cash) is off in the client (`Config.HEAVY_SIEGE` is false), so the port does not have it.
 
@@ -471,13 +306,12 @@ Rules of the client that the port keeps:
 Differences from the client:
 
 - The port shows the village as a battle until the fight ends; the player cannot build during this time. The fight screen shows the number of enemies, which the client does not show.
-- The client clears the outer ring of land areas at each load (`cleanBorderTiles`) and places new trolls and trees there. The port does not clear it, because it does not place trees and deposits at the load yet; it keeps the trolls of the save and adds only the missing groups.
-- The server does not keep the life of buildings. The client keeps the damage until a villager repairs the building or the game loads again, and a burning building lowers the population; the port forgets the damage at the end of the fight.
+- The server does not keep the life of buildings. The client and the port keep the damage until a villager repairs the building or the game loads again; in the client a burning building also lowers the population, in the port it does not.
 - The lines of the captains show as text over the unit; the client shows a speech bubble. A captain that waits stands still in the village between fights, and walks during a fight.
 
-**Survival.** From level 20. The newest client hides the button of this mode (older versions showed it in the world menu); the port shows it, by decision 3. As in the client, only the first two maps can be played and the others say "Coming soon"; this project also has only the maps of the first two. The army is the 30 units of the village with the strongest attack. Each play uses one of 3 lives, which come back after 3 hours; a life costs 3 cash. The enemies come in waves from 8 points and go for the relic in the middle (`IASurvival`): a unit that the player attacks fights back until its next update, a boss does not fight back. After each 4 waves a boss stage comes; while its bosses live, waves of 5 units come from all 8 points every 20 seconds, at most twice. In the last stage kamikazes come until 80 enemies are on the map. The play ends when the relic is destroyed; the player loses no units. The time, the best time and the reward unit (after 5, 8, 12 or 15 minutes) go to the save as `start_survival`, `add_survival_vida_extra` and `end_survival` do. The windows are those of the client. The client shows its help the first time that the player opens the window; the port shows it with the help button only.
+**Survival.** From level 20. The newest client hides the button of this mode (older versions showed it in the world menu); the port shows it (decision 3). As in the client, only the first two maps can be played and the others say "Coming soon"; this project also has only the maps of the first two. The army is the 30 units of the village with the strongest attack. Each play uses one of 3 lives, which come back after 3 hours; a life costs 3 cash. The enemies come in waves from 8 points and go for the relic in the middle (`IASurvival`): a unit that the player attacks fights back until its next update, a boss does not fight back. After each 4 waves a boss stage comes; while its bosses live, waves of 5 units come from all 8 points every 20 seconds, at most twice. In the last stage kamikazes come until 80 enemies are on the map. The play ends when the relic is destroyed; the player loses no units. The time, the best time and the reward unit (after 5, 8, 12 or 15 minutes) go to the save as `start_survival`, `add_survival_vida_extra` and `end_survival` do. The windows are those of the client. The client shows its help the first time that the player opens the window; the port shows it with the help button only.
 
-**Tournament.** The client plays tournaments against the teams of other players, which its server gives, and the server ranks the players. The weekly tournament also has 3 bots with fixed teams in the configuration. The owner decided (decision 10) that the port has the matches against these bots, without a ranking and without prizes. From level 15:
+**Tournament.** The client plays tournaments against the teams of other players, which its server gives, and the server ranks the players. The weekly tournament also has 3 bots with fixed teams in the configuration. The owner decided (decision 9) that the port has the matches against these bots, without a ranking and without prizes. From level 15:
 
 - The team window of the client in its tournament mode: up to 20 units, without the units of `TOURNAMENT_UNITS_NOT_ALLOWED` and the villagers and animals, at most 10 dragons, gods and colossi, and one of four formations. As in the client, the team and the formation go to the save (`set_attack_team`); the quest team now goes there too.
 - The match (`TournamentBattle`) on map `100000040`: all items of the map are neutral. The bot's team forms (walks 20 tiles toward the player at the speed of its slowest unit, while the player's units walk 10 tiles), waits 10 seconds and attacks: each unit takes a unit of the player within its range plus 2, else the weakest one. The player controls their team. The match ends when one team has no units, or after Withdraw and Yes (a loss with 0 points).
@@ -493,7 +327,7 @@ Differences from the client:
 
 Tests: `checks/village_check.gd` has the idle enemies, the attacks by level, the reward of a kill and the graveyard; `checks/battle_check.gd` has the bandits (wait, attack, retreat) and the target of a siege; `checks/quest_check.gd` has survival (army, sides, waves, lives, save) and the tournament (bots, formations, the steps of the bot's team, the score, the team in the save). Server replays of `buy`, `kill`, `sell` KILL, `start_survival`, `add_survival_vida_extra`, `end_survival` and `set_attack_team` give the same save as the port, except the level, which the port raises with the experience. Window runs showed the fight in the village, the survival windows and bar, and the tournament windows, bar and result.
 
-Comparison with the original client: the test save of the Ruffle runs (level 60, one land area, 43 units, 20 idle trolls) ran 16,532 game frames in the client, and 16,500 frames in the port with 3 seeds. The first bandits attack after 12,600 frames.
+Comparison with the original client (before step 6.1): the test save of the Ruffle runs (level 60, one land area, 43 units, 20 idle trolls) ran 16,532 game frames in the client, and 16,500 frames in the port with 3 seeds. The first bandits attack after 12,600 frames.
 
 | | Client | Port |
 |---|---|---|
@@ -503,17 +337,130 @@ Comparison with the original client: the test save of the Ruffle runs (level 60,
 | Bandits | 3 groups; no save change after their wait | 3 groups of 15 from the edge; no target in range, no fight |
 | Units lost, kills, experience, gold | none | none, except the army run |
 
-The rules of the attacks agree. The difference at the load is the border refresh of the client, see "Differences from the client" above. Survival cannot be compared: the newest client has no button for it. The tournament cannot be compared: the server of this project has no tournament services, and the configuration has no formation layouts.
+The rules of the attacks agree. The difference at the load was the border refresh of the client (`cleanBorderTiles`), which the port has since step 6.1: at each start of the map it clears the land at the border and places the trolls, deposits and trees again. Survival cannot be compared: the newest client has no button for it. The tournament cannot be compared: the server of this project has no tournament services, and the configuration has no formation layouts.
+
+## How to check the result
+
+- Headless checks with a fixed seed for the rules.
+- Server replays of `end_quest` and the other commands, as for the village.
+- The same quest in the original client (Ruffle) and in the port. The results cannot be equal, because both use random numbers, but the course of the battle must be similar: the same targets, about the same duration and losses. See the next section.
+
+## Comparison with the original client
+
+### Troll island 1
+
+The first comparison (step 2.3 of `docs/NATIVE_PORT.md`) played troll island 1 (quest `100000006`, 1 star) in the original client and in the port, with the same village (level 50, 24 units: 12 spearmen, 10 light archers, 2 light knights) and the same orders.
+
+Method:
+
+- Client: `tools/ruffle_quest.js` runs the client `SocialEmpires1.4.07sec_fixed.swf` with the Ruffle build in `templates/js/ruffle/`, in headless Chromium, against the Python server. It clicks the orders on the screen. The client runs its battle in ENTER_FRAME, and Ruffle drops frames when the software rendering is slow; so the script gives Ruffle a clock that moves one frame per animation callback and counts the callbacks. The results are in game frames (30 per second), as in the port. The script records the frames at which the gold and experience counters change, which is when an enemy dies.
+- Port: `godot/checks/quest_compare.gd` plays the same plan headless and prints each death with its frame.
+- The plan: no orders until the army stands still, then select all and attack the Battle Troll (59, 44), then the War Troll (44, 39), then the Big Troll (30, 36), then collect the chest. Between the orders the army stands still in both games, so the time between the orders does not change the result.
+
+Result of 3 runs of the client and 4 runs of the port (frames after the order):
+
+| Event | Client | Port |
+|---|---|---|
+| Battle Troll dies | 193 to 219 | 178 to 202 |
+| Boar Rider (comes to help) dies | 257 to 275 | 246 to 275 |
+| War Troll dies | 399 to 460 | 353 to 423 |
+| First Big Troll dies | 331 to 369 | 285 to 318 |
+| Second Big Troll dies | 374 to 458 | 332 to 429 |
+| Own units dead | 4 to 5 | 3 to 7 |
+| Units lost after the quest | 1 to 2 | 1 to 2 |
+| Gold, experience | 2247, 22 | 2247, 22 |
+
+- The targets are the same in every run: the High Elf at the landing, the Battle Troll, the Boar Rider, which comes to help it, the War Troll, and the two Big Trolls. In both games the light knights die to the War Troll and the Big Trolls. The gold, the experience, the win and the format of `end_quest` are the same.
+- The fights after the second and third orders take 10 to 15 % longer in the client. A probable cause is the path search of the client: when a search takes longer than a time budget in milliseconds (`getTimer`), it gives no path, and the unit cannot search again for 1 to 3 seconds of real time. Ruffle in WebAssembly is slower than Flash Player, so in this test more searches stop. The port has no time budget. Not confirmed.
+
+Difference found: the client runs the battle while the start window is open. On this island the High Elf stands next to the landing, so the army fights it while the player chooses the stars; after 30 seconds in the window, the elf is dead before the battle starts. The client shares the gold of the quest among the enemies only when the player starts, so this elf then gives no gold. The port now follows the client: the battle runs under the start window, and the player can give orders only after the start. An enemy that dies before the start gives no gold, as in the client. The quest ends only after the start. `QuestScreen.RUN_UNDER_START_WINDOW` set to false makes the battle wait for the start button.
+
+### Played islands
+
+A scratch script played all 28 islands through the game window (`main.tscn` with `--quest`), as a player does. It used a village of level 60 with 38 units (gods, colossi, dragons, heroes, archers and knights) and 1 star. It waited 3 seconds under the start window, pressed the start button, and then, every 2 seconds: it sent each idle unit to the nearest enemy unit that it can reach (then the town hall, then other targets), used each portrait button that it could use, and collected keys and treasures. On the islands with a team it chose 20 units in the team window. Each island ran for at most 20000 frames.
+
+- 24 islands were won: the 4 troll and 8 civilisation islands, the Yeti, Golem and Rockdriller islands, both dragon islands, the Heroes island (all 7 doors), and hard islands 1, 2, 3, 5, 6 and 7.
+- Hard island 4 and the 3 god islands were lost: all units of the army or team died. The quest then ended with the result window, as it must.
+- Second runs, through the game window, with stronger villages that obey the island rules. Hard island 4 has no team, so the whole army goes: with 5 goddesses (2369, 2350) and 15 dragon riders added to the 38 units, it was won at 1 star (2810 frames). On the god islands the team window took 20 units. A team of 5 goddesses and 15 dragon riders did not end any god island in 25 minutes. A team of 5 goddesses and 15 Supreme Bahamut Dragons (2003) won all 3 god islands at 1 star: `100000090` at 8113 frames, `100000091` at 9129 and `100000092` at 6905.
+- Stars, with the village of the Supreme Bahamut Dragons (the whole army where an island has no team, else a team of 20). Each run was won with 0 enemies left:
+
+| Island | Stars | Frames | Gold | Experience |
+|---|---|---|---|---|
+| `100000006` | 2 | 1929 | 3217 | 40 |
+| `100000002` | 2 | 4785 | 6741 | 60 |
+| `100000012` | 2 | 3897 | 6576 | 283 |
+| `100000041` | 2 | 7657 | 22235 | 710 |
+| `100000090` | 2 | 10044 | 34722 | 1204 |
+| `100000007` | 3 | 3066 | 6000 | 90 |
+| `100000021` | 3 | 4047 | 6870 | 195 |
+| `100000011` | 3 | 5859 | 24980 | 70 |
+| `100000045` | 3 | 5871 | 29976 | 324 |
+| `100000091` | 3 | 14133 | 37770 | 1800 |
+| `100000092` | 3 | 12162 | 37714 | 1962 |
+
+  With more stars the enemies are more (a copy of each enemy unit for each extra star) and the gold is more: on `100000002` 4494 gold at 1 star and 6741 at 2 stars.
+- On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
+- The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
+
+Not tested: a play by a person. A script, not a person, played all the runs above.
+
+### Hard island 1
+
+Hard island 1 (Celestial Isle, `100000041`) was played in the client in Ruffle and in the port with the same village (the 38 units above) and the same plan: three orders "select all, attack" on the Celestial Mech at (60, 65), the Reaper at (57, 57) and an archer at (53, 50), at 130, 459 and 606 frames after the start. One run of each.
+
+| | Client | Port |
+|---|---|---|
+| Island and goal in the start window | Celestial Isle, "Defeat the Celestial Empire!" | the same |
+| First enemy dies (frames after the start) | about 392 | 469 |
+| Enemies dead 845 frames after the start | 16 (1280 gold, 64 experience) | 15 (1200 gold, 60 experience) |
+
+The gold and the experience of each kill are the same (80 gold and 4 experience). The port kills one enemy fewer in this time, and its first kill comes later; the order of the army and the walk to the enemies 30 tiles away decide this time, and the path search of the client in Ruffle is not exact in time (see above). The client counts the frames of the page, so its numbers have an error of about 20 frames.
+
+### Each island with no orders
+
+All 28 islands of the list were opened in the client in Ruffle and in the port, with the same village (the 38 units above, level 60). Hard island 1 and troll island 1 were compared before (see above); this comparison also opened them again.
+
+Method:
+
+- Client: a scratch script drives the client in Ruffle (headless Chromium, the frame clock of `tools/ruffle_quest.js`). It opens the island from the island map, chooses the team on the islands with teams (the first unit of the list, 20 times), waits under the start window, presses Start Battle with 1 star, zooms out three steps and takes screenshots at three times, about 300, 700 and 1100 frames after the start.
+- Port: a scratch script opens the same island through the game window (`main.tscn` with `--quest`), chooses the team in the same way, waits under the start window, starts with 1 star, sets the view of the client (760 / 0.15 map pixels wide, on the start tile) and takes screenshots at the same frames after the start. It prints the gold, the experience and each death.
+- God island 3 asks for 5 gods or colossi, and the village has 4. For this island both games used a smaller village with 5 gods and colossi and 12 knights: the team has 17 units, and the question about fewer than 20 units was answered with Yes.
+- No orders: a click on a far enemy did not work in the client (the camera stops at the map bounds, and a click on a key or on an own unit selects it). So the comparison shows the start window, the island, the enemies and what happens without orders: the enemies that attack the army, and the gold and experience.
+
+Result: on all islands, the start window (title, goal, picture), the land, the walls, the buildings, the enemies and their places, and the team rules are the same. Where the enemies attack the army at once (Atlantis, hard island 4, troll island 4), they do so in both games; elsewhere nobody fights. The gold of each kill is the same; a kill under the start window gives experience and no gold in both games.
+
+Differences found and fixed:
+
+- The Desert island has no goal text; the client keeps the text of the window art ("Collect the 4 gems to discover the desert mistery!"), and the port wrote an empty text. Fixed in `quest/quest_start_window.gd`.
+- The port did not draw the Golden Dragon Bosses and the Huge Egg of the second dragon island, nor other units that bosses and abilities call: the importer took only the units on the maps, in the villages and in the store. The importer now takes all units and the Huge Egg. In the test data, the sprite folder grew from 1267 to 1334 graphics.
+- The alerts of the team window used the small general alert of the port, in which "- Colossus" did not show, and a second OK replaced Yes and No. The team window now uses the alert of the client for this window (`AlertTournamentMC`), with Yes and No.
+
+Differences that stay:
+
+- The client draws the land blocks without land on the second dragon island black; the port draws sea there. The client draws blue dotted lines on the borders of the land blocks; the port does not. Only the picture changes.
+- The order of the units in the team window: in quest mode the client sorts the list by `life`, but it does not put `life` into the list in this mode, so its order comes from the order of a Flash object. The port sorts by life (as the client does in the tournament mode).
+- The time under the start window is different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it are not at the same point at the start.
+- Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
+
+### One order on each island
+
+All 28 islands were played again in the client in Ruffle and in the port, with the same village and the same team choices, now with one order: "select all" and a click on an enemy (an enemy unit where one shows on the screen, else the nearest wall or tower), at the same frame after the start. The client run moves the camera with a slow mouse drag when the enemy is not on the screen. The port runs at normal speed and gives the same order to the enemy nearest to the clicked tile. The results compare the gold and the experience counters and the screenshots at the same frames after the order.
+
+Two faults of the client in Ruffle, not of the port, changed the first runs:
+
+- The path search of the client stops after 50 ms of real time (`AStar.CANCEL_TIME`) and gives no path; the unit then waits 1 to 3 seconds. Ruffle is much slower than Flash Player, so on the Dune island the army did not move at all, and on other islands it walked late. With a clock that runs 10 times slower in the page (`performance.now` and `Date.now`), the search has time, and the client army walks the same path as in the port.
+- A click near the army selects an own unit instead of giving the order, and the map edge stops a drag, so the camera does not move as far as asked. These runs were made again with another target or with the click point read from the screenshot.
+
+Conclusion: on every island the army goes the same way, attacks the same enemies, and each kill gives the same gold and experience in both games. The time of a kill differs by up to about 10 % in either direction, and so the number of kills at a given frame differs by one or two on the busy islands; the path search of the client in Ruffle (see above) and the random numbers of both games cause this. No difference in the rules was found. The table of the 28 runs is in commit `ae18754`.
 
 ## Decisions of the owner
 
-1. Campaign quests come before PvP. The port has no server, and no multiplayer is planned for now.
+1. Campaign quests came before PvP. The port has no server; PvP attacks the villages of files (step 4.4 of `docs/NATIVE_PORT.md`).
 2. The player controls the units during battles as in the original game.
 3. Survival and tournament are ported where they work without other players.
 4. The limit of quests in a row uses 2 hours instead of 6, and the code makes it easy to change or remove.
-5. Islands that the port does not have yet are locked, with a "not in the port" sign in the style of the game, until their quest is ported.
+5. Islands and spells that the port does not have are locked, with a "not in the port" sign in the style of the game. None is locked now.
 6. Ether Shield works as in the client, with its errors: at levels 1 and 2 it protects a square one size larger than its picture, at level 3 it protects nothing, and it also protects enemies. `EtherShieldSpell.FIX_CLIENT_ERRORS` turns on a correction.
-7. Instant Limit was locked with the "not in the port" sign until units had their limit bars. Since stage 6 it is in the port.
-8. The player can cast spells in the own village, as in the client.
-9. Sacred Rain heals the units of the player. In the client it heals nobody.
-10. The tournament has the matches of the weekly tournament against its 3 bots, scored as in the client, without a ranking and without prizes, because those came from the server and the other players. The formations are built from their texts, because their layouts are missing.
+7. The player can cast spells in the own village, as in the client.
+8. Sacred Rain heals the units of the player. In the client it heals nobody.
+9. The tournament has the matches of the weekly tournament against its 3 bots, scored as in the client, without a ranking and without prizes, because those came from the server and the other players. The formations are built from their texts, because their layouts are missing.

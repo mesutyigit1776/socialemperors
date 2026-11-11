@@ -83,7 +83,7 @@ These rules were already the same as in Ruffle: the sizes of filters are in pixe
 | 3.9 Blend mode "layer" with alpha | The shadow of `2367_devilAncientDraggy` (7.6 %) | Ruffle applies the alpha of the object to each of its parts; two overlapping parts become darker. The documentation of Flash says that "layer" makes a transparency group, so the alpha applies to the group. The artist used exactly this: two overlapping fills with "layer" and alpha 0.3. The extension keeps the rule of Flash. |
 | 3.10 Thin lines | Small shots, for example `p.ulisesArrow` (5.6 % of 305 pixels) | Single pixels along lines of about one pixel differ. Ruffle tessellates lines; the extension strokes them. |
 
-To do:
+To do (both are also in the work list of `docs/PORT_GAPS.md`):
 
 - 3.11 Blend modes with the map: draw the parts with a blend mode as separate nodes in Godot, with a shader that reads the map behind them, or draw the graphic with the map behind it. This changes the structure of `ClipSprite`, because a frame is no longer one image. Blend modes are in 441 files: overlay in 11486 placements, multiply in 4031, hard light in 885, screen in 48, lighten in 30, darken in 4.
 - 3.12 A thin line between two land pieces: on troll island 1, a gray line crosses the sand from top left to bottom right, at zoom 1 and at zoom 1.8. It was also there before the changes of this section (commit `b430d98`). Not compared with the client yet. A possible cause: the edges of two land images that touch are both partly transparent, so the color behind shows through.

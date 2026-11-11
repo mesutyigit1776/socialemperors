@@ -12,7 +12,7 @@ A preservation project for Social Empires, the Facebook Flash game by Social Poi
 ### Port status
 
 - Option A (original client + Ruffle desktop + bundled server): paused at about 20%. Ruffle 0.7.1 is in `templates/js/ruffle/`. The server fixes from the audit for the player-name check, the asset loader and safe saves are done.
-- Option C (new client in Godot 4): the current work. Do this work on a separate branch, not on `main`.
+- Option C (new client in Godot 4): the current work, on branch `godot-port`. Steps 1 to 6.1 of the roadmap are done. `docs/PORT_GAPS.md` lists the work before the launcher and the builds (step 6.2). Do this work on a separate branch, not on `main`.
 
 ### Layout
 
