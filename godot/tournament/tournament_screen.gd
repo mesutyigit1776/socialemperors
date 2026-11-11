@@ -59,7 +59,7 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land))
 	_camera.position = IsoGrid.tile_to_map((TournamentBattle.PLAYER_ORIGIN + TournamentBattle.BOT_ORIGIN) / 2)
 	# The client shows the whole field at zoom 0.1, below the limit of the mouse wheel.
-	_camera.zoom = Vector2.ONE * TOURNAMENT_ZOOM
+	_camera.set_mode_zoom(TOURNAMENT_ZOOM)
 	add_child(_camera)
 	_screen = BattleScreen.new(battle.sim, _view)
 	_screen.paused = true

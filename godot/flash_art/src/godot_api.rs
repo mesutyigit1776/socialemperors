@@ -192,7 +192,7 @@ impl FlashArt {
         let art = &self.shared.art;
         let canvas = art.canvas(id as u16)?;
         let pixmap = art.render_button(id as u16, state.clamp(0, 2) as usize, canvas)?;
-        Image::create_from_data(canvas.width as i32, canvas.height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take())))
+        Image::create_from_data(canvas.width as i32, canvas.height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take(), canvas.width as usize)))
     }
 
     /// A font of the file as the bytes of a TrueType file, for FontFile.data.
@@ -326,11 +326,19 @@ fn draw(art: &Art, (id, frame, scale): Key) -> Option<Drawn> {
     let canvas = art.canvas(id)?;
     let area = art.frame_area(id, frame, canvas)?;
     let pixmap = art.render_area(id, frame, canvas, area, f32::from_bits(scale))?;
-    Some(Drawn { width: pixmap.width(), height: pixmap.height(), pixels: straight(pixmap.take()), number: 0 })
+    let (width, height) = (pixmap.width(), pixmap.height());
+    Some(Drawn { width, height, pixels: straight(pixmap.take(), width as usize), number: 0 })
 }
 
 /// Premultiplied pixels made straight, as Godot images keep them.
-fn straight(mut pixels: Vec<u8>) -> Vec<u8> {
+///
+/// A transparent pixel next to a visible one also gets the color of that
+/// neighbour. Godot filters straight pixels: where it draws a frame between
+/// pixels or at another size, it mixes each edge pixel with its transparent
+/// neighbours, and with a black neighbour the edge gets dark. Flash draws
+/// the shapes themselves and has no such edge. This is the same as the "fix
+/// alpha border" of Godot's import of image files.
+fn straight(mut pixels: Vec<u8>, width: usize) -> Vec<u8> {
     for p in pixels.chunks_exact_mut(4) {
         let a = p[3] as u32;
         if a != 0 && a != 255 {
@@ -339,5 +347,40 @@ fn straight(mut pixels: Vec<u8>) -> Vec<u8> {
             }
         }
     }
+    bleed_edges(&mut pixels, width);
     pixels
+}
+
+/// Gives each transparent pixel the color of a visible pixel next to it (left,
+/// right, above, below), or of the first visible one of its diagonal
+/// neighbours. Its alpha stays 0.
+fn bleed_edges(pixels: &mut [u8], width: usize) {
+    if width == 0 {
+        return;
+    }
+    let height = pixels.len() / 4 / width;
+    let visible = |pixels: &[u8], x: usize, y: usize| pixels[(y * width + x) * 4 + 3] != 0;
+    let mut fills: Vec<(usize, usize)> = Vec::new();
+    for y in 0..height {
+        for x in 0..width {
+            if visible(pixels, x, y) {
+                continue;
+            }
+            let mut source = None;
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let (nx, ny) = (x as isize + dx, y as isize + dy);
+                if nx >= 0 && ny >= 0 && (nx as usize) < width && (ny as usize) < height && visible(pixels, nx as usize, ny as usize) {
+                    source = Some(ny as usize * width + nx as usize);
+                    break;
+                }
+            }
+            if let Some(source) = source {
+                fills.push((y * width + x, source));
+            }
+        }
+    }
+    for (target, source) in fills {
+        let color = [pixels[source * 4], pixels[source * 4 + 1], pixels[source * 4 + 2]];
+        pixels[target * 4..target * 4 + 3].copy_from_slice(&color);
+    }
 }

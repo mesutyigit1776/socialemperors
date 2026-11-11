@@ -10,13 +10,13 @@ Sources: the decompiled 1.4.07 client (read to learn the rules; it is not in the
 
 ### Group 1: fixes to parts that the port has
 
-No decision of the owner is necessary.
+Done. See [Group 1: fixes](#group-1-fixes) for what changed.
 
-| Item | Work |
+| Item | State |
 |---|---|
-| [Tutorial](#tutorial): save steps 11 and 20 at the end of the construction, send the 9 nest steps, no dark screen behind the goal window | Small |
-| [Battle zoom](#battle-zoom): keep the zoom of the village | Small |
-| [Thin line between land pieces](#thin-line-between-land-pieces) | Small, after a comparison with the client |
+| [Tutorial](#tutorial): save steps 11 and 20 at the end of the construction, send the 9 nest steps, no dark screen behind the goal window | Done |
+| [Battle zoom](#battle-zoom): keep the zoom of the village | Done |
+| [Thin line between land pieces](#thin-line-between-land-pieces) | Done |
 
 ### Group 2: parts of the original game that this server supports
 
@@ -56,13 +56,13 @@ Do the HUD before the builds, because it changes the window settings and the opt
 
 ### Order
 
-1. Group 1.
+1. Group 1 (done).
 2. Group 2 without the Island Forge, with the save migration first.
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
 
-Groups 1 and 2 are about two to three weeks of work (*estimate*). With group 3 and the player save, about four to six weeks.
+Group 2 is about two to three weeks of work (*estimate*). With group 3 and the player save, about four to six weeks.
 
 ## Decisions of the owner
 
@@ -83,22 +83,25 @@ Step 4.3 compared the tutorial with the original client up to step 10. A later r
 
 The port was then run on the same save with a script that calls its functions (not with mouse clicks). These agree with the client: the order of the steps, the skip of step 14, the tiles of the house (55, 55) and the farm (52, 44), the texts of the boxes of steps 0 to 13, goals 1, 2, 3, 4, 5 and 11 rewarded, gold, food and stone at the end, and the dragon nest. Both count any tree for the last step, not only the three marked trees.
 
-Differences from the client:
+The port now does the same as the client in these points:
 
-1. **Steps 11 and 20.** The client saves step 11 (after the house) and step 20 (after the farm) when the construction ends; step 11 also waits for a move of the map. The port saves them when the building is placed.
-2. **The nest steps at the end.** After the tutorial the client sends 9 `next_step` commands for the new dragon nest, and the server accepts them, because a new empire has `dragonNestActive` 1. The save of the client ends with `stepNumber` 9; the port leaves it at 0. The comment in `godot/village/village.gd` (`add_tutorial_nest`) says that the server refuses these commands; that is not correct.
-3. **Steps 15 to 31.** The client shows only the arrow. The port shows its own short text with the arrow (`ARROW_TEXTS` in `godot/tutorial/tutorial.gd`, a choice of the port; decision 3), and it also darkens the screen behind the goal window, which the client does not do in the tutorial.
-4. Wood and experience at the end were a little lower in the port (1135 against 1175 wood, 30 against 32 experience), and the goals were completed in another order. The villager of the client cut 5 trees by itself and the port script cut 3, which explains the difference in wood; the experience was not traced.
+1. **Steps 11 and 20.** The step goes on when the construction of the house or the farm ends, not when the player places it (`IsoElement.endConstruction`). After the house, the map moves to the knights in 1.4 seconds, and then the step is 11 (`TutorialMain.doPan`).
+2. **The nest steps at the end.** After the dragon nest of the tutorial, the client sends 9 `next_step` commands without cash (`MapInitializer.spawnDragonNest`), and the server accepts them, because a new empire has `dragonNestActive` 1. The port gives the nest the same 9 steps, with the time of the last step. The client sends them only when `privateState.iphoneTutorialCompleted` is below 100. The saves of this server do not have this value; Ruffle then sent the 9 commands (server log of the run). Flash Player was not checked.
+3. **The goal window in the tutorial.** The client hides the dark background of the goal window in the tutorial (`MissionPopup`, `fons`); the port does the same.
 
-Not checked: if the client saves step 17 at the first click on the goal box or at the "+Info" click, because the server got steps 16 and 17 in one batch.
+Open:
+
+- **Steps 15 to 31.** The client shows only the arrow. The port also shows its own short text (`ARROW_TEXTS` in `godot/tutorial/tutorial.gd`, decision 3).
+- Wood and experience at the end were a little lower in the port (1135 against 1175 wood, 30 against 32 experience), and the goals were completed in another order. The villager of the client cut 5 trees by itself and the port script cut 3, which explains the difference in wood; the experience was not traced.
+- Not checked: if the client saves step 17 at the first click on the goal box or at the "+Info" click, because the server got steps 16 and 17 in one batch.
 
 ### Battle zoom
 
-The client sets the zoom only for the spy screen (0.5), the tournament (0.1) and the quests in which the player cannot move the map, which are the ship and zeppelin quests (0.7). In all other battles it keeps the zoom that the player had in the village. The port starts each battle at 0.7 (`godot/village/map_camera.gd`). Give the zoom of the village camera to the battle screens.
+The client has one zoom for the whole game (`Base.currentZoom`). Each map starts at the zoom of the map before it. Only the spy screen (0.5), the tournament (0.1) and the quests in which the player cannot move the map (0.7; the ship and zeppelin quests, which the port does not have) set their own zoom, and the maps after them keep it. The port did the same only for the spy screen and the tournament, and started all other maps at 0.7. Now `MapCamera` keeps the zoom of the last map for the next one (`godot/village/map_camera.gd`). The game starts at 0.7, as in the client.
 
 ### Thin line between land pieces
 
-On troll island 1, a gray line crosses the sand from top left to bottom right, at zoom 1 and at zoom 1.8 (`docs/FLASH_ART.md`, 3.12). It is not compared with the client yet. A possible cause: the edges of two land images that touch are both partly transparent, so the color behind shows through.
+On troll island 1 the port showed a gray line between two land pieces. The client in Ruffle shows a line at the same place, but a light one, which is in the art. The dark line of the port came from the black color of the transparent pixels of the frame images, which Godot mixed into the edges when it filtered the frames. FlashArt now gives the transparent edge pixels the color of their visible neighbours (`docs/FLASH_ART.md`, 3.12).
 
 ## Group 2: parts that the server supports
 

@@ -21,13 +21,15 @@ var _page := 0
 var _centre_offset := Vector2.ZERO  # The point of the window that is in the middle of the screen.
 
 
-func _init(ui: UiLibrary, goals: GoalBook, config: GameConfig) -> void:
+## dark: the client darkens the screen behind the window, except in the
+## tutorial (MissionPopup hides "fons"). The cover takes the clicks in both cases.
+func _init(ui: UiLibrary, goals: GoalBook, config: GameConfig, dark := true) -> void:
 	_ui = ui
 	_goals = goals
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
+	cover.color = Color(0, 0, 0, 0.5 if dark else 0.0)
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(cover)
 

@@ -14,9 +14,22 @@ const ZOOM_MIN := 0.15
 const ZOOM_MAX := 1.4
 const START_ZOOM := 0.7
 
+## The client has one zoom for the whole game (Base.currentZoom), not one for
+## each map: the village, the battles and the other screens start at the zoom
+## of the last map. Only some modes set their own zoom (see set_mode_zoom()).
+static var _game_zoom := START_ZOOM
+
 
 func _init() -> void:
-	zoom = Vector2.ONE * START_ZOOM
+	zoom = Vector2.ONE * _game_zoom
+
+
+## The zoom that the client sets when a mode starts, for example for the spy
+## screen. It can be outside the limits of the mouse wheel, and the next maps
+## start at it, as in the client.
+func set_mode_zoom(level: float) -> void:
+	zoom = Vector2.ONE * level
+	_game_zoom = level
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -39,3 +52,4 @@ func zoom_to(level: float) -> void:
 
 func _set_zoom_level(level: float) -> void:
 	zoom = Vector2.ONE * clampf(level, ZOOM_MIN, ZOOM_MAX)
+	_game_zoom = zoom.x

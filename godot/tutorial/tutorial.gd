@@ -28,7 +28,7 @@ enum Action {
 	ATTACK_ORDERED,
 	HARVEST_DONE,
 	BUILD_ITEM_CHOSEN,  ## item
-	PLACED,  ## item
+	CONSTRUCTED,  ## The construction of the building that the step placed ended.
 	ENEMY_KILLED,
 	GOAL_BOX,  ## The player clicked the goal box.
 	GOAL_WINDOW_CLOSED,
@@ -200,7 +200,9 @@ func handle(action: Action, item: GameConfig.ItemDef = null) -> void:
 			if item.id == FARM_LAND:
 				while step < 19:
 					_next()
-		[10, Action.PLACED], [19, Action.PLACED]:
+		[10, Action.CONSTRUCTED], [19, Action.CONSTRUCTED]:
+			# The client saves step 11 and step 20 when the construction ends,
+			# not when the player places the building (IsoElement.endConstruction).
 			_next()
 		[11, Action.SELECTED]:
 			if item.id == KNIGHT:

@@ -84,6 +84,8 @@ const SOUL_MIX_PROMOTION_UNITS: Array[int] = [2048, 2037, 777, 758]
 const FREE_BUILDING_TILES := {DRAGON_NEST: Vector2i(30, 59), SOUL_MIXER: Vector2i(59, 59)}
 const WIZARDRY_TILE := Vector2i(59, 59)
 const TUTORIAL_NEST_TILE := Vector2i(50, 60)
+## The care steps that the client gives to the nest of the tutorial.
+const TUTORIAL_NEST_STEPS := 9
 ## The Time Machine sells packets of time (GameConfig.time_packets). A used
 ## packet moves the times of the save back, as the server command "time_ff"
 ## does; the save keeps the packets in privateState "countTimePacket".
@@ -1378,8 +1380,10 @@ func is_first_map() -> bool:
 
 ## The dragon nest that the client gives at the end of the tutorial, at the
 ## free place nearest to TUTORIAL_NEST_TILE, with "buy" without cost. The
-## client then sends 9 care steps, which the server refuses because the nest
-## is not active. Returns the nest, or null when no place is free.
+## client then sends TUTORIAL_NEST_STEPS "next_step" commands without cash
+## (MapInitializer.spawnDragonNest). The server accepts them when the nest is
+## active, as it is in the save of a new empire, so the first dragon has 9
+## steps and waits for the next. Returns the nest, or null when no place is free.
 func add_tutorial_nest(now: int) -> PlacedItem:
 	var nest := _config.get_item(DRAGON_NEST)
 	var tile := _free_place_near(nest, TUTORIAL_NEST_TILE)
@@ -1388,6 +1392,9 @@ func add_tutorial_nest(now: int) -> PlacedItem:
 	_add_xp(nest.xp)
 	var placed := _add_entry(nest, tile, 0, now, _new_item_attributes(nest))
 	happened.emit(VillageEvent.Kind.BUILT, {"item": DRAGON_NEST})
+	if is_nest_active(placed):
+		var keys: Array = NESTS[DRAGON_NEST]["keys"]
+		_set_private([keys[2], keys[3]], [_private_int(keys[2]) + TUTORIAL_NEST_STEPS, now])
 	return placed
 
 

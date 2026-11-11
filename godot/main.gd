@@ -97,6 +97,7 @@ const CONSTRUCTION_SECONDS := 10.0
 ## constructions of the tutorial to a third.
 const TUTORIAL_FARM := 10
 const TUTORIAL_FARM_SECONDS := 3.0
+const TUTORIAL_PAN_SECONDS := 1.4
 const SUBCAT_FARM := 122
 const SUBCAT_RANCH := 123
 ## The graphics of the shield in the HUD (ShieldDisplay of the client).
@@ -1062,12 +1063,6 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_hud.show_message(("Placed %s from the item store." % item.name) if _placing_stored else "Built %s.%s" % [item.name, _level_up_text(old_level)])
 	_placing_stored = false
-	_tutorial.handle(Tutorial.Action.PLACED, item)
-	# After the house, the client moves the map to the knights and the trolls.
-	if _tutorial.is_active() and _tutorial.step == 11:
-		var knights := _tutorial.marked_items()
-		if not knights.is_empty():
-			_camera.position = IsoGrid.tile_to_map(knights[0].tile)
 
 
 ## The client starts the map each time it loads it: at the start and after a
@@ -1132,7 +1127,27 @@ func _start_construction(placed: Village.PlacedItem, item: GameConfig.ItemDef) -
 		SoundPlayer.play(SoundEffect.CONSTRUCTING)
 	_village.start_construction(placed, Time.get_unix_time_from_system() + seconds)
 	_view.show_construction(placed, _scaffold(item), seconds, item.width == 1)
-	get_tree().create_timer(seconds).timeout.connect(func() -> void: SoundPlayer.play(SoundEffect.CONSTRUCTION_END))
+	get_tree().create_timer(seconds).timeout.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.CONSTRUCTION_END)
+		_on_tutorial_construction_end())
+
+
+## The tutorial goes on when the construction of the house (step 10) or the
+## farm (step 19) ends. After the house, the client first moves the map to
+## the knights and the trolls (TutorialMain.doPan), then goes to step 11.
+func _on_tutorial_construction_end() -> void:
+	if not _tutorial.is_active() or _tutorial.step not in [10, 19]:
+		return
+	if _tutorial.step == 19:
+		_tutorial.handle(Tutorial.Action.CONSTRUCTED)
+		return
+	var knights := _village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == Tutorial.KNIGHT and _village.is_own_unit(placed))
+	if knights.is_empty():
+		_tutorial.handle(Tutorial.Action.CONSTRUCTED)
+		return
+	var pan := create_tween()
+	pan.tween_property(_camera, "position", IsoGrid.tile_to_map(knights[0].tile), TUTORIAL_PAN_SECONDS).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	pan.tween_callback(func() -> void: _tutorial.handle(Tutorial.Action.CONSTRUCTED))
 
 
 ## The scaffold of the client for the building: farms and ranches have their
@@ -1264,7 +1279,7 @@ func _open_goal(id: int) -> void:
 			return
 	if _goal_window != null and is_instance_valid(_goal_window):
 		_goal_window.queue_free()
-	_goal_window = GoalWindow.new(_ui, _goals, _config)
+	_goal_window = GoalWindow.new(_ui, _goals, _config, tutorial_step < 0)
 	_goal_window.do_it.connect(_on_goal_do_it)
 	_goal_window.closed.connect(func() -> void: _tutorial.handle(Tutorial.Action.GOAL_WINDOW_CLOSED))
 	if tutorial_step >= 0:

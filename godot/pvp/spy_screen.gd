@@ -28,7 +28,7 @@ func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int,
 	add_child(_view)
 	_view.show_village(enemy, config, sprites)
 	_camera.position = start_position
-	_camera.zoom = Vector2.ONE * SPY_ZOOM
+	_camera.set_mode_zoom(SPY_ZOOM)
 	add_child(_camera)
 	var layer := CanvasLayer.new()
 	var panel := PanelContainer.new()

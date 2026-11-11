@@ -1560,7 +1560,10 @@ func _check_tutorial() -> bool:
 	_check(tutorial.allows_build(_config.get_item(HOUSE)) and not tutorial.allows_build(_config.get_item(10)), "the build menu offers only House I")
 	tutorial.handle(Tutorial.Action.BUILD_ITEM_CHOSEN, _config.get_item(HOUSE))
 	_check(tutorial.step == 10 and not tutorial.allows_place(Vector2i(54, 55)) and tutorial.allows_place(Vector2i(55, 55)), "House I goes only on tile 55, 55")
-	tutorial.handle(Tutorial.Action.PLACED, _config.get_item(HOUSE))
+	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(KNIGHT))
+	_check(tutorial.step == 10, "the house does not go to step 11 before its construction ends")
+	tutorial.handle(Tutorial.Action.CONSTRUCTED, _config.get_item(HOUSE))
+	_check(tutorial.step == 11 and village.tutorial_step() == 11, "the end of the construction of the house goes to step 11")
 	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(KNIGHT))
 	tutorial.handle(Tutorial.Action.ATTACK_ORDERED)
 	tutorial.handle(Tutorial.Action.ENEMY_KILLED)
@@ -1568,7 +1571,7 @@ func _check_tutorial() -> bool:
 	tutorial.handle(Tutorial.Action.GOAL_BOX)
 	tutorial.handle(Tutorial.Action.BUILD_ITEM_CHOSEN, _config.get_item(10))
 	_check(tutorial.step == 19 and tutorial.allows_place(Vector2i(52, 44)) and not tutorial.allows_place(Vector2i(52, 45)), "the farm goes only on tile 52, 44")
-	for action: Tutorial.Action in [Tutorial.Action.PLACED, Tutorial.Action.GOAL_BOX, Tutorial.Action.GOAL_WINDOW_CLOSED]:
+	for action: Tutorial.Action in [Tutorial.Action.CONSTRUCTED, Tutorial.Action.GOAL_BOX, Tutorial.Action.GOAL_WINDOW_CLOSED]:
 		tutorial.handle(action, _config.get_item(10))
 	tutorial.handle(Tutorial.Action.SELECTED, _config.get_item(TOWN_HALL))
 	tutorial.handle(Tutorial.Action.TRAINING_STARTED, _config.get_item(VILLAGER))
@@ -1589,6 +1592,7 @@ func _check_tutorial() -> bool:
 	_check(finished[0] and not tutorial.is_active() and tutorial.allows_other(), "the third tree ends it")
 	var nest := village.add_tutorial_nest(NOW)
 	_check(nest != null and nest.item_id == DRAGON_NEST and (nest.tile - Village.TUTORIAL_NEST_TILE).length() < 5, "the client gives a dragon nest near tile 50, 60 at the end")
+	_check(village.is_nest_active(nest) and village.nest_steps_done(nest, NOW) == 8 and village.nest_steps_done(nest, NOW + Village.NEST_STEP_SECONDS) == 9, "the nest of the tutorial gets 9 care steps, and the last one waits")
 	_check(village.save_to_file(path) == OK, "the village after the tutorial saves")
 	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	_check(saved["playerInfo"]["completed_tutorial"] == "31", "the save has the last step as text, as the server writes it")
