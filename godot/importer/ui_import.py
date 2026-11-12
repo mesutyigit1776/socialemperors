@@ -124,6 +124,9 @@ SYMBOLS = [
 	"PopupSuperMisteryBoxMC",
 	"PopupGotPackMC",
 	"PopupLoreMC",
+	# The window of the start point of a PvP attack and its help window.
+	"PopupLoadingAssaultMC",
+	"PopupPvpHelpMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
@@ -131,15 +134,19 @@ SYMBOLS = [
 # The alert with a picture tells the player about the spell book. The
 # neighbour bar shows the host of the tutorial with the picture of the king,
 # the town window a picture of each town, and the story of the gods in the
-# news window its pictures.
+# news window its pictures. The help of a PvP attack has the background of
+# the generic windows.
 IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"] \
 	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"] \
 	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
 	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"] \
-	+ [f"gods_{n}.jpg" for n in range(1, 8)]
+	+ [f"gods_{n}.jpg" for n in range(1, 8)] \
+	+ ["generic_bg.png"]
 # The login bonus window loads its background and the pictures of the days
-# from assets/externalized/DailyBonus; the port keeps the same folders.
-EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)]
+# from assets/externalized/DailyBonus, and the help of a PvP attack its tips
+# from assets/externalized/popup_elements; the port keeps the same folders.
+EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)] \
+	+ [f"popup_elements/popup_pvp_help/tip_{n}.png" for n in range(1, 5)]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
@@ -213,6 +220,46 @@ def _resolve(swf, name):
 	return sprite_id
 
 
+def _split_above_anchors(swf, sprite_id, places, parts, dropped, layers, next_id):
+	"""The client loads pictures into empty named sprites (anchors). The base
+	image of the port is below all parts, so the shapes above the lowest
+	anchor, for example the numbers of the tips of PopupPvpHelp, become
+	sprites of their own (layers), one for each run of shapes between two
+	parts, and parts at the depth of their first shape. Only for sprites with
+	one frame."""
+	anchors = [part["depth"] for part in parts if "clip" in part and _is_empty(swf, part["clip"])]
+	if not anchors:
+		return
+	run = []
+	new_parts = []
+	for depth in sorted(places):
+		if depth <= min(anchors):
+			continue
+		key = (depth, places[depth][0], places[depth][2])
+		if key not in dropped:
+			run.append(depth)
+			continue
+		if run:
+			new_parts.append(_layer_part(sprite_id, run, places, dropped, layers, next_id))
+			run = []
+	if run:
+		new_parts.append(_layer_part(sprite_id, run, places, dropped, layers, next_id))
+	parts.extend(new_parts)
+	parts.sort(key=lambda part: part["depth"])
+
+
+def _layer_part(sprite_id, depths, places, dropped, layers, next_id):
+	layer_id = next_id[0]
+	next_id[0] += 1
+	layers[layer_id] = (sprite_id, set(depths))
+	dropped |= {(depth, places[depth][0], places[depth][2]) for depth in depths}
+	return {"name": None, "depth": depths[0], "matrix": [1, 0, 0, 1, 0, 0], "clip": layer_id}
+
+
+def _is_empty(swf, sprite_id):
+	return sprite_id in swf.sprites and not any(swf._frame_places(*swf.sprites[sprite_id]))
+
+
 def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 	"""Adds the sprite and its named sprites to clips, and its named buttons to
 	buttons. drops gets the (depth, character id, instance name) of the
@@ -276,6 +323,8 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 					for other in frame_parts:
 						if other["name"] == part["name"] and other.get("mask"):
 							other["masked"] = layer_id
+	if len(places) == 1:
+		_split_above_anchors(swf, sprite_id, places[0], clip["frames"][0], dropped, layers, next_id)
 	# A part below all shapes of the base image, for example a faded panel
 	# behind the drawing, is "under": the port draws it before the base image.
 	for frame, frame_parts in zip(places, clip["frames"]):

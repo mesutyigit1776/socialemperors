@@ -1729,7 +1729,7 @@ func _search_enemy() -> void:
 		_hud.show_message("No enemy found. Try again later.")
 		return
 	_enemy = {"pid": pid, "village": enemy, "name": enemy.player_name(), "loot": PvpBattle.loot_of(enemy, _village.get_level(), _config, _rng)}
-	_spy = SpyScreen.new(enemy, _enemy["name"], _enemy["loot"], _village.pvp_search_cost(), _config, _sprites, _start_position(enemy))
+	_spy = SpyScreen.new(enemy, _enemy["name"], _enemy["loot"], _village.pvp_search_cost(), _config, _ui, _sprites, _start_position(enemy))
 	_spy.next_requested.connect(_search_enemy)
 	_spy.home_requested.connect(func() -> void:
 		_close_spy()
@@ -1746,13 +1746,25 @@ func _close_spy() -> void:
 		_spy = null
 
 
-## The client asks before an attack that ends the shield of the player.
-func _on_attack_requested(start_tile: Vector2i) -> void:
+## The client asks before an attack that ends the shield of the player, and
+## then opens the window of the start point.
+func _on_attack_requested() -> void:
 	if _village.shield_seconds(_now()) == 0:
-		_start_attack(start_tile)
+		_open_assault_start()
 		return
 	var window := ConfirmWindow.new(_ui, _config, _config.text("PVP_SHIELDS_ATTACK_CONFIRMATION").strip_edges())
-	window.confirmed.connect(func() -> void: _start_attack(start_tile))
+	window.confirmed.connect(_open_assault_start)
+	_add_spy_window(window)
+
+
+func _open_assault_start() -> void:
+	_spy.hide_bar()
+	var window := AssaultStartWindow.new(_ui, _config)
+	window.start_requested.connect(_start_attack)
+	_add_spy_window(window)
+
+
+func _add_spy_window(window: Control) -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = WINDOW_LAYER
 	layer.add_child(window)

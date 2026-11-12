@@ -1,88 +1,105 @@
 class_name SpyScreen
 extends Node2D
 ## The village of an enemy that the search found (GameMode.SPY of the
-## client): its name, level and loot, and the buttons Attack, Find next and
-## My town. Attack shows the start points of the client (popupLoadingAssault):
-## the player chooses where the army lands, at 10 + 20 × column and row of a
-## 5 × 5 grid of the map. The middle points are inside the village, so the
-## port offers the points at the edge.
+## client). StateSpy shows the spy frame of the attack bar (HudSpyEnemy): the
+## name and level of the enemy, the loot, and the buttons My town, Find next
+## with its cost in gold, and Attack. Attack emits attack_requested; the owner
+## asks about the shield and then opens AssaultStartWindow, as the client does.
 
-signal attack_requested(start_tile: Vector2i)
+signal attack_requested
 signal next_requested
 signal home_requested
 
-const GRID := 5
-const FIRST_POINT := 10
-const POINT_STEP := 20
 ## The client shows the village of the enemy at this zoom (Base.UpdateGame3).
 const SPY_ZOOM := 0.5
+const BAR_FRAME := 6  ## Frame 7 of the bar (GameMode.SPY) holds hudSpy.
+const STAGE_WIDTH := 760.0
+## From the top-left of the stage: the bar is at y -489.85 in GuiMC, which
+## the client puts at y 475 (600 - 125), and StateNormal moves the top parts
+## of the HUD 50 pixels down.
+const BAR_POSITION := Vector2(295.95, 35.15)
+## StateSpy.adjustScreen puts the three buttons 50 pixels above the bottom of the screen.
+const BUTTONS_FROM_BOTTOM := 50.0
+const BUTTONS := ["btnAttack", "btnFindNext", "btnMyTown"]
+const RESOURCE_FIELDS := {"g": "lblGold", "f": "lblFood", "w": "lblWood", "s": "lblStone"}
+## ButtonGenericTall makes the Attack button 0.05 bigger under the mouse.
+const ATTACK_HOVER_GROWTH := 0.05
+const HOVER_SECONDS := 0.1
+const ATTACK_FONT_SIZE := 34
+const LABEL_RISE := 5.0
 
 var _view := VillageView.new()
 var _camera := MapCamera.new()
-var _column := VBoxContainer.new()
-var _start := Vector2i(FIRST_POINT, FIRST_POINT)
+var _layer := CanvasLayer.new()
+var _bar: UiClip
+var _hud: UiClip
 
 
 ## loot: see PvpBattle.loot_of(). next_cost: the gold of the next search.
-func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int, config: GameConfig, sprites: SpriteLibrary, start_position: Vector2) -> void:
+func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int, config: GameConfig, ui: UiLibrary, sprites: SpriteLibrary, start_position: Vector2) -> void:
 	add_child(_view)
 	_view.show_village(enemy, config, sprites)
 	_camera.position = start_position
 	_camera.set_mode_zoom(SPY_ZOOM)
 	add_child(_camera)
-	var layer := CanvasLayer.new()
-	var panel := PanelContainer.new()
-	panel.position = Vector2(10, 10)
-	panel.add_child(_column)
-	layer.add_child(panel)
-	add_child(layer)
-	var title := Label.new()
-	title.text = "%s  (level %d)" % [enemy_name, enemy.get_level()]
-	title.add_theme_font_size_override("font_size", 20)
-	_column.add_child(title)
-	var resources := Label.new()
-	resources.text = "Loot: %d gold, %d wood, %d stone, %d food" % [loot["g"], loot["w"], loot["s"], loot["f"]]
-	_column.add_child(resources)
-	var buttons := HBoxContainer.new()
-	_button(buttons, config.text("PVP_ATTACK").strip_edges(), _show_start_points)
-	_button(buttons, "%s (%d gold)" % [config.text("PVP_FIND_NEXT").strip_edges(), next_cost], func() -> void: next_requested.emit())
-	_button(buttons, "My town", func() -> void: home_requested.emit())
-	_column.add_child(buttons)
+	add_child(_layer)
+	_layer.add_child(OptionsPanel.for_battle(ui))
+	_bar = ui.make("GuiMC/barraAttackArriba")
+	_bar.show_frame(BAR_FRAME)
+	_layer.add_child(_bar)
+	_hud = _bar.clip("hudSpy")
+	_hud.set_text("enemyName", enemy_name)
+	_hud.set_text("lblDefenderLevel", str(enemy.get_level()))
+	for code: String in RESOURCE_FIELDS:
+		_hud.set_text("EnemyResources/" + RESOURCE_FIELDS[code], str(loot[code]))
+	_hud.set_part_visible("loadingAnim", false)
+	var attack := _hud.clip("btnAttack")
+	attack.set_text("lbl", config.text("PVP_ATTACK").strip_edges())
+	_grow_label(attack)
+	attack.make_button()
+	attack.pivot_offset = attack.bounds().get_center()
+	var normal := attack.scale
+	attack.mouse_entered.connect(func() -> void: create_tween().tween_property(attack, "scale", normal + Vector2.ONE * ATTACK_HOVER_GROWTH, HOVER_SECONDS))
+	attack.mouse_exited.connect(func() -> void: create_tween().tween_property(attack, "scale", normal, HOVER_SECONDS))
+	attack.pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)
+		attack_requested.emit())
+	var find_next := _hud.clip("btnFindNext")
+	find_next.set_text("lbl", config.text("PVP_FIND_NEXT").strip_edges())
+	find_next.set_text("cost", str(next_cost))
+	find_next.clip("icon").show_frame(StoreWindow.COST_FRAMES["g"])
+	find_next.make_button(true)
+	find_next.pressed.connect(func() -> void: next_requested.emit())
+	var home := _hud.clip("btnMyTown")
+	home.make_button()
+	home.pressed.connect(func() -> void: home_requested.emit())
 
 
-func _show_start_points() -> void:
-	if _column.get_child_count() > 3:
-		return
-	var text := Label.new()
-	text.text = "Where does your army land?"
-	_column.add_child(text)
-	var grid := GridContainer.new()
-	grid.columns = GRID
-	var group := ButtonGroup.new()
-	for row in GRID:
-		for column in GRID:
-			var button := Button.new()
-			button.custom_minimum_size = Vector2(28, 28)
-			button.toggle_mode = true
-			button.button_group = group
-			var tile := Vector2i(FIRST_POINT + POINT_STEP * column, FIRST_POINT + POINT_STEP * row)
-			button.disabled = row in range(1, GRID - 1) and column in range(1, GRID - 1)
-			button.button_pressed = tile == _start
-			button.toggled.connect(func(on: bool) -> void:
-				if on:
-					_start = tile)
-			grid.add_child(button)
-	_column.add_child(grid)
-	var start := Button.new()
-	start.text = "Start the attack"
-	start.pressed.connect(func() -> void:
-		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
-		attack_requested.emit(_start))
-	_column.add_child(start)
+func _ready() -> void:
+	var screen := get_viewport_rect().size
+	_bar.position = Vector2(screen.x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
+	for name: String in BUTTONS:
+		_hud.part(name).position.y = screen.y - BUTTONS_FROM_BOTTOM - _bar.position.y - _hud.position.y
 
 
-func _button(parent: Container, text: String, action: Callable) -> void:
-	var button := Button.new()
-	button.text = text
-	button.pressed.connect(action)
-	parent.add_child(button)
+## ButtonGenericTall.setTextSize makes the font of the label grow until the
+## text nearly fills the button; then the label is in the middle, 5 pixels
+## higher. The port does not measure text as Flash does, so it uses the size
+## that the client shows in Ruffle (ATTACK_FONT_SIZE).
+static func _grow_label(button: UiClip) -> void:
+	var label: Label = button.part("lbl")
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.add_theme_font_size_override("font_size", ATTACK_FONT_SIZE)
+	var font := label.get_theme_font("font")
+	# The field of the client grows to both sides of its middle; a Label grows to the right.
+	var width := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, ATTACK_FONT_SIZE).x
+	if width > label.size.x:
+		label.position.x -= (width - label.size.x) / 2
+		label.size.x = width
+	var offset: Vector2 = label.get_meta("offset", Vector2.ZERO) * label.scale
+	label.position.y = -font.get_height(ATTACK_FONT_SIZE) / 2 - LABEL_RISE + offset.y
+
+
+## The client changes the bar for the attack when the start window opens.
+func hide_bar() -> void:
+	_bar.visible = false

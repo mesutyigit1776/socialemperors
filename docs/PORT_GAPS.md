@@ -28,7 +28,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [First purchase offer ("open me")](#first-purchase-offer-open-me) | Done |
 | [Unit list and unit collections](#unit-list-and-unit-collections) | Done |
 | [News window](#news-window) | Done |
-| [Spy screen art](#spy-screen-art) | Medium |
+| [Spy screen art](#spy-screen-art) | Done |
 | [Achievement publish](#achievement-publish) | Small |
 | [Female host](#female-host) | Small |
 | [Units in buildings in battles](#units-in-buildings-in-battles) | Medium |
@@ -43,6 +43,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | [HUD on modern screens](#the-hud-on-modern-screens) | Medium to large; the layout for wide screens needs a decision |
 | [Blend modes with the map](#blend-modes-with-the-map) | Medium to large |
 | [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Small to medium |
+| [PvP attack screen art](#pvp-attack-screen-art) | Medium |
 
 Do the HUD before the builds, because it changes the window settings and the options panel.
 
@@ -57,7 +58,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge (the save migration, the first purchase offer, the unit list and the news window are done).
+2. Group 2 without the Island Forge (the save migration, the first purchase offer, the unit list, the news window and the spy screen are done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -169,9 +170,22 @@ Compared with the original client in Ruffle on the same save: the news window, t
 
 ### Spy screen art
 
-`StateSpy` hides the village HUD and shows the spy frame of the attack bar (`HudSpyEnemy`): the name and level of the enemy, its resources, Attack, Find next with its cost, and My town. The port (`godot/pvp/spy_screen.gd`) has the same functions with Godot controls and the zoom of the client, 0.5.
+`StateSpy` hides the village HUD and shows the spy frame of the attack bar (`HudSpyEnemy`): the name and level of the enemy, its resources, Attack, Find next with its cost, and My town. Attack asks about the shield and opens `popupLoadingAssault`: the player chooses one of the 16 start points at the edge of a small map, Battle Help opens `PopupPvpHelp` with four tips, Start Loading plays an animation, and Start Battle starts the attack.
 
-Work: import the spy frame of the attack bar like the other HUD parts; the logic stays.
+The port now shows the same with the art of the client (`godot/pvp/spy_screen.gd`, `godot/pvp/assault_start_window.gd`), in the same order. It also shows the options panel, as the client does. Compared in Ruffle on the same save: the panel, the buttons, the cost, the start window with the chosen point and the point under the mouse, the help window, the animation and the end text are the same.
+
+Changes on the way:
+
+- **Search cost and loot limit.** The client takes the value of a row of `PVP_SEARCH_ENEMY_COST` and `PVP_MAX_RESOURCES` before it compares the level, so it uses the first row above the level (`getSearchEnemyCost`, `getMaxResources`). In Ruffle a search at level 53 cost 1000 gold; the port asked 500. The port now uses the same rule (`GameConfig.value_for_level`). The server charges the cost that the client sends.
+- **Shapes above pictures.** The port drew all shapes of a window below its parts, so the pictures of the help window covered the numbers of the tips. The importer now makes the shapes above an empty part into which the client loads a picture into sprites of their own (one-frame windows only). This changes the order in 17 windows and parts; without pictures they look the same as before, with differences of less than one pixel at the edges of the moved shapes.
+
+Differences that are left:
+
+- The client shows the assault HUD behind the start window; the port shows the village of the enemy, without the bar.
+- The client grows the label of Attack until it fills the button (`ButtonGenericTall`). The port does not measure text as Flash does, so it uses the size that Ruffle shows (34).
+- The import keeps only named masks. The animation of the start window has an unnamed mask, so `assault_start_window.gd` cuts it with the rectangle of that mask.
+- The zoom slider of the client is not on the spy screen of the port.
+- Wrapped texts can break at other words, for example the end text of the animation, because the fonts measure a little differently.
 
 ### Achievement publish
 
@@ -246,6 +260,12 @@ Parts of the art with the blend modes overlay, multiply, hard light, screen, lig
 - The client skews some parts of its windows; the port turns and scales them, but does not skew them (`godot/ui/ui_clip.gd`).
 - Graphics that the original files do not have (`docs/FLASH_ART.md`, section 1, and some items without a SWF file in `assets/`, for example `2025_fire_draggy`). Neither game can draw them, unless a copy is found in other game files.
 
+
+### PvP attack screen art
+
+The attack on another player (`StateAssault` with `GuiPVPMC`, the eighth frame of the attack bar), its result window (`PopupPVPFinished`) and the PvP window with the shields and the attack log (`PopupPvp`, `PopupBuyShields`, `PopupAttackLog`) still use Godot controls in the port (`godot/pvp/pvp_screen.gd`, `godot/pvp/pvp_window.gd`). The rules are done.
+
+Work: import these symbols and show them like the spy screen. Also check the place of the attack bar: the client puts it at y 35.15 of the stage in the spy screen (see [Spy screen art](#spy-screen-art)), and the quest, survival and tournament screens of the port use y 50.1. Compare these screens with Ruffle before you change them.
 ## Group 4: parts of a release
 
 ### Player save and start screen

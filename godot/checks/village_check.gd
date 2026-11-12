@@ -1380,7 +1380,7 @@ func _check_pvp() -> bool:
 	var path := _write_fixture("pvp", 20, _config.levels[19].exp_required, 100000)
 	_patch_private(path, {}, 200)
 	var village := Village.load_from_file(path, _config)
-	_check(village.pvp_search_cost() == 25 and village.pay_pvp_search() == Village.Placement.OK and village.get_resource("g") == 100000 - 25, "a search costs 25 gold from level 11")
+	_check(village.pvp_search_cost() == 50 and village.pay_pvp_search() == Village.Placement.OK and village.get_resource("g") == 100000 - 50, "a search at level 20 costs the 50 gold of the entry from level 21, as in the client")
 	_check(village.buy_shield(1, NOW) == Village.Placement.OK and village.get_resource("c") == 210 and village.shield_seconds(NOW) == 86400, "a shield of a day costs 10 cash, and the server gives back 20")
 	_check(not village.can_buy_shield(1, NOW) and village.buy_shield(2, NOW + 10) == Village.Placement.OK and village.shield_seconds(NOW + 10) == 86400 - 10 + 172800, "each shield once; a second one adds its time")
 	_check(village.can_buy_shield(1, NOW + 172800 + 11), "after the cooldown all shields can be bought again")

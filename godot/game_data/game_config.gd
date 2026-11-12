@@ -635,13 +635,16 @@ static func _parse_social(config: GameConfig, data: Dictionary, globals: Diction
 
 
 ## The value of a table of PVP_SEARCH_ENEMY_COST or PVP_MAX_RESOURCES for the
-## level: the entry of the highest "from level" that the level reaches.
+## level. The client (getSearchEnemyCost, getMaxResources) takes the value of
+## an entry before it compares the level, so it uses the first entry above
+## the level, and the last entry from the level of the last entry: a player
+## of level 53 pays the 1000 gold of the entry from level 61.
 static func value_for_level(table: Array[Array], level: int) -> int:
 	var value := 0
 	for entry in table:
+		value = entry[1]
 		if level < entry[0]:
 			break
-		value = entry[1]
 	return value
 
 
