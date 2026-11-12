@@ -124,6 +124,10 @@ const PACK_DISCOUNTS: Array[Array] = [[8, 0.85], [2, 0.9]]
 ## The reward of a complete unit collection. The configuration names a reward
 ## unit too, but neither the client nor the server gives it.
 const UNIT_COLLECTION_CASH := 1
+## A pack of GameConfig.OFFER_SUPER gives 1, 2 or 4 items for the prices of
+## SUPER_PACK_PRICES; the client has other prices for some packs.
+const SUPER_PACK_PRICES: Array[int] = [60, 100, 200]
+const SUPER_PACK_PRICES_BY_ID := {19: [30, 60, 100]}
 
 # The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
 # {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
@@ -1823,6 +1827,59 @@ func claim_unit_collection(collection_id: int) -> Placement:
 	_document["privateState"]["unitCollectionsCompleted"].append(collection_id)
 	_add_resource("c", UNIT_COLLECTION_CASH)
 	return Placement.OK
+
+
+## The cash of a promotion pack; choice is the box of a pack of
+## GameConfig.OFFER_SUPER (0, 1 or 2).
+func offer_pack_price(pack: Dictionary, choice: int = 0) -> int:
+	if pack["type"] == GameConfig.OFFER_SUPER:
+		return SUPER_PACK_PRICES_BY_ID.get(pack["id"], SUPER_PACK_PRICES)[choice]
+	return pack["cash"]
+
+
+## Buys a promotion pack, as "buy_offer_pack" and "buy_super_offer_pack" do:
+## the cash, the resources of the pack in this town, the experience and the
+## mana, and the items in the item store. A random pack gives one item by
+## the limits of its list. A super pack gives, for choice 0, an uncommon or
+## common item; for 1, any item and an uncommon or common item; for 2, a rare
+## item and three uncommon or common items (PromotionPacks.buySuperPack).
+## Returns the items; none when the pack is not enabled or the cash is too
+## low, and then changes nothing.
+func buy_offer_pack(pack: Dictionary, choice: int, rng: RandomNumberGenerator) -> Array[int]:
+	var given: Array[int] = []
+	var price := offer_pack_price(pack, choice)
+	if not pack["enabled"] or get_resource("c") < price:
+		return given
+	var items: Array = pack["items"]
+	match pack["type"]:
+		GameConfig.OFFER_RANDOM:
+			var roll := rng.randf() * 100
+			var index := 0
+			while index < items.size() - 1 and roll >= items[index][1]:
+				index += 1
+			given.append(items[index][0])
+		GameConfig.OFFER_SUPER:
+			var rare: Array = items[0]
+			var others: Array = items[1] + items[2]
+			if choice == 1:
+				var all: Array = rare + others
+				given.append(all[rng.randi_range(0, all.size() - 1)])
+			elif choice == 2:
+				given.append(rare[rng.randi_range(0, rare.size() - 1)])
+			for i in [1, 1, 3][choice]:
+				given.append(others[rng.randi_range(0, others.size() - 1)])
+		_:
+			given.assign(items)
+	_add_resource("c", -price)
+	var gains: Dictionary = pack["resources"].merged({"m": pack["mana"]})
+	for code: String in gains:
+		if gains[code] != 0:
+			_add_resource(code, gains[code])
+	_add_xp(pack["xp"])
+	for item_id in given:
+		_add_stored(item_id)
+		_register_unit(item_id)
+	return given
 
 
 func _add_first_town_resource(code: String, amount: int) -> void:

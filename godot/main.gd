@@ -26,6 +26,7 @@ const WINDOW_LAYER := 10
 const SPELL_LAYER := 5
 const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
 const TOURNAMENT_LEVEL := 15  ## MIN_LEVEL_TOURNAMENT of the client.
+const NEWS_LEVEL := 5  ## The client opens the news among the windows of the start from this level.
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -60,6 +61,7 @@ var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _town_quests: TownQuests  # The quest in the town, see TownQuestBook.
 var _daily_bonus: Dictionary = {}  # Village.start_daily_bonus() until the window shows.
 var _unit_collections: UnitCollections  # The count of the unit list, from the load of the town.
+var _start_popup_done := false  # The news after the first window of a town quest, see _open_town_quest_window().
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
 var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## The client loads the map again after a use of the Time Machine or the
@@ -209,6 +211,7 @@ func _ready() -> void:
 		_hud.towns_requested.connect(_open_towns)
 		_hud.first_offer_requested.connect(_open_first_offer)
 		_hud.units_requested.connect(_open_unit_list)
+		_hud.news_requested.connect(_open_news)
 		add_child(_hud)
 		_hud.show_goal_host(_view.effects.get_sprite(GoalBox.HOST_SYMBOL))
 		_hud.set_shield_graphics(_view.effects.get_sprite(SHIELD_ENABLED), _view.effects.get_sprite(SHIELD_DISABLED))
@@ -870,7 +873,15 @@ func _open_town_quest_window(title: String, text: String, quest_id: int, complet
 	for child in _hud.windows().get_children():
 		if child is TownQuestWindow:
 			child.queue_free()
-	_hud.windows().add_child(TownQuestWindow.new(_ui, _config, title, text, TownQuestBook.picture(quest_id, _village.race), completed))
+	var window := TownQuestWindow.new(_ui, _config, title, text, TownQuestBook.picture(quest_id, _village.race), completed)
+	# The client goes on with its windows of the start when this window closes
+	# (checkForNextStartPopup); the first of them is the news, from NEWS_LEVEL.
+	window.closed.connect(func() -> void:
+		if not _start_popup_done:
+			_start_popup_done = true
+			if _village.get_level() >= NEWS_LEVEL:
+				_open_news())
+	_hud.windows().add_child(window)
 
 
 func _show_panel(panel: SpecialActions.View) -> void:
@@ -1151,6 +1162,66 @@ func _open_unit_list() -> void:
 		window.queue_free()
 		_windows.add_child(UnitCollectionRewardWindow.new(_ui, _config, Village.UNIT_COLLECTION_CASH)))
 	_windows.add_child(window)
+
+
+func _open_news() -> void:
+	var window := NewsWindow.new(_ui, _config, _village.get_resource("c"))
+	window.cash_requested.connect(func() -> void: _hud.show_message(VillageHud.NO_CASH_SHOP))
+	window.link_chosen.connect(_follow_news_link)
+	window.pack_chosen.connect(func(pack: Dictionary) -> void:
+		# The window of the pack replaces the news, as in the client.
+		window.queue_free()
+		_open_offer_pack(pack))
+	_windows.add_child(window)
+
+
+## The links of the news (PopupNews.onGoToStore): "gods" opens the story of
+## the gods, "godsquests" the quests (the client asks for page 7 but shows the
+## page of the current island), and "menu.subcategory.page" a tab of the store.
+func _follow_news_link(link: String) -> void:
+	if link == "gods":
+		_windows.add_child(LoreWindow.new(_ui, _config))
+	elif link == "godsquests":
+		_open_quests()
+	else:
+		var parts := link.split(".")
+		if parts.size() >= 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+			_hud.store.open_link(parts[0].to_int(), parts[1].to_int())
+
+
+## The window that sells a promotion pack. Without enough cash, the client
+## closes it and tells the player (PopupMoreCash; the port has no cash shop).
+func _open_offer_pack(pack: Dictionary) -> void:
+	var no_cash := func(window: Control) -> void:
+		window.queue_free()
+		_alert(_config.text("AVISO_PACK_FALTA_DINERO"))
+	if pack["type"] == GameConfig.OFFER_SUPER:
+		var super_window := SuperPackWindow.new(_ui, _config, _sprites, _village, pack)
+		super_window.buy_requested.connect(func(choice: int) -> void:
+			var prizes := _village.buy_offer_pack(pack, choice, _rng)
+			if prizes.is_empty():
+				no_cash.call(super_window)
+				return
+			_after_offer_pack()
+			super_window.show_prizes(choice, prizes))
+		_windows.add_child(super_window)
+		return
+	var window := OfferPackWindow.new(_ui, _config, pack)
+	window.buy_requested.connect(func() -> void:
+		var given := _village.buy_offer_pack(pack, 0, _rng)
+		if given.is_empty():
+			no_cash.call(window)
+			return
+		window.queue_free()
+		_after_offer_pack()
+		if pack["type"] == GameConfig.OFFER_RANDOM:
+			_windows.add_child(PackPrizeWindow.new(_ui, _config, _config.get_item(given[0]))))
+	_windows.add_child(window)
+
+
+func _after_offer_pack() -> void:
+	_save()
+	_hud.refresh(_village)
 
 
 ## The client opens the window of the login bonus when it loads the game, or

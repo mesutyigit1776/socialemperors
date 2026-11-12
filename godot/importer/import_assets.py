@@ -138,6 +138,23 @@ def town_quest_item_ids():
 	return ids
 
 
+def news_pictures(config, source):
+	"""Returns the pictures of the news window and of its promotion packs, as
+	paths in assets/images_new: the client loads them from the folder that
+	the "images" table of the configuration names for each picture."""
+	folders = config.get("images", {}) if isinstance(config.get("images"), dict) else {}
+	globals_ = config.get("globals", {})
+	news = globals_.get("NEWS_ITEM", []) if isinstance(globals_.get("NEWS_ITEM"), list) else []
+	names = {entry.get("news_image") for entry in news if isinstance(entry, dict)}
+	names |= {f"offer_pack_{pack.get('id')}.png" for pack in config.get("offer_packs", []) if isinstance(pack, dict)}
+	paths = []
+	for name in sorted(name for name in names if isinstance(name, str)):
+		path = f"{folders[name]}/{name}" if folders.get(name) else name
+		if os.path.isfile(os.path.join(source, "assets", "images_new", path)):
+			paths.append(path)
+	return paths
+
+
 def town_quest_pictures(source):
 	"""Returns the pictures of the window of the quests in the town: the file
 	names in PICTURES of town_quest_book.gd that assets/images_new has."""
@@ -432,7 +449,7 @@ def main():
 	goal_images = sorted({goal[key] for goal in config.get("goals", []) for key in ("image", "characters")
 			if goal.get(key) not in (None, "", "none") and os.path.isfile(os.path.join(source, "assets", "images_new", goal[key]))})
 	ui_record_path = os.path.join(out_dir, "ui", "import.json")
-	quest_images = town_quest_pictures(source)
+	quest_images = town_quest_pictures(source) + news_pictures(config, source)
 	ui_record = {"importer": version, "sources": [file_stamp(os.path.join(source, path)) for path in (CLIENT_SWF, CAST_SWF)], "pictures": unit_thumbs + spell_images + goal_images + quest_images}
 	if is_done(ui_record_path, "windows", ui_record):
 		print("windows: done before", flush=True)

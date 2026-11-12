@@ -5,6 +5,8 @@ extends Control
 ## its start, or of its end with the COMPLETED stamp, which grows into place
 ## from 10 times its size in one second.
 
+signal closed
+
 const STAMP_SECONDS := 1.0
 const STAMP_START_SCALE := 10.0
 
@@ -37,7 +39,9 @@ func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, pictu
 	_window.set_text("btnOk/lbl", "OK")
 	var ok := _window.clip("btnOk")
 	ok.make_button(true)
-	ok.pressed.connect(queue_free)
+	ok.pressed.connect(func() -> void:
+		closed.emit()
+		queue_free())
 
 
 func _ready() -> void:

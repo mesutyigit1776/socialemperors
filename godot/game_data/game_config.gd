@@ -141,6 +141,15 @@ var first_offer: Dictionary = {}
 ## "name" is the text of "category_lang_id". The configuration also has a cash
 ## price for each unit, but the client of 1.4.07 does not sell them.
 var unit_collections: Array[Dictionary] = []
+## The pictures of the news window (globals NEWS_ITEM): {"image", "link"}.
+## "link" is a store tab "menu.subcategory.page", "gods", "godsquests" or "".
+var news: Array[Dictionary] = []
+## The promotion packs ("offer_packs"), by id: {"id", "position", "enabled",
+## "type", "cash", "xp", "mana", "resources": {code: amount}, "items"}. The
+## items of a pack of OFFER_RANDOM are [item id, limit in percent]; of a pack
+## of OFFER_SUPER, three lists of item ids (rare, uncommon, common).
+var offer_packs: Dictionary = {}
+var _image_folders: Dictionary = {}  # Picture name -> its folder in images_new ("en" or ""), the "images" table.
 ## The Unit Warehouse holds this number of units at first. The player can buy
 ## one more place for warehouse_slot_price cash, up to warehouse_max_capacity.
 var warehouse_start_capacity: int
@@ -354,6 +363,17 @@ static func load_from_file(path: String) -> GameConfig:
 			config._texts[entry["name"]] = str(entry.get("text", ""))
 			texts_by_id[to_int(entry.get("id"))] = str(entry.get("text", ""))
 	config.unit_collections = _parse_unit_collections(data.get("units_collections_categories"), texts_by_id)
+	var folders: Variant = data.get("images")
+	if folders is Dictionary:
+		for name: Variant in folders:
+			config._image_folders[str(name)] = str(folders[name])
+	for entry: Variant in globals.get("NEWS_ITEM", []) if globals.get("NEWS_ITEM") is Array else []:
+		if entry is Dictionary and entry.get("news_image") is String:
+			config.news.append({"image": entry["news_image"], "link": str(entry["news_store"]) if entry.get("news_store") is String else ""})
+	for entry: Variant in data.get("offer_packs", []) if data.get("offer_packs") is Array else []:
+		var pack := _parse_offer_pack(entry)
+		if not pack.is_empty():
+			config.offer_packs[pack["id"]] = pack
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
@@ -386,6 +406,13 @@ func spell_level(uses: int) -> int:
 
 
 ## The language text with this name, or the name when the configuration has no such text.
+## The path of a picture of the client in images_new: the client loads the
+## pictures of the news and the packs from the folder of the language.
+func localized_image(name: String) -> String:
+	var folder: String = _image_folders.get(name, "")
+	return name if folder.is_empty() else folder.path_join(name)
+
+
 func text(name: String) -> String:
 	return _texts.get(name, name)
 
@@ -778,6 +805,57 @@ static func _parse_first_offer(icons: Variant, globals: Dictionary) -> Dictionar
 		elif to_int(reward[key]) != null:
 			offer["reward"][key] = to_int(reward[key])
 	return offer
+
+
+const OFFER_NORMAL := 0
+const OFFER_RANDOM := 1
+const OFFER_SUPER := 2
+
+
+## The packs of the news window, as PromotionPacks.showPack of the client
+## finds them: for each position from 0, the first enabled pack with that
+## position.
+func news_packs() -> Array[Dictionary]:
+	var packs: Array[Dictionary] = []
+	for position in offer_packs.size():
+		for pack: Dictionary in offer_packs.values():
+			if pack["position"] == position and pack["enabled"]:
+				packs.append(pack)
+				break
+	return packs
+
+
+## Returns {} for a pack with values that are not correct.
+static func _parse_offer_pack(entry: Variant) -> Dictionary:
+	if not entry is Dictionary or not entry.get("items") is Array:
+		return {}
+	var numbers := {}
+	for key in ["id", "position", "enabled", "pack_type", "cost_cash", "xp", "mana", "gold", "stone", "food", "wood"]:
+		numbers[key] = to_int(entry.get(key, 0))
+		if numbers[key] == null:
+			return {}
+	var items := []
+	for item: Variant in entry["items"]:
+		if item is Array:
+			var list := []
+			for id: Variant in item:
+				if to_int(id) == null:
+					return {}
+				list.append(to_int(id))
+			items.append(list)
+		elif to_int(item) != null:
+			items.append(to_int(item))
+		else:
+			return {}
+	var type: int = numbers["pack_type"]
+	var shape_ok := items.all(func(item: Variant) -> bool: return item is Array and item.size() == 2) if type == OFFER_RANDOM \
+			else items.size() == 3 and items.all(func(item: Variant) -> bool: return item is Array and not item.is_empty()) if type == OFFER_SUPER \
+			else items.all(func(item: Variant) -> bool: return item is int)
+	if not shape_ok:
+		return {}
+	return {"id": numbers["id"], "position": numbers["position"], "enabled": numbers["enabled"] == 1, "type": type, "cash": numbers["cost_cash"],
+			"xp": numbers["xp"], "mana": numbers["mana"], "items": items,
+			"resources": {"g": numbers["gold"], "s": numbers["stone"], "f": numbers["food"], "w": numbers["wood"]}}
 
 
 ## Leaves out the groups with values that are not correct.

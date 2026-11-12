@@ -5,8 +5,7 @@ extends Control
 ## name, the pictures of its units and the number that the player has. The
 ## pictures of the units that the player does not have are grey. A complete
 ## collection shows the button of its reward until the player takes it, then
-## "COMPLETED!". The mouse over a unit shows its card with the unit, which
-## walks, attacks and makes its first special attack in turns.
+## "COMPLETED!". The mouse over a unit shows its card (UnitCard).
 ##
 ## The configuration has a cash price for each unit, and the client has the
 ## code that sells a unit, but the client of 1.4.07 does not call it: a click
@@ -21,8 +20,6 @@ const ROWS := 4
 const COLUMN_WIDTH := 104.0
 ## The client puts the picture of a unit 6 pixels to the right in its place.
 const PICTURE_X := 6.0
-## The card shows the next action of the unit after this time.
-const CYCLE_SECONDS := 3.0
 ## The card is 10 pixels to the right of its holder. In the first row the
 ## card is below the unit, with the background frame that points up.
 const CARD_X := 10.0
@@ -51,10 +48,6 @@ var _first := 0  # The index in GameConfig.unit_collections of the first row.
 var _place_height := 0.0  # The height of a place as Flash measures it.
 var _grey := ShaderMaterial.new()
 var _card: UiClip
-var _card_unit: UnitSprite
-var _card_action := UnitSprite.Action.WALKING
-var _card_frames := 0
-var _cycle := 0.0
 
 
 func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, collections: UnitCollections) -> void:
@@ -94,15 +87,6 @@ func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, collection
 
 func _ready() -> void:
 	_window.position = get_viewport_rect().size / 2
-
-
-func _process(delta: float) -> void:
-	if _card_unit == null:
-		return
-	_cycle += delta
-	if _cycle >= CYCLE_SECONDS:
-		_cycle = 0.0
-		_next_card_action()
 
 
 func _make_places() -> void:
@@ -210,30 +194,13 @@ func _show_card(row: int, column: int) -> void:
 		_card.clip("background").show_frame(1)
 	_card.position.x += CARD_X
 	place.clip("bufHolder").add_child(_card)
-	_card_unit = UnitCard.fill(_card, item, _sprites)
-	var sprite := _sprites.get_sprite(item.img_name)
-	_card_frames = sprite.frame_count() if sprite != null else 0
-	_card_action = UnitSprite.Action.WALKING
-	_cycle = 0.0
-
-
-## The client shows walking, then attacking, then the first special attack
-## when the graphic has it, and then walking again.
-func _next_card_action() -> void:
-	if _card_action == UnitSprite.Action.WALKING:
-		_card_action = UnitSprite.Action.ATTACKING
-	elif _card_action == UnitSprite.Action.ATTACKING and UnitSprite.frame_of(UnitSprite.Action.SPECIAL, UnitCard.DIRECTION) < _card_frames:
-		_card_action = UnitSprite.Action.SPECIAL
-	else:
-		_card_action = UnitSprite.Action.WALKING
-	_card_unit.show_action(_card_action, UnitCard.DIRECTION)
+	UnitCard.fill(_card, item, _sprites, true)
 
 
 func _remove_card() -> void:
 	if _card != null:
 		_card.queue_free()
 	_card = null
-	_card_unit = null
 
 
 func _close() -> void:

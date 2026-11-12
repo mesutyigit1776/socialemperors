@@ -58,6 +58,11 @@ func show_frame(new_frame: int) -> void:
 			key = "%s#%d" % [key, int(part["depth"])]
 		shown[key] = true
 		var node: Control = _parts.get(key)
+		# A frame can have the field with another colour, for example a lit
+		# number; the field keeps its text, and the port changes its colour.
+		if node is Label and part.has("text") and not part["text"]["html"] and node.get_meta("frame_colour", "") != part["text"]["color"]:
+			node.set_meta("frame_colour", part["text"]["color"])
+			node.add_theme_color_override("font_color", Color.html(part["text"]["color"]))
 		if node == null:
 			node = _make_part(part)
 			node.set_meta("part", key)
@@ -205,6 +210,27 @@ func fit_text(path: String, text: String, min_size := 8) -> void:
 	label.add_theme_font_size_override("font_size", size)
 
 
+## Puts a picture in the part at path, in place of the pictures there. The
+## client centres a picture on the part, except the small pictures of items,
+## which it puts at the top left (ImageManagerResource.ONLY_ADJUST_SIZE).
+func show_picture(path: String, texture: Texture2D, centred := true, picture_scale := 1.0) -> TextureRect:
+	var anchor := part(path)
+	if anchor == null:
+		return null
+	for child in anchor.get_children():
+		if child.has_meta("picture"):
+			child.queue_free()
+	var picture := TextureRect.new()
+	picture.set_meta("picture", true)
+	picture.texture = texture
+	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	picture.scale = Vector2.ONE * picture_scale
+	if centred and texture != null:
+		picture.position = -texture.get_size() * picture_scale / 2
+	anchor.add_child(picture)
+	return picture
+
+
 func set_part_visible(path: String, shown: bool) -> void:
 	var node := part(path)
 	if node != null:
@@ -294,6 +320,7 @@ func _make_part(part: Dictionary) -> Control:
 	label.add_theme_font_override("font", library.font(settings["font_id"]))
 	label.add_theme_font_size_override("font_size", int(round(size)))
 	label.add_theme_color_override("font_color", color)
+	label.set_meta("frame_colour", settings["color"])
 	label.horizontal_alignment = {"left": HORIZONTAL_ALIGNMENT_LEFT, "right": HORIZONTAL_ALIGNMENT_RIGHT, "center": HORIZONTAL_ALIGNMENT_CENTER}.get(settings["align"], HORIZONTAL_ALIGNMENT_FILL)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if settings["word_wrap"] else TextServer.AUTOWRAP_OFF
 	# The client makes most fields grow with their text (autoSize), so the port does not cut the text.

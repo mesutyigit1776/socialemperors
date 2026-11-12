@@ -27,7 +27,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [Save migration](#save-migration) | Done |
 | [First purchase offer ("open me")](#first-purchase-offer-open-me) | Done |
 | [Unit list and unit collections](#unit-list-and-unit-collections) | Done |
-| [News window](#news-window) | Medium |
+| [News window](#news-window) | Done |
 | [Spy screen art](#spy-screen-art) | Medium |
 | [Achievement publish](#achievement-publish) | Small |
 | [Female host](#female-host) | Small |
@@ -57,7 +57,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge (the save migration, the first purchase offer and the unit list are done).
+2. Group 2 without the Island Forge (the save migration, the first purchase offer, the unit list and the news window are done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -148,13 +148,24 @@ A fix on the way: in the port, the inner Flash button of the Gift button, the Wo
 
 ### News window
 
-`PopupNews` opens from Gift > News and also at login for players from level 5. It shows the 10 news pictures of `globals.NEWS_ITEM`, each with a link to a tab of the store, the promotion packs of `offer_packs`, the cash of the player with a button to the cash shop, and a button to the store. The server needs no command; the packs use the same commands as the store packs.
+Gift > News opens the news window of the client (`PopupNews`). The port now has it, with the rules of the client and the server:
 
-Port: `village_hud.gd` hides the News button. The port already has the store and the unit packs.
+- The 10 news of `globals.NEWS_ITEM`, with their numbers and arrows; the next news shows every 6 seconds. The pictures are in `assets/images_new/en`, as the `images` table of the configuration says.
+- The links of the news: a store tab (`12.121.0` opens the News tab at Limited Edition), `gods` (the story of the gods, `PopupLore`, which starts at its fifth page as in the client) and `godsquests` (the quests; the client asks for page 7 but shows the page of the current island). A news without a link does nothing.
+- The promotion packs: for each position, the first enabled pack of `offer_packs` (8 packs: 65, 33, 11, 7, 6, 5, 3, 1). A click opens the window of the pack, which replaces the news:
+  - a normal pack (`PopupGetPack`): its cash, resources, experience, mana and items, as `buy_offer_pack` does;
+  - a random pack (`PopupMistery`): one item by the limits of its list, then the window of the prize (`PopupGotPack`);
+  - a super pack (`PopupSuperMistery`): boxes of 1, 2 and 4 items for 60, 100 and 200 cash, as `buy_super_offer_pack` does, with the opening of the box. The mouse over a unit shows its card.
+- Without enough cash, the client opens its window with a cash shop button; the port shows the same text in an alert.
+- Get More Cash shows the message of the Add Cash button: the port has no cash shop.
+- The client opens the news among the windows of the start (`checkForNextStartPopup`) from level 5. In 1.4.07 only the window of a quest in the town starts that sequence, so the port opens the news when the first of these windows of the session closes. This is from the code; it did not happen in the Ruffle runs, in which no such window opened.
 
-Not checked: that all 10 news pictures are in `assets/`.
+Compared with the original client in Ruffle on the same save: the news window, the three pack windows, the card in the super pack, the purchases (super pack: cash 1000 to 800, +1000 experience, +5 mana, 4 items; normal pack: cash to 755, +750 experience, 4 items; random pack: cash to 695, +1000 experience, 1 item), the prize window, the store link, the story and the quests. Differences:
 
-Work: the window with its art; the store links and packs use the code that the port has. The cash button needs the cash shop, which is not possible offline.
+- The client shows the gains as numbers that float up, and makes the box and the prizes of a super pack bright with a glow. The port does not draw these effects.
+- The card of a unit in the super pack is about 15 pixels lower in the port.
+- The store link shows the items of the port's own store rotation, so the items differ from those of the Ruffle run.
+- In Ruffle the first news picture was empty until it loaded; the port shows it at once.
 
 ### Spy screen art
 

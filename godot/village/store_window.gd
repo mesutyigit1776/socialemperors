@@ -145,6 +145,15 @@ func open_at(item: GameConfig.ItemDef) -> void:
 	open()
 
 
+## Opens the store at a tab and subcategory, as the links of the news window
+## do (GuiManager.openStore).
+func open_link(menu: int, subcategory: int) -> void:
+	_open_menu(menu)
+	if visible and subcategory != 0:
+		_subcategory = subcategory
+		_show_items()
+
+
 func _open_menu(menu: int) -> void:
 	if menu == PACKS_MENU or menu == STORAGE_MENU:
 		hide()

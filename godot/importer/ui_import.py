@@ -114,17 +114,29 @@ SYMBOLS = [
 	"InfoButtonUnitCollectionMC",
 	"InfoButtonUnitCollectionBuyMC",
 	"PopupNextIslandAttackMC",
+	# The news window, the card of a promotion pack in it, the windows that
+	# sell the normal, random and super packs, the window of a random prize,
+	# and the window of a story (the gods).
+	"PopupNewsMC",
+	"PackCardMC",
+	"PopupGetPackMC",
+	"PopupMisteryMC",
+	"PopupSuperMisteryBoxMC",
+	"PopupGotPackMC",
+	"PopupLoreMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
 # show a book and a wizard; the pictures of the spells come with spell_images.
 # The alert with a picture tells the player about the spell book. The
 # neighbour bar shows the host of the tutorial with the picture of the king,
-# and the town window a picture of each town.
+# the town window a picture of each town, and the story of the gods in the
+# news window its pictures.
 IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"] \
 	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"] \
 	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
-	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"]
+	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"] \
+	+ [f"gods_{n}.jpg" for n in range(1, 8)]
 # The login bonus window loads its background and the pictures of the days
 # from assets/externalized/DailyBonus; the port keeps the same folders.
 EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)]
@@ -150,7 +162,9 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	count += _import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:
-		shutil.copyfile(os.path.join(source, "assets", "images_new", image), os.path.join(ui_dir, "images", image))
+		target = os.path.join(ui_dir, "images", image)
+		os.makedirs(os.path.dirname(target), exist_ok=True)
+		shutil.copyfile(os.path.join(source, "assets", "images_new", image), target)
 	for image in EXTERNALIZED_IMAGES:
 		target = os.path.join(ui_dir, "images", image)
 		os.makedirs(os.path.dirname(target), exist_ok=True)

@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_offer_packs]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1560,6 +1560,45 @@ func _check_unit_collections() -> bool:
 	_check(collections.claim(groups[0]) == Village.Placement.OK and village.get_resource("c") == 21 and village.unit_collections_claimed() == [1], "the reward gives 1 cash and goes into unitCollectionsCompleted")
 	_check(collections.claim(groups[0]) == Village.Placement.NOT_ALLOWED and village.get_resource("c") == 21, "the player takes the reward once")
 	_check(village.save_to_file(path) == OK and UnitCollections.new(_config, Village.load_from_file(path, _config)).is_claimed(groups[0]), "the save keeps the reward")
+	return true
+
+
+## The news window and its promotion packs: the news of the configuration,
+## the packs that the window shows, and the purchase of a normal, a random and
+## a super pack.
+func _check_offer_packs() -> bool:
+	_check(_config.news.size() == 10 and _config.news[0] == {"image": "new_bestciv3_5.jpg", "link": "12.121.0"} and _config.news[8]["link"] == "", "the 10 news of the configuration")
+	var shown := _config.news_packs().map(func(pack: Dictionary) -> int: return pack["id"])
+	_check(shown == [65, 33, 11, 7, 6, 5, 3, 1], "the news window shows the enabled packs by position: %s" % [shown])
+	# At the highest level the experience of the packs gives no level rewards.
+	var top := _config.levels.size()
+	var path := _write_fixture("offer_packs", top, _config.levels[top - 1].exp_required, 1000)
+	_patch_private(path, {"mana": 0}, 30)
+	var village := Village.load_from_file(path, _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 24
+	var defence: Dictionary = _config.offer_packs[33]
+	_check(village.buy_offer_pack(defence, 0, rng).is_empty() and village.get_resource("c") == 30 and village.stored_items().is_empty(), "a pack needs its cash (45)")
+	_check(village.buy_offer_pack(_config.offer_packs[2], 0, rng).is_empty(), "a pack that is not enabled cannot be bought")
+	_patch_private(path, {"mana": 0}, 1000)
+	village = Village.load_from_file(path, _config)
+	var xp := village.get_xp()
+	_check(village.buy_offer_pack(defence, 0, rng) == [1360, 1361, 1358, 1359] and village.get_resource("c") == 955 and village.get_xp() == xp + 750, "the normal pack costs 45 cash and gives its items and 750 experience")
+	_check(village.stored_items() == {1360: 1, 1361: 1, 1358: 1, 1359: 1}, "the items of the pack go to the item store")
+	var counts := {}
+	for i in 12:
+		var won := village.buy_offer_pack(_config.offer_packs[11], 0, rng)
+		counts[won[0]] = counts.get(won[0], 0) + 1
+	_check(village.get_resource("c") == 955 - 12 * 60 and counts.keys().all(func(id: int) -> bool: return id in [60, 662, 660, 651]), "the random pack gives one of its items for 60 cash: %s" % [counts])
+	village = Village.load_from_file(path, _config)
+	var mystery: Dictionary = _config.offer_packs[65]
+	_check([0, 1, 2].map(func(choice: int) -> int: return village.offer_pack_price(mystery, choice)) == [60, 100, 200], "the boxes of the super pack cost 60, 100 and 200 cash")
+	xp = village.get_xp()
+	var prizes := village.buy_offer_pack(mystery, 2, rng)
+	var others: Array = mystery["items"][1] + mystery["items"][2]
+	_check(prizes.size() == 4 and prizes[0] in mystery["items"][0] and prizes.slice(1).all(func(id: int) -> bool: return id in others), "the biggest box gives a rare item and three others: %s" % [prizes])
+	_check(village.get_resource("c") == 800 and village.get_resource("m") == 5 and village.get_xp() == xp + 1000, "the super pack gives its mana and experience")
+	_check(village.buy_offer_pack(mystery, 0, rng).size() == 1 and village.buy_offer_pack(mystery, 1, rng).size() == 2 and village.get_resource("c") == 640, "the other boxes give one and two items")
 	return true
 
 

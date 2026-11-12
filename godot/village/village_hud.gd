@@ -14,6 +14,7 @@ extends CanvasLayer
 signal collections_requested
 signal stored_items_requested
 signal units_requested
+signal news_requested
 signal quests_requested
 signal survival_requested
 signal tournament_requested
@@ -34,6 +35,8 @@ signal zoom_requested(level: float)
 ## The player clicked the icon of the first purchase offer.
 signal first_offer_requested
 
+## The buttons of the client that open the cash shop show this message.
+const NO_CASH_SHOP := "The port has no cash shop."
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
 const BAR_HEIGHT := 125
@@ -146,17 +149,15 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	for entry: Array in [["questButton", "questText", "ICON_MENU_WORLD_QUEST", quests_requested], ["pvpButton", "#text", "", pvp_requested],
 			["tournamentButton", "tournamentText", "ICON_MENU_WORLD_TOURNEY", tournament_requested], ["survivalButton", "survivalText", "ICON_MENU_WORLD_SURVIVAL", survival_requested]]:
 		_menu_entry("bgBar/iconMenuWorld", entry)
-	# The Gift menu: the item store, the collections and the unit list. The port has no news.
+	# The Gift menu: the item store, the collections, the unit list and the news.
 	for entry: Array in [["giftButton", "giftsText", "ICON_MENU_GIFT_GIFTS", stored_items_requested], ["colButton", "colText", "ICON_MENU_GIFT_COLLECTIONS", collections_requested],
-			["unitsButton", "unitsText", "ICON_MENU_GIFT_UNITS", units_requested]]:
+			["unitsButton", "unitsText", "ICON_MENU_GIFT_UNITS", units_requested], ["newsButton", "newsText", "ICON_MENU_GIFT_NEWS", news_requested]]:
 		_menu_entry("bgBar/iconMenuGift", entry)
-	for path: String in ["bgBar/iconMenuGift/newsButton", "bgBar/iconMenuGift/newsText"]:
-		_gui.set_part_visible(path, false)
 	# The town selector of the client is in the menu of the games, without the darts.
 	_menu_entry("bgBar/iconMenuGames", ["herramientaSelectorMundo", "txtSelectorMundo", "", towns_requested])
 	for path: String in ["bgBar/iconMenuGames/herramientaDarts", "bgBar/iconMenuGames/dartsText"]:
 		_gui.set_part_visible(path, false)
-	_clip_button("addCashButton", func() -> void: show_message("The port has no cash shop."))
+	_clip_button("addCashButton", func() -> void: show_message(NO_CASH_SHOP))
 	var name_field := _gui.part("topRight/nameText")
 	name_field.mouse_filter = Control.MOUSE_FILTER_STOP
 	name_field.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
