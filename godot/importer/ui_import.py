@@ -16,6 +16,7 @@ port must place them itself. This module writes:
   <out>/ui/images/<name>        pictures that the windows load from assets/images_new
   <out>/ui/thumbs/<img_name>.jpg  small pictures of the units, for the units lost in a quest
   <out>/ui/cast/...             the banner of a cast spell, from its own SWF file, in the same form
+  <out>/ui/viral/...            the icon of the first purchase offer, from its own SWF file, in the same form
 
 A part is {"name", "depth", "matrix": [a, b, c, d, x, y], and "clip": id (a
 sprite), "button": id (a button) or "text": settings (see SwfFile.edit_text)},
@@ -103,6 +104,9 @@ SYMBOLS = [
 	"FauxBarMC",
 	# The window of the login bonus.
 	"PopupNewDailyBonusMC",
+	# The window of the first purchase offer and the card of a unit in it.
+	"PopupFirstBuyMC",
+	"InfoButtonStore6bMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
@@ -120,6 +124,9 @@ EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
+# The icon of the first purchase offer at the side of the HUD ("open me").
+VIRAL_SWF = os.path.join("assets", "externalized", "viral_buttons", "viralFirstOffer.swf")
+VIRAL_SYMBOLS = ["viralFirstOffer"]
 # The copy of a SWF file with the windows, from which the port draws them.
 WINDOWS_FILE = "windows.swf"
 
@@ -133,6 +140,7 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	ui_dir = os.path.join(out_dir, "ui")
 	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
 	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
+	count += _import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:
 		shutil.copyfile(os.path.join(source, "assets", "images_new", image), os.path.join(ui_dir, "images", image))

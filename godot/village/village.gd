@@ -1730,6 +1730,63 @@ func add_daily_bonus_unit(unit_id: int) -> void:
 	_register_unit(unit_id)
 
 
+## The first purchase offer of the client (FirstOfferButton, PopupFirstBuy).
+## privateState "firstPurchaseTimestamp" is 0 until the player first opens the
+## offer, then the time of that opening, and 1 after the purchase. The icon
+## shows during the first 2 days of the login bonus ("numDayLogged" below 3)
+## while the player has not opened the offer, and after the first opening until
+## GameConfig.first_offer "seconds" pass.
+func first_offer_shown(now: int) -> bool:
+	if _config.first_offer.is_empty():
+		return false
+	var opened := _private_int("firstPurchaseTimestamp")
+	if opened == 0:
+		return _private_int("numDayLogged") < 3
+	return first_offer_seconds_left(now) > 0
+
+
+func first_offer_opened() -> bool:
+	return _private_int("firstPurchaseTimestamp") != 0
+
+
+## The time of the offer after its first opening; 0 when it ended or was not opened.
+func first_offer_seconds_left(now: int) -> int:
+	var opened := _private_int("firstPurchaseTimestamp")
+	if opened == 0 or _config.first_offer.is_empty():
+		return 0
+	return maxi(int(_config.first_offer["seconds"]) - (now - opened), 0)
+
+
+## The first opening starts the time of the offer ("set_first_purchase_timestamp").
+func open_first_offer(now: int) -> void:
+	if _private_int("firstPurchaseTimestamp") == 0:
+		_set_private(["firstPurchaseTimestamp"], [now])
+
+
+## Buys the offer while its time runs, as "buy_first_purchase" and then
+## "store_add_items" for each unit do: the cash, the resources of the reward in
+## this town, and the units in the item store. Changes nothing when the result
+## is not OK.
+func buy_first_offer(now: int) -> Placement:
+	if first_offer_seconds_left(now) <= 0:
+		return Placement.NOT_ALLOWED
+	var offer := _config.first_offer
+	if get_resource("c") < int(offer["cost"]):
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -int(offer["cost"]))
+	for code: String in offer["reward"]:
+		if code == "exp":
+			_add_xp(offer["reward"][code])
+		elif RESOURCE_KEYS.has(code):
+			_add_resource(code, offer["reward"][code])
+	for unit_id: int in offer["units"]:
+		if _config.get_item(unit_id) != null:
+			_add_stored(unit_id)
+			_register_unit(unit_id)
+	_set_private(["firstPurchaseTimestamp"], [1])
+	return Placement.OK
+
+
 func _add_first_town_resource(code: String, amount: int) -> void:
 	if _map_index == 0 or not RESOURCE_KEYS.has(code) or RESOURCE_KEYS[code][0] != "map":
 		_add_resource(code, amount)

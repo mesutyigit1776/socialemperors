@@ -25,7 +25,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | Item | Work |
 |---|---|
 | [Save migration](#save-migration) | Done |
-| [First purchase offer ("open me")](#first-purchase-offer-open-me) | Small to medium |
+| [First purchase offer ("open me")](#first-purchase-offer-open-me) | Done |
 | [Unit list and unit collections](#unit-list-and-unit-collections) | Medium |
 | [News window](#news-window) | Medium |
 | [Spy screen art](#spy-screen-art) | Medium |
@@ -57,7 +57,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge (the save migration is done).
+2. Group 2 without the Island Forge (the save migration and the first purchase offer are done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -119,14 +119,13 @@ Check: the port and the server, with the race rule fixed, give the same results 
 
 ### First purchase offer ("open me")
 
-The "open me" chest at the side of the HUD is not a Facebook feature. It is the icon of the first purchase offer (`FirstOfferButton`; its text is `POPUP_FIRST_OFFER_VIRAL`, "open me"). Of the eleven viral icons in the server config (`viral_icons` in `config/patch/1-mega_patch.json`), it is the only one with `active` 1, so the original game shows it on this server.
+The "open me" chest at the side of the HUD is the icon of the first purchase offer (`FirstOfferButton`), the only viral icon with `active` 1 in the server config. The port now has it, with the rules of the client and the server:
 
-- The client shows the icon while the player is in the first 3 days of play and has not opened the offer, or while the offer time (`POPUP_FIRST_PURCHASE_OFFER_TIME`) has not passed since the first opening.
-- The window (`PopupFirstBuy`) shows three dragon units and the resources of `POPUP_FIRST_PURCHASE_OFFER_REWARD`, with a timer. The first opening sends `set_first_purchase_timestamp`. The buy costs `POPUP_FIRST_PURCHASE_OFFER_COST` cash (the game currency, not real money) and sends `buy_first_purchase`.
-- The server has both commands (`op.py`, `cmd_set_first_purchase_ts` and `cmd_buy_first_purchase`).
-- The port has no viral icon panel and no offer.
+- The icon shows in the first two days of the login bonus (`numDayLogged` below 3) until the player opens the offer, and then for 24 hours (`POPUP_FIRST_PURCHASE_OFFER_TIME`), with the time that is left. It is not shown when the session starts in the tutorial. The port places it where the client's icon panel puts it: at the right edge, under the options button.
+- The first opening saves the time (`set_first_purchase_timestamp`). The window (`PopupFirstBuy`) shows the three eggs, the card of each unit when the mouse is over its egg, and the time; it closes when the time ends.
+- HATCH! costs 28 cash (`POPUP_FIRST_PURCHASE_OFFER_COST`). It gives 20000 gold and 40000 food in the current town and puts the three dragons in the item store, as `buy_first_purchase` and the three `store_add_items` of the client do, and sets `firstPurchaseTimestamp` to 1. Then the icon goes away and an alert tells where the dragons are. Without enough cash, the alert of the client says so.
 
-Work: the icon panel at the side of the HUD, the window with its art, and the two save operations.
+Compared with the original client in Ruffle on the same save: the icon at the same place at 760 × 600, the window, the unit card, the purchase (cash 53 to 25, +20000 gold, +40000 food, the three dragons in the item store) and the alert. In Ruffle the egg under the mouse did not show its second frame, which the client code asks for; the port shows it.
 
 ### Unit list and unit collections
 

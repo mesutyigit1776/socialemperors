@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1505,6 +1505,33 @@ func _write_document(path: String, document: Dictionary) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(JSON.stringify(document, "\t", false))
 	file.close()
+
+
+## The first purchase offer ("open me"): when the icon shows, the time after
+## the first opening, and the purchase as the server makes it.
+func _check_first_offer() -> bool:
+	var offer := _config.first_offer
+	_check(offer.get("cost") == 28 and offer.get("seconds") == 86400 and offer.get("units") == [2245, 2248, 2242] and offer.get("reward") == {"g": 20000, "f": 40000}, "the offer of the configuration: %s" % [offer])
+	var path := _write_fixture("first_offer", 10, _config.levels[9].exp_required, 1000)
+	_patch_private(path, {"numDayLogged": 3}, 30)
+	_check(not Village.load_from_file(path, _config).first_offer_shown(NOW), "from the third day of the login bonus an offer that was not opened does not show")
+	_patch_private(path, {"numDayLogged": 2}, 20)
+	var village := Village.load_from_file(path, _config)
+	_check(village.first_offer_shown(NOW) and village.first_offer_seconds_left(NOW) == 0, "the offer shows in the first two days before its first opening")
+	_check(village.buy_first_offer(NOW) == Village.Placement.NOT_ALLOWED, "the player buys the offer only after its opening")
+	village.open_first_offer(NOW)
+	village.open_first_offer(NOW + 100)
+	_check(village._document["privateState"]["firstPurchaseTimestamp"] == NOW and village.first_offer_seconds_left(NOW + 100) == 86300, "the first opening starts the time")
+	_check(village.buy_first_offer(NOW + 100) == Village.Placement.NOT_ENOUGH_RESOURCES and village.get_resource("c") == 20 and village.stored_items().is_empty(), "the offer costs 28 cash")
+	_check(not village.first_offer_shown(NOW + 86400) and village.buy_first_offer(NOW + 86400) == Village.Placement.NOT_ALLOWED, "the offer ends after 24 hours")
+	_patch_private(path, {"numDayLogged": 2, "firstPurchaseTimestamp": NOW}, 30)
+	village = Village.load_from_file(path, _config)
+	_check(village.buy_first_offer(NOW + 100) == Village.Placement.OK, "the player buys the offer")
+	_expect("after the offer", village, {"c": 2, "g": 21000, "f": 40000 + int(_initial["maps"][0]["food"])})
+	var bought: Array = village._document["privateState"]["boughtUnits"]
+	_check(village.stored_items() == {2245: 1, 2248: 1, 2242: 1} and [2245, 2248, 2242].all(func(id: int) -> bool: return bought.has(id)), "the three dragons go to the item store and the list of bought units")
+	_check(village._document["privateState"]["firstPurchaseTimestamp"] == 1 and not village.first_offer_shown(NOW + 200), "after the purchase the offer does not show")
+	return true
 
 
 ## The quests in the town (TownQuests): the race filter, the rewards, a camp

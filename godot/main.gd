@@ -101,6 +101,7 @@ const TUTORIAL_PAN_SECONDS := 1.4
 const SUBCAT_FARM := 122
 const SUBCAT_RANCH := 123
 ## The graphics of the shield in the HUD (ShieldDisplay of the client).
+const FIRST_OFFER_ICON := "viralFirstOffer"  ## The symbol of the icon, see FirstOfferButton of the client.
 const SHIELD_ENABLED := "shieldEnabled"
 const SHIELD_DISABLED := "shieldDisabled"
 const MAX_GROUP := 20  ## MAX_SELECTED_OBJECTS of the client.
@@ -204,6 +205,7 @@ func _ready() -> void:
 		_hud.tournament_requested.connect(_open_tournament)
 		_hud.pvp_requested.connect(_open_pvp)
 		_hud.towns_requested.connect(_open_towns)
+		_hud.first_offer_requested.connect(_open_first_offer)
 		add_child(_hud)
 		_hud.show_goal_host(_view.effects.get_sprite(GoalBox.HOST_SYMBOL))
 		_hud.set_shield_graphics(_view.effects.get_sprite(SHIELD_ENABLED), _view.effects.get_sprite(SHIELD_DISABLED))
@@ -233,6 +235,7 @@ func _ready() -> void:
 			_tutorial.finished.connect(_on_tutorial_finished)
 			_show_tutorial()
 		_daily_bonus = _village.start_daily_bonus(_now())
+		_show_first_offer_icon()
 		_init_map()
 		var kinds := {"siege": CollectiveAI.Kind.SIEGE, "stampede": CollectiveAI.Kind.BIG_MOUNTS, "army": CollectiveAI.Kind.ARMY, "bandits": CollectiveAI.Kind.BANDITS}
 		if kinds.has(_options.get("village-attack", "")):
@@ -660,6 +663,7 @@ func _on_clock() -> void:
 	_check_town_quest()
 	_update_production()
 	_update_store()
+	_update_first_offer_icon(now)
 
 
 ## Puts the trained units of the building on the map. Returns true when a unit came out.
@@ -1087,6 +1091,49 @@ func _init_map() -> void:
 	_view.sync_items()
 	_save()
 	_show_daily_bonus()
+
+
+## The client makes the icon panel when the map of the player opens after the
+## login bonus is counted, and hides it for the session when the tutorial
+## starts (GuiManager.createViralButtons, Base.tutorialCheck). The only icon
+## that this server turns on is the first purchase offer.
+func _show_first_offer_icon() -> void:
+	if _tutorial.is_active() or not _village.first_offer_shown(_now()) or not FileAccess.file_exists(_data_dir.path_join("ui/viral/layout.json")):
+		return
+	var icons := UiLibrary.load_from(_data_dir, _frames, "ui/viral")
+	if icons == null or not icons.has_symbol(FIRST_OFFER_ICON):
+		return
+	_hud.show_first_offer(icons.make(FIRST_OFFER_ICON))
+	_update_first_offer_icon(_now())
+
+
+## The icon shows "open me" until the first opening, then the time that is
+## left. The client keeps the icon until the next start when the time ends.
+func _update_first_offer_icon(now: int) -> void:
+	_hud.set_first_offer_text(SurvivalWindow.time_text(_village.first_offer_seconds_left(now)) if _village.first_offer_opened() else _config.text("POPUP_FIRST_OFFER_VIRAL"))
+
+
+## The first opening of the window starts the time of the offer
+## ("set_first_purchase_timestamp"). After the purchase the client removes the
+## icon and tells the player where the units are.
+func _open_first_offer() -> void:
+	_village.open_first_offer(_now())
+	_save()
+	_update_first_offer_icon(_now())
+	var window := FirstOfferWindow.new(_ui, _config, _sprites, _village, _now)
+	window.buy_requested.connect(func() -> void:
+		var result := _village.buy_first_offer(_now())
+		if result == Village.Placement.NOT_ENOUGH_RESOURCES:
+			_windows.add_child(AlertWindow.new(_ui, _config, _config.text("AVISO_SUFICIENTE_CASH")))
+			return
+		window.queue_free()
+		if result != Village.Placement.OK:
+			return
+		_save()
+		_hud.remove_first_offer()
+		_hud.refresh(_village)
+		_windows.add_child(AlertWindow.new(_ui, _config, _config.text("POPUP_FIRST_OFFER_REWARD"))))
+	_windows.add_child(window)
 
 
 ## The client opens the window of the login bonus when it loads the game, or

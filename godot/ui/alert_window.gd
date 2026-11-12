@@ -16,7 +16,8 @@ func _init(ui: UiLibrary, config: GameConfig, text: String) -> void:
 	_window = ui.make("PopupAlertMC")
 	add_child(_window)
 	_window.set_text("alertText", text)
-	_window.set_text("okButton/lbl", config.text("AUX_CLOSE"))
+	# The client writes "Close", then "OK" on the button that closes the alert (AlertPopup).
+	_window.set_text("okButton/lbl", config.text("AUX_OK"))
 	var button := _window.clip("okButton")
 	button.make_button(true)
 	button.pressed.connect(func() -> void:

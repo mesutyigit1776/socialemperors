@@ -30,6 +30,8 @@ signal tool_cancelled
 signal goal_requested(goal_id: int)
 ## The player used the zoom slider: the zoom of MapCamera that it asks for.
 signal zoom_requested(level: float)
+## The player clicked the icon of the first purchase offer.
+signal first_offer_requested
 
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
@@ -51,6 +53,14 @@ const PANEL_SLIDE_SECONDS := 0.2
 ## pixels above the bottom of the 600-pixel stage of the client (ZoomSlider).
 const ZOOM_FROM_RIGHT := 24.0
 const ZOOM_FROM_BOTTOM := 200.0
+## The icon panel at the right edge (IconPanel of GuiManager.createViralButtons):
+## 360 pixels above the HUD of the client, which is BAR_HEIGHT - 75 pixels
+## lower than the HUD of the port. Its first icon is at ICON_OFFSET, and the
+## mouse over an icon makes it ICON_HOVER_SCALE times larger in 0.2 seconds.
+const ICON_PANEL_Y := -360.0 + BAR_HEIGHT - 75.0
+const ICON_OFFSET := Vector2(-10, -45)
+const ICON_HOVER_SCALE := 1.1
+const ICON_FADE_SECONDS := 0.5
 ## The client shows the shield from level 6 (StateNormal.enter).
 const SHIELD_LEVEL := 6
 const POPULATION_FULL_COLOUR := Color(0, 0, 1)
@@ -103,6 +113,7 @@ var _zoom_level := 1.0
 var _zoom_dragging := false
 var _panel_tween: Tween
 var _options: OptionsPanel
+var _offer_icon: UiClip
 
 
 func _init(ui: UiLibrary, config: GameConfig) -> void:
@@ -255,8 +266,47 @@ func _layout() -> void:
 	place_gui(_gui, _top_y, size)
 	_options.place(size)
 	_zoom.position = Vector2(size.x - ZOOM_FROM_RIGHT, size.y - ZOOM_FROM_BOTTOM) - _gui.position
+	if _offer_icon != null:
+		_offer_icon.position = Vector2(size.x - _gui.position.x, ICON_PANEL_Y) + ICON_OFFSET
 	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
 	_message.size = Vector2(CLIENT_WIDTH - 120, 60)
+
+
+## Shows the icon of the first purchase offer (viralFirstOffer) in the icon
+## panel, under the other parts of the HUD as in the client.
+func show_first_offer(icon: UiClip) -> void:
+	_offer_icon = icon
+	# The SWF file of the icon has only the letters of its sample text; the
+	# client writes the text with the font of its own file (TextFieldUtil.setHTML).
+	var timer := icon.part("timer")
+	if timer != null:
+		timer.add_theme_font_override("font", _ui.named_font(ClientTheme.BODY_FONT))
+	_gui.add_child(icon)
+	_gui.move_child(icon, 0)
+	icon.make_button()
+	icon.pressed.connect(func() -> void:
+		if not _locked:
+			first_offer_requested.emit())
+	for pair: Array in [["mouse_entered", ICON_HOVER_SCALE], ["mouse_exited", 1.0]]:
+		var target: float = pair[1]
+		icon.connect(pair[0], func() -> void: create_tween().tween_property(icon, "scale", Vector2(target, target), 0.2))
+	_layout()
+
+
+## The text of the icon: "open me" or the time that is left.
+func set_first_offer_text(text: String) -> void:
+	if _offer_icon != null:
+		_offer_icon.set_text("timer", text)
+
+
+## The client fades the icon out after the purchase (IconPanel.removeIcon).
+func remove_first_offer() -> void:
+	if _offer_icon == null:
+		return
+	var icon := _offer_icon
+	_offer_icon = null
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	create_tween().tween_property(icon, "modulate:a", 0.0, ICON_FADE_SECONDS).finished.connect(icon.queue_free)
 
 
 func _clip_button(path: String, action: Callable) -> void:

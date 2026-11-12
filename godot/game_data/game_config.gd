@@ -131,6 +131,11 @@ var animals_per_day: int
 ## The rewards of the login bonus ("daily_bonus"), by day from 1: {"day",
 ## "reward" (resource code or "u" -> amount or unit id), "img"}.
 var daily_bonus: Array[Dictionary] = []
+## The first purchase offer (FirstOfferButton and PopupFirstBuy of the client):
+## {"cost": cash, "seconds": the time after the first opening, "reward":
+## {resource code or "exp": amount}, "units": [3 unit ids]}. Empty when the
+## viral icon "FirstOfferButton" is off or the globals have no offer.
+var first_offer: Dictionary = {}
 ## The Unit Warehouse holds this number of units at first. The player can buy
 ## one more place for warehouse_slot_price cash, up to warehouse_max_capacity.
 var warehouse_start_capacity: int
@@ -330,6 +335,7 @@ static func load_from_file(path: String) -> GameConfig:
 		if entry is Dictionary and to_int(entry.get("reward_day")) != null and entry.get("reward") is Dictionary:
 			config.daily_bonus.append({"day": to_int(entry["reward_day"]), "reward": entry["reward"], "img": str(entry.get("img", ""))})
 	config.daily_bonus.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["day"] < b["day"])
+	config.first_offer = _parse_first_offer(data.get("viral_icons"), globals)
 	config.unit_packs.assign(data.get("unit_packs", []).filter(func(pack: Variant) -> bool:
 		return pack is Dictionary and pack.get("price") is Dictionary and pack.get("pack_num") is Dictionary and pack.get("pack_category") is Dictionary \
 				and [pack.get("id"), pack.get("store_order"), pack.get("units_given"), pack.get("max_purchable")].all(func(value: Variant) -> bool: return to_int(value) != null)))
@@ -743,6 +749,27 @@ static func _parse_goals(config: GameConfig, entries: Variant) -> bool:
 		goal.params = params
 		config.goals.append(goal)
 	return true
+
+
+static func _parse_first_offer(icons: Variant, globals: Dictionary) -> Dictionary:
+	var active := false
+	for icon: Variant in icons if icons is Array else []:
+		if icon is Dictionary and icon.get("asclass") == "FirstOfferButton" and to_int(icon.get("active")) == 1:
+			active = true
+	var reward: Variant = globals.get("POPUP_FIRST_PURCHASE_OFFER_REWARD")
+	var cost: Variant = to_int(globals.get("POPUP_FIRST_PURCHASE_OFFER_COST"))
+	var seconds: Variant = to_int(globals.get("POPUP_FIRST_PURCHASE_OFFER_TIME"))
+	if not active or not reward is Dictionary or not reward.get("units") is Array or cost == null or seconds == null:
+		return {}
+	var offer := {"cost": cost, "seconds": seconds, "reward": {}, "units": []}
+	for key: String in reward:
+		if key == "units":
+			for id: Variant in reward["units"]:
+				if to_int(id) != null:
+					offer["units"].append(to_int(id))
+		elif to_int(reward[key]) != null:
+			offer["reward"][key] = to_int(reward[key])
+	return offer
 
 
 static func to_int(value: Variant) -> Variant:
