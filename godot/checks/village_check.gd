@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1531,6 +1531,35 @@ func _check_first_offer() -> bool:
 	var bought: Array = village._document["privateState"]["boughtUnits"]
 	_check(village.stored_items() == {2245: 1, 2248: 1, 2242: 1} and [2245, 2248, 2242].all(func(id: int) -> bool: return bought.has(id)), "the three dragons go to the item store and the list of bought units")
 	_check(village._document["privateState"]["firstPurchaseTimestamp"] == 1 and not village.first_offer_shown(NOW + 200), "after the purchase the offer does not show")
+	return true
+
+
+## The unit list (UnitCollections): the groups of the configuration, the count
+## from the save, the alert of a unit that completes a group, and the reward.
+func _check_unit_collections() -> bool:
+	var groups := _config.unit_collections
+	_check(groups.size() == 128 and groups[0] == {"id": 1, "reward": 608, "position": 5, "name": "SWORDS", "units": [509, 510, 511, 539, 608]}, "the 128 groups of the mega patch in their order: %s" % [groups[0] if not groups.is_empty() else null])
+	var path := _write_fixture("unit_collections", 10, _config.levels[9].exp_required, 1000, {"store": {"608": 1, "510": 1}})
+	# A list that is not empty, so that the save migration does not make the list from the item store.
+	_patch_private(path, {"boughtUnits": [9999], "unitCollectionsCompleted": []}, 20)
+	var base := UnitCollections.new(_config, Village.load_from_file(path, _config))
+	_check(base.total() == 504, "the total counts the 5 units that are in two groups twice, as the client does")
+	_patch_private(path, {"boughtUnits": [509, 511, 539, 9999]}, 20)
+	var village := Village.load_from_file(path, _config)
+	var collections := UnitCollections.new(_config, village)
+	_check(collections.owned_count() == base.owned_count() + 3 and collections.owned_in(groups[0]) == 3, "the bought units count, except units that are in no group")
+	_check(collections.claim(groups[0]) == Village.Placement.NOT_ALLOWED, "the reward needs all units of the group")
+	var alerts: Array[int] = []
+	village.happened.connect(func(kind: VillageEvent.Kind, data: Dictionary) -> void:
+		if kind == VillageEvent.Kind.UNIT_ARRIVED and collections.add_unit(data["unit"]):
+			alerts.append(data["unit"]))
+	var area := Rect2i(40, 40, 30, 30)
+	_check(village.place_stored(_config.get_item(510), _free_tile(village, 510, area), NOW) == Village.Placement.OK and alerts.is_empty() and collections.owned_in(groups[0]) == 4, "a unit from the item store counts when it comes on the map")
+	_check(village.place_stored(_config.get_item(608), _free_tile(village, 608, area), NOW) == Village.Placement.OK and alerts == [608], "the last unit of a group brings the alert")
+	_check(not collections.add_unit(608), "a unit counts once")
+	_check(collections.claim(groups[0]) == Village.Placement.OK and village.get_resource("c") == 21 and village.unit_collections_claimed() == [1], "the reward gives 1 cash and goes into unitCollectionsCompleted")
+	_check(collections.claim(groups[0]) == Village.Placement.NOT_ALLOWED and village.get_resource("c") == 21, "the player takes the reward once")
+	_check(village.save_to_file(path) == OK and UnitCollections.new(_config, Village.load_from_file(path, _config)).is_claimed(groups[0]), "the save keeps the reward")
 	return true
 
 

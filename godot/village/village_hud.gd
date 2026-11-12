@@ -13,6 +13,7 @@ extends CanvasLayer
 
 signal collections_requested
 signal stored_items_requested
+signal units_requested
 signal quests_requested
 signal survival_requested
 signal tournament_requested
@@ -145,10 +146,11 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	for entry: Array in [["questButton", "questText", "ICON_MENU_WORLD_QUEST", quests_requested], ["pvpButton", "#text", "", pvp_requested],
 			["tournamentButton", "tournamentText", "ICON_MENU_WORLD_TOURNEY", tournament_requested], ["survivalButton", "survivalText", "ICON_MENU_WORLD_SURVIVAL", survival_requested]]:
 		_menu_entry("bgBar/iconMenuWorld", entry)
-	# The Gift menu: the item store and the collections. The port has no news and no list of units.
-	for entry: Array in [["giftButton", "giftsText", "ICON_MENU_GIFT_GIFTS", stored_items_requested], ["colButton", "colText", "ICON_MENU_GIFT_COLLECTIONS", collections_requested]]:
+	# The Gift menu: the item store, the collections and the unit list. The port has no news.
+	for entry: Array in [["giftButton", "giftsText", "ICON_MENU_GIFT_GIFTS", stored_items_requested], ["colButton", "colText", "ICON_MENU_GIFT_COLLECTIONS", collections_requested],
+			["unitsButton", "unitsText", "ICON_MENU_GIFT_UNITS", units_requested]]:
 		_menu_entry("bgBar/iconMenuGift", entry)
-	for path: String in ["bgBar/iconMenuGift/newsButton", "bgBar/iconMenuGift/newsText", "bgBar/iconMenuGift/unitsButton", "bgBar/iconMenuGift/unitsText"]:
+	for path: String in ["bgBar/iconMenuGift/newsButton", "bgBar/iconMenuGift/newsText"]:
 		_gui.set_part_visible(path, false)
 	# The town selector of the client is in the menu of the games, without the darts.
 	_menu_entry("bgBar/iconMenuGames", ["herramientaSelectorMundo", "txtSelectorMundo", "", towns_requested])

@@ -26,7 +26,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 |---|---|
 | [Save migration](#save-migration) | Done |
 | [First purchase offer ("open me")](#first-purchase-offer-open-me) | Done |
-| [Unit list and unit collections](#unit-list-and-unit-collections) | Medium |
+| [Unit list and unit collections](#unit-list-and-unit-collections) | Done |
 | [News window](#news-window) | Medium |
 | [Spy screen art](#spy-screen-art) | Medium |
 | [Achievement publish](#achievement-publish) | Small |
@@ -57,7 +57,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge (the save migration and the first purchase offer are done).
+2. Group 2 without the Island Forge (the save migration, the first purchase offer and the unit list are done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -129,15 +129,22 @@ Compared with the original client in Ruffle on the same save: the icon at the sa
 
 ### Unit list and unit collections
 
-The Gift menu has a Units button (`PopupAllUnits`). It lists the unit collections: groups of units with a reward unit. The player buys each unit for cash (`buy_stored_item_cash`; the unit goes to the item store). When all units of a group are bought, a reward button shows. In 1.4.07 the reward button opens the reward window, adds the group to `unitCollectionsCompleted`, gives 1 cash and sends `unit_collections_completed`. Neither the client nor the server stores the reward unit; this is from the code only and was not seen in a run. `UnitCollectionsManager` counts the units from `boughtUnits` and shows an alert when a group is complete.
+Gift > Units opens the unit list (`PopupAllUnits`). The port now has it, with the rules of the client and the server:
 
-- Config: the mega patch replaces the 62 groups of `units_collections_categories` with 128 groups.
-- Server: both commands exist. `boughtUnits` is kept by `engine.py` `register_bought_unit`.
-- Port: `godot/village/village_hud.gd` hides the Units button. The port keeps `boughtUnits` as the server does (`village_map.gd`), but has no list, no cash buy of units and no completion.
+- The list shows the 128 unit collections of the mega patch (`units_collections_categories`), 4 on a page, in the order of `position`: the name, the units, and the number of units that the player has. The pictures of the other units are grey. The bar at the bottom shows all units that the player has against the total.
+- The count is the count of `UnitCollectionsManager`: when the town loads, the units of `boughtUnits` and the units of the player on the map; then each unit of the player that comes on the map. Five units are in two collections; the client counts them once for the player and twice in the total (504), and the port does the same.
+- The mouse over a unit shows its card with its values and the unit, which walks, attacks and makes its first special attack in turns, every 3 seconds.
+- A complete collection shows "Get reward". The reward adds the collection to `unitCollectionsCompleted` and gives 1 cash, as `unit_collections_completed` does; then the reward window replaces the list. The configuration names a reward unit, but neither the client nor the server gives it. The row then shows "COMPLETED!".
+- When a unit that comes on the map completes a collection without a reward taken, the alert of the client tells the player to go to Gift > Units.
+- Open Units Packs closes the list and opens the unit packs.
 
-Web: the SuperCheats guide on collections ([link](https://www.supercheats.com/guides/social-empires/collections)) is about the item collections, which the port has; its search text also mentions units bought with cash.
+The configuration has a cash price for each unit, and the client has the code that sells a unit (`buy_stored_item_cash`), but the client of 1.4.07 never calls it: in Ruffle a click on a unit did nothing. The port also does not sell the units.
 
-Work: a list window with the art of the client, the cash buy, the completion and the alert.
+Compared with the original client in Ruffle on the same save: the list (11 / 504, the same grey and coloured units, the counts and "Get reward"), the cards in the first and second row, page 2, the reward (cash 53 to 54, `unitCollectionsCompleted` [1]) and the reward window. Small differences: the card of a unit in the first row is 8 pixels lower in the port, and a few long names get a slightly different font size.
+
+The client has a bug in its test before the alert: it looks for the index of the collection in the list of taken rewards, not its id. So the alert does not show when a taken reward has the same number as that index. The port tests the id only.
+
+A fix on the way: in the port, the inner Flash button of the Gift button, the World button and Gifts in the Gift menu took the click, so these did not open with the mouse. A click on an inner button named "button" now also reaches its button sprite, as in Flash.
 
 ### News window
 

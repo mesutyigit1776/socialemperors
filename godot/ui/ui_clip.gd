@@ -167,6 +167,44 @@ func set_text(path: String, text: String) -> void:
 		label.text = text
 
 
+## The rectangle of a text field as Flash measures it, in the coordinates of
+## this clip. The Label of the port can be taller than the field.
+func field_rect(path: String) -> Rect2:
+	var label := part(path) as Label
+	if label == null:
+		return Rect2()
+	var field: Vector2 = label.get_meta("field_size")
+	return Rect2(label.position - Vector2(TEXT_GUTTER, TEXT_GUTTER), field + Vector2(TEXT_GUTTER, TEXT_GUTTER) * 2)
+
+
+## Sets the text and makes its font smaller, to min_size at most, until the
+## text fits the rectangle of the field, as the client's TextFieldUtil.setHTML
+## does for most fields.
+func fit_text(path: String, text: String, min_size := 8) -> void:
+	var label := part(path) as Label
+	if label == null:
+		return
+	label.text = text
+	if not label.has_meta("font_size"):
+		label.set_meta("font_size", label.get_theme_font_size("font_size"))
+	var field: Vector2 = label.get_meta("field_size")
+	var font := label.get_theme_font("font")
+	var size: int = label.get_meta("font_size")
+	# Flash makes the font smaller while the text is wider than a field
+	# without wrap, or has more lines than a field with wrap shows.
+	while size > min_size:
+		if label.autowrap_mode == TextServer.AUTOWRAP_OFF:
+			if font.get_string_size(text, label.horizontal_alignment, -1.0, size).x <= field.x:
+				break
+		else:
+			var line_height := font.get_height(size)
+			var lines := roundi(font.get_multiline_string_size(text, label.horizontal_alignment, field.x, size).y / line_height)
+			if lines <= maxi(floori(field.y / line_height), 1):
+				break
+		size -= 1
+	label.add_theme_font_size_override("font_size", size)
+
+
 func set_part_visible(path: String, shown: bool) -> void:
 	var node := part(path)
 	if node != null:
@@ -178,10 +216,11 @@ func set_part_visible(path: String, shown: bool) -> void:
 ## as the buttons of the client do.
 func make_button(hover_frame := false) -> void:
 	_button = true
-	# A sprite of the client that is a button often has an unnamed Flash
-	# button as its image, which takes the clicks.
+	# A sprite of the client that is a button often has a Flash button as its
+	# image, unnamed or named "button", which takes the clicks. In Flash the
+	# click also reaches the sprite.
 	for key: String in _parts:
-		if key.begins_with("#") and _parts[key] is UiButton:
+		if (key.begins_with("#") or key == "button") and _parts[key] is UiButton:
 			_parts[key].pressed.connect(func() -> void: pressed.emit())
 	_hover_frame = hover_frame and frame_count() > 1
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -233,7 +272,9 @@ func _make_part(part: Dictionary) -> Control:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var rect: Array = settings["rect"]
 	label.set_meta("offset", Vector2(rect[0] + TEXT_GUTTER, rect[1] + TEXT_GUTTER))
-	label.size = Vector2(rect[2] - 2 * TEXT_GUTTER, rect[3] - 2 * TEXT_GUTTER)
+	# Godot can make the Label taller than the field (its minimum size), so the size of the field is kept apart.
+	label.set_meta("field_size", Vector2(rect[2] - 2 * TEXT_GUTTER, rect[3] - 2 * TEXT_GUTTER))
+	label.size = label.get_meta("field_size")
 	var text := str(settings["text"])
 	var size := float(settings["size"])
 	var color := Color.html(settings["color"])

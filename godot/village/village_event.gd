@@ -43,4 +43,5 @@ enum Kind {
 	FRIEND_ASSISTED,  ## The player helped a building of a neighbour.
 	ASSAULT_STARTED,  ## level: the player attacked another player of this level.
 	ASSAULT_WON,  ## amount: the attacks that the player won until now.
+	UNIT_ARRIVED,  ## unit: a unit of the player came on the map (bought, placed from the store, trained, out of a building or from a special building). The goals do not count it; the unit list does.
 }

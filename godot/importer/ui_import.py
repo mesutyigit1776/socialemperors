@@ -107,6 +107,13 @@ SYMBOLS = [
 	# The window of the first purchase offer and the card of a unit in it.
 	"PopupFirstBuyMC",
 	"InfoButtonStore6bMC",
+	# The unit list of the Gift menu: the window, a place of a unit, the cards
+	# of a unit that the player has and has not, and the window of the reward.
+	"PopupAllUnitsMC",
+	"UnitListMC",
+	"InfoButtonUnitCollectionMC",
+	"InfoButtonUnitCollectionBuyMC",
+	"PopupNextIslandAttackMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows

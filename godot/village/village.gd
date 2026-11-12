@@ -15,9 +15,10 @@ extends VillageSocial
 ##
 ## This layer: the special buildings (nests, Rider Academy, Dragon Riding,
 ## graveyards, Soul Mixer, Time Machine, Weather Machine, Supreme Dragon
-## Temple), the free buildings of the client, the collections,
-## the item store and unit packs, the save changes of the campaign quests and
-## the spells, the goals in the save and the tutorial step.
+## Temple), the free buildings of the client, the collections, the rewards
+## of the unit collections, the item store and unit packs, the save changes of
+## the campaign quests and the spells, the goals in the save and the tutorial
+## step.
 
 ## Collections give decorations even when the player has one; see _reward_allowed().
 const SUBCAT_DECORATION := 411
@@ -120,6 +121,9 @@ const SUBCAT_TOWN_HALL := 135
 ## Buying 2 or more packs, and 8 or more, gives the discounts of PACK_DISCOUNTS.
 const PACK_SLOTS := 8
 const PACK_DISCOUNTS: Array[Array] = [[8, 0.85], [2, 0.9]]
+## The reward of a complete unit collection. The configuration names a reward
+## unit too, but neither the client nor the server gives it.
+const UNIT_COLLECTION_CASH := 1
 
 # The result that the Soul Mixer will make, see soul_mix_result(): Village.PlacedItem ->
 # {"inside": unit ids, "unit": result id, "level": power-ups, "excluded": unit ids}.
@@ -1784,6 +1788,40 @@ func buy_first_offer(now: int) -> Placement:
 			_add_stored(unit_id)
 			_register_unit(unit_id)
 	_set_private(["firstPurchaseTimestamp"], [1])
+	return Placement.OK
+
+
+## The units that the server lists as bought ("boughtUnits"), see _register_unit().
+func bought_units() -> Array[int]:
+	var bought: Array[int] = []
+	var listed: Variant = _document["privateState"].get("boughtUnits")
+	for id: Variant in listed if listed is Array else []:
+		if GameConfig.to_int(id) != null:
+			bought.append(GameConfig.to_int(id))
+	return bought
+
+
+## The unit collections whose reward the player took ("unitCollectionsCompleted").
+func unit_collections_claimed() -> Array[int]:
+	var claimed: Array[int] = []
+	var listed: Variant = _document["privateState"].get("unitCollectionsCompleted")
+	for id: Variant in listed if listed is Array else []:
+		if GameConfig.to_int(id) != null:
+			claimed.append(GameConfig.to_int(id))
+	return claimed
+
+
+## Takes the reward of a unit collection, as "unit_collections_completed"
+## does: the collection goes into "unitCollectionsCompleted" and the player
+## gets UNIT_COLLECTION_CASH. UnitCollections.claim() checks that the
+## collection is complete. NOT_ALLOWED when the player took the reward before.
+func claim_unit_collection(collection_id: int) -> Placement:
+	if collection_id in unit_collections_claimed():
+		return Placement.NOT_ALLOWED
+	if not _document["privateState"].get("unitCollectionsCompleted") is Array:
+		_document["privateState"]["unitCollectionsCompleted"] = []
+	_document["privateState"]["unitCollectionsCompleted"].append(collection_id)
+	_add_resource("c", UNIT_COLLECTION_CASH)
 	return Placement.OK
 
 

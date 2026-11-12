@@ -3,17 +3,13 @@ extends Control
 ## The window of the first purchase offer (PopupFirstBuy of the client): three
 ## eggs with the units of GameConfig.first_offer, the time that is left, and
 ## HATCH!, which buys the offer. The mouse over an egg shows the card of its
-## unit (InfoButtonOver of the client) with the unit walking. The window
+## unit (InfoButtonOver of the client, see UnitCard) with the unit walking. The window
 ## closes when the time ends.
 
 signal buy_requested
 signal closed
 
 const EGGS := 3
-## The card of the client fits the walking unit in a box of THUMB_SIZE and
-## only makes it smaller.
-const THUMB_SIZE := Vector2(120, 120)
-const THUMB_MARGIN := 8.0
 
 var _window: UiClip
 var _village: Village
@@ -45,7 +41,10 @@ func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, village: V
 		var item := config.get_item(units[index]) if index < units.size() else null
 		if item == null:
 			continue
-		var card := _make_card(ui, sprites, item)
+		var card := ui.make("InfoButtonStore6bMC")
+		card.set_text("label", item.name)
+		card.set_text("txNombre", "")
+		UnitCard.fill(card, item, sprites)
 		card.visible = false
 		egg.clip("thumbAnchor").add_child(card)
 		egg.make_button(true)
@@ -67,38 +66,6 @@ func _refresh_timer() -> void:
 	_window.set_text("txtTimer", SurvivalWindow.time_text(left))
 	if left == 0 and is_inside_tree():
 		_close()
-
-
-## The card of the client for a unit (InfoButtonStore6bMC): the name, the
-## life, attack, attack interval, speed, range and population, and the unit
-## walking down and to the right.
-func _make_card(ui: UiLibrary, sprites: SpriteLibrary, item: GameConfig.ItemDef) -> UiClip:
-	var card := ui.make("InfoButtonStore6bMC")
-	card.set_part_visible("descEspecial", false)
-	card.set_text("label", item.name)
-	card.set_text("txNombre", "")
-	for pair: Array in [["mcVida/txVida", item.life], ["mcAttack/txAttack", item.attack], ["mcDefense/txDefense", item.attack_interval],
-			["mcSpeed/txSpeed", item.velocity], ["mcRange/txRange", item.attack_range], ["mcPop/txPop", item.population]]:
-		card.set_text(pair[0], str(pair[1]))
-	var sprite := sprites.get_sprite(item.img_name)
-	if sprite == null:
-		return card
-	var frame := UnitSprite.frame_of(UnitSprite.Action.WALKING, 4)
-	var box := Control.new()
-	box.clip_contents = true
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.position = card.part("thumb").position - Vector2(THUMB_MARGIN, THUMB_MARGIN)
-	box.size = THUMB_SIZE + Vector2(THUMB_MARGIN, THUMB_MARGIN) * 2
-	card.add_child(box)
-	var unit := UnitSprite.new(sprite)
-	unit.show_action(UnitSprite.Action.WALKING, 4)
-	var size: Vector2 = sprite.frame_sizes[frame] if frame < sprite.frame_sizes.size() else THUMB_SIZE
-	var origin: Vector2 = sprite.frame_origins[frame] if frame < sprite.frame_origins.size() else Vector2.ZERO
-	var ratio := maxf(maxf(size.x / THUMB_SIZE.x, size.y / THUMB_SIZE.y), 1.0)
-	unit.scale = Vector2.ONE / ratio
-	unit.position = Vector2(THUMB_MARGIN, THUMB_MARGIN) + (THUMB_SIZE - size / ratio) / 2 - origin / ratio
-	box.add_child(unit)
-	return card
 
 
 func _close() -> void:

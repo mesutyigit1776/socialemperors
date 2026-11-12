@@ -136,6 +136,11 @@ var daily_bonus: Array[Dictionary] = []
 ## {resource code or "exp": amount}, "units": [3 unit ids]}. Empty when the
 ## viral icon "FirstOfferButton" is off or the globals have no offer.
 var first_offer: Dictionary = {}
+## The unit collections of the unit list ("units_collections_categories"), in
+## the order of "position": {"id", "name", "units": Array[int], "reward"}.
+## "name" is the text of "category_lang_id". The configuration also has a cash
+## price for each unit, but the client of 1.4.07 does not sell them.
+var unit_collections: Array[Dictionary] = []
 ## The Unit Warehouse holds this number of units at first. The player can buy
 ## one more place for warehouse_slot_price cash, up to warehouse_max_capacity.
 var warehouse_start_capacity: int
@@ -343,9 +348,12 @@ static func load_from_file(path: String) -> GameConfig:
 	if not _parse_goals(config, data.get("goals")):
 		push_error("Game configuration '%s' has no correct goal list (goals)." % path)
 		return null
+	var texts_by_id := {}
 	for entry: Variant in data.get("localization_strings", []):
 		if entry is Dictionary and entry.get("name") is String:
 			config._texts[entry["name"]] = str(entry.get("text", ""))
+			texts_by_id[to_int(entry.get("id"))] = str(entry.get("text", ""))
+	config.unit_collections = _parse_unit_collections(data.get("units_collections_categories"), texts_by_id)
 	var categories: Variant = data.get("categories", {})
 	if categories is Dictionary:
 		for entry: Variant in categories.values():
@@ -770,6 +778,24 @@ static func _parse_first_offer(icons: Variant, globals: Dictionary) -> Dictionar
 		elif to_int(reward[key]) != null:
 			offer["reward"][key] = to_int(reward[key])
 	return offer
+
+
+## Leaves out the groups with values that are not correct.
+static func _parse_unit_collections(groups: Variant, texts_by_id: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var config_groups: Array = groups.values() if groups is Dictionary else groups if groups is Array else []
+	for group: Variant in config_groups:
+		if not group is Dictionary or not group.get("units") is Array:
+			continue
+		var numbers := [to_int(group.get("category_id")), to_int(group.get("rewards")), to_int(group.get("position")), to_int(group.get("category_lang_id"))]
+		var units: Array[int] = []
+		for id: Variant in group["units"]:
+			units.append(to_int(id) if to_int(id) != null else -1)
+		if null in numbers or -1 in units or units.is_empty():
+			continue
+		result.append({"id": numbers[0], "reward": numbers[1], "position": numbers[2], "name": texts_by_id.get(numbers[3], ""), "units": units})
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["position"] < b["position"])
+	return result
 
 
 static func to_int(value: Variant) -> Variant:

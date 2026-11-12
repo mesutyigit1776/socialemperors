@@ -59,6 +59,7 @@ var _enemies: VillageEnemies  # The idle enemies and the attacks of the village,
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
 var _town_quests: TownQuests  # The quest in the town, see TownQuestBook.
 var _daily_bonus: Dictionary = {}  # Village.start_daily_bonus() until the window shows.
+var _unit_collections: UnitCollections  # The count of the unit list, from the load of the town.
 var _known_level := 0  # The level for which the attacks of a new level came, see _save().
 var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## The client loads the map again after a use of the Time Machine or the
@@ -155,6 +156,7 @@ func _ready() -> void:
 		_goals = GoalBook.new(_village, _config, _goal_steps)
 		_tutorial = Tutorial.new(_village, _config)
 		_village.happened.connect(_on_village_event)
+		_unit_collections = UnitCollections.new(_config, _village)
 		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
@@ -206,6 +208,7 @@ func _ready() -> void:
 		_hud.pvp_requested.connect(_open_pvp)
 		_hud.towns_requested.connect(_open_towns)
 		_hud.first_offer_requested.connect(_open_first_offer)
+		_hud.units_requested.connect(_open_unit_list)
 		add_child(_hud)
 		_hud.show_goal_host(_view.effects.get_sprite(GoalBox.HOST_SYMBOL))
 		_hud.set_shield_graphics(_view.effects.get_sprite(SHIELD_ENABLED), _view.effects.get_sprite(SHIELD_DISABLED))
@@ -1136,6 +1139,20 @@ func _open_first_offer() -> void:
 	_windows.add_child(window)
 
 
+func _open_unit_list() -> void:
+	var window := UnitListWindow.new(_ui, _config, _sprites, _unit_collections)
+	window.packs_requested.connect(func() -> void: _show_panel(SpecialActions.View.PACKS))
+	window.reward_requested.connect(func(collection: Dictionary) -> void:
+		if _unit_collections.claim(collection) != Village.Placement.OK:
+			return
+		_save()
+		_hud.refresh(_village)
+		# The window of the reward replaces the unit list, as in the client.
+		window.queue_free()
+		_windows.add_child(UnitCollectionRewardWindow.new(_ui, _config, Village.UNIT_COLLECTION_CASH)))
+	_windows.add_child(window)
+
+
 ## The client opens the window of the login bonus when it loads the game, or
 ## after the tutorial at the next start of the map (DailyBonusManager).
 func _show_daily_bonus() -> void:
@@ -1270,6 +1287,9 @@ func _record(kind: VillageEvent.Kind, data: Dictionary) -> void:
 
 ## The events of the village that the tutorial waits for.
 func _on_village_event(kind: VillageEvent.Kind, data: Dictionary) -> void:
+	# The client tells the player to take the reward when a new unit completes a unit collection (UnitCollectionsManager).
+	if kind == VillageEvent.Kind.UNIT_ARRIVED and _unit_collections.add_unit(data["unit"]):
+		_alert(_config.text("ALERT_UNIT_COLLECTION_COMPLETED"))
 	if not _tutorial.is_active():
 		return
 	var item := _config.get_item(int(data.get("item", data.get("unit", 0))))

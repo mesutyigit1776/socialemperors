@@ -240,7 +240,9 @@ func buy(item: GameConfig.ItemDef, tile: Vector2i, timestamp: int, frame: int = 
 	_add_xp(item.xp)
 	_register_unit(item.id)
 	var placed := _add_entry(item, tile, frame, timestamp, _new_item_attributes(item))
-	if not item.is_unit():
+	if item.is_unit():
+		happened.emit(VillageEvent.Kind.UNIT_ARRIVED, {"unit": item.id})
+	else:
 		happened.emit(VillageEvent.Kind.BUILT, {"item": item.id})
 	_report_workers(placed)
 	return Placement.OK

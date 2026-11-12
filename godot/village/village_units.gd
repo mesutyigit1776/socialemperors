@@ -1153,6 +1153,7 @@ func _add_player_unit(unit: GameConfig.ItemDef, tile: Vector2i, frame: int, now:
 	var placed := _add_entry(unit, tile, frame, now, {})
 	if _is_animal(placed):
 		_captured[placed] = true
+	happened.emit(VillageEvent.Kind.UNIT_ARRIVED, {"unit": unit.id})
 	return placed
 
 
