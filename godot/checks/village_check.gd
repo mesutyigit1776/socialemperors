@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs, _check_island_forge]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs, _check_island_forge, _check_new_empire]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -2077,6 +2077,33 @@ func _expect(label: String, village: Village, values: Dictionary) -> void:
 	for key: String in values:
 		var actual := village.get_level() if key == "level" else village.get_xp() if key == "xp" else village.get_resource(key)
 		_check(actual == values[key], "%s: %s is %d, expected %d" % [label, key, actual, values[key]])
+
+
+## A new empire, as the server's new_village() makes it, and the name rule
+## of its check_player_name().
+func _check_new_empire() -> bool:
+	var names := {"Abc": true, "Abc 12": true, "  Abc": true, "ab": false, " ab ": false, "a_b c": false, "Sixteen chars ok": true, "Seventeen chars x": false}
+	for player_name: String in names:
+		_check(Village.valid_player_name(player_name) == names[player_name], "the name '%s' is %s" % [player_name, "valid" if names[player_name] else "not valid"])
+	var save_dir := "user://checks/empires"
+	DirAccess.make_dir_recursive_absolute(save_dir)
+	for file in DirAccess.get_files_at(save_dir):
+		DirAccess.remove_absolute(save_dir.path_join(file))
+	var initial := _data_dir.path_join("villages/initial.json")
+	_check(Village.new_empire(initial, save_dir, "ab", _config, NOW).is_empty(), "a new empire needs a valid name")
+	var path := Village.new_empire(initial, save_dir, " New Emperor ", _config, NOW)
+	var other := Village.new_empire(initial, save_dir, "Second", _config, NOW)
+	_check(not path.is_empty() and not other.is_empty() and path != other, "each new empire gets its own file")
+	var document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var info: Dictionary = document["playerInfo"]
+	var pid := str(info["pid"])
+	_check(RegEx.create_from_string("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").search(pid) != null, "the player id is a random UUID: %s" % pid)
+	_check(path.get_file() == pid + ".save.json", "the file has the name of the server's saves")
+	_check(info["name"] == "New Emperor" and info["pic"] == "" and int(document["maps"][0]["timestamp"]) == NOW, "the new empire has the name, no picture and the time of its start")
+	_check(not document.has("version") and int(document["privateState"]["monsterNestActive"]) == 1, "the new empire gets the migration of a very old save, as on the server")
+	var village := Village.load_from_file(path, _config)
+	_check(village != null and village.items.size() == _initial["maps"][0]["items"].size() and village.get_level() == 1, "the new empire loads with the items of the starting village")
+	return true
 
 
 ## Every key in the document, in the order of the text.

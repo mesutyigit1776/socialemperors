@@ -145,6 +145,57 @@ static func load_from_file(path: String, config: GameConfig, map_index: int = 0)
 	return village if village._read(data, path, config, map_index) else null
 
 
+## Makes a new empire as the server's new_village() does: a copy of the
+## starting village initial_path with a new player id, the name, no picture,
+## and now as the time of the first map. The server marks the copy with the
+## key "version", so its migration repairs it as a very old save; the port
+## does the same. Writes the save to save_dir/<player id>.save.json, the file
+## name of the server, and returns its path, or "" after an error.
+static func new_empire(initial_path: String, save_dir: String, player_name: String, config: GameConfig, now: int) -> String:
+	if not valid_player_name(player_name):
+		push_error("The player name '%s' is not valid." % player_name)
+		return ""
+	var data := VillageMap.read_save(initial_path)
+	if data.is_empty():
+		return ""
+	var pid := _new_player_id()
+	var path := save_dir.path_join("%s.save.json" % pid)
+	data["version"] = "migrateme"
+	data["playerInfo"]["pid"] = pid
+	data["playerInfo"]["pic"] = ""
+	data["playerInfo"]["name"] = player_name.strip_edges()
+	data["maps"][0]["timestamp"] = now
+	SaveMigration.migrate(data, config, HEROES, now)
+	var village := Village.new()
+	if not village._read(data, path, config, 0):
+		return ""
+	var error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(save_dir))
+	if error == OK:
+		error = village.save_to_file(path)
+	if error != OK:
+		push_error("Cannot write the new empire to %s: %s" % [path, error_string(error)])
+		return ""
+	return path
+
+
+## The rule of the server's check_player_name(): 3 to 16 characters, and after
+## the spaces at the ends are removed, at least 3 letters, digits and spaces.
+static func valid_player_name(player_name: String) -> bool:
+	var trimmed := player_name.strip_edges()
+	if player_name.length() < 3 or player_name.length() > 16 or trimmed.length() < 3:
+		return false
+	return RegEx.create_from_string("^[A-Za-z0-9 ]+$").search(trimmed) != null
+
+
+## A random UUID (version 4), as the server uses for player ids.
+static func _new_player_id() -> String:
+	var bytes := Crypto.new().generate_random_bytes(16)
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	var hex := bytes.hex_encode()
+	return "%s-%s-%s-%s-%s" % [hex.substr(0, 8), hex.substr(8, 4), hex.substr(12, 4), hex.substr(16, 4), hex.substr(20)]
+
+
 ## The number of items of the collection that the player has; index is 1 to
 ## Collections.ITEMS_PER_COLLECTION.
 func collected(collection: int, index: int) -> int:

@@ -51,7 +51,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 
 | Item | Work |
 |---|---|
-| [Player save and start screen](#player-save-and-start-screen) | Small to medium |
+| [Player save and start screen](#player-save-and-start-screen) | Done |
 | [Import of the game files](#import-of-the-game-files) | Depends on the launcher |
 | [Builds](#builds) | Step 6.2 |
 
@@ -59,7 +59,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 
 1. Group 1 (done).
 2. Group 2 (done).
-3. The player save and the start screen.
+3. The player save and the start screen (done).
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
 
@@ -320,9 +320,11 @@ Work: import these symbols and show them like the spy screen. Also check the pla
 
 ### Player save and start screen
 
-By default the port opens `<data>/villages/initial.json` (`godot/main.gd`) and writes each change to the file that it opened. So the first game overwrites the starting village of the import, and the port has only one save. There is no screen to start a new empire or to continue.
+Done. Without `--village`, the port opens a start screen (`godot/start/start_screen.gd`) in place of the login page of the server. It lists the saves in `user://saves` with the name, level and experience of the town in `default_map`, the last changed save first, as `templates/login.html` does. Play opens a save. The name field makes a new empire with `Village.new_empire()`, the rule of the server's `new_village()`: a copy of `villages/initial.json` with a random UUID as the player id, the name without the spaces at the ends, no picture, and the time of the first map; the key `version` makes the save migration repair it as a very old save, as on the server. The name rule is the rule of `check_player_name()`. The server also lets the player choose a picture; the port does not, so the picture stays empty, as on the server when the player chooses none. The chosen save stays open when the scene starts again (the Time Machine, the Weather Machine, travel to the other town). `--village <file>` opens a file as before.
 
-Work: keep the player's save in `user://`, make it from the starting village at the first start, and add a start screen (new empire or continue). The format stays the format of the server, so that the server and the original client can load the save.
+The saves keep the format and the file names of the server. `village_check.gd` has 16 checks for the name rule and the new empire (`_check_new_empire`). A new empire of the port and one of the server's `new_village()` from the same `initial.json` differ only in the keys that the server's migration adds with default values (the port reads the same defaults when the keys are missing), in `dartsGotExtra`, `dartsHasFree` and `potionsReceived`, which the server's migration changes, and in the troll town, which the server adds to each save when it loads it.
+
+Tested: the server lists a save of the port on its login page, and the original client in Ruffle loads it. A new empire file of the port, before the port opened it, gave the same commands in the client as a new empire of the server (only the spawn of trees, stones and animals). A save after its first load in the port made the client harvest 122 trees at load (`collect_new` and `sell` with `HARV`), which gave the experience for level 4, and buy new gold and stone groups. A save of the server opened a second time in the client gave no harvest. So the cause is in what the port writes when it loads a map (`_init_map()`: the border clean and the spawn of resources and animals), not in the new empire; it applies to every save that the port opens. The cause is not found yet.
 
 ### Import of the game files
 

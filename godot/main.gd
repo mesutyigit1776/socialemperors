@@ -4,7 +4,8 @@ extends Node2D
 ## Command line options (after "--"):
 ##   --data <dir>          folder that importer/import_assets.py wrote
 ##                         (default: the SE_DATA_DIR environment variable, then user://imported)
-##   --village <file>      village save (default: <data>/villages/initial.json)
+##   --village <file>      village save; without it the start screen shows
+##                         the saves in SAVES_DIR and makes new empires
 ##   --screenshot <png>    save the first frames as an image and quit; used for checks
 ##   --battle <file>       try a battle on the map of a save, for example a quest
 ##                         map, with the units of the village; see BattleScreen
@@ -27,6 +28,7 @@ const SPELL_LAYER := 5
 const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
 const TOURNAMENT_LEVEL := 15  ## MIN_LEVEL_TOURNAMENT of the client.
 const NEWS_LEVEL := 5  ## The client opens the news among the windows of the start from this level.
+const SAVES_DIR := "user://saves"  ## The saves of the player, see StartScreen.
 
 var _options: Dictionary = {}
 var _config: GameConfig
@@ -70,6 +72,9 @@ var _frames := FrameCache.new()  # The drawn frames of the map and the windows.
 ## first start. The message of the change shows after the new start.
 static var _reload_message := ""
 static var _reloaded := false
+## The save that the player chose on the start screen; the scene then starts
+## again with it.
+static var _chosen_save := ""
 ## The counts of the goals in this session, which stay when the scene starts again; see GoalBook.
 static var _goal_steps := {}
 ## The town of the save that the scene shows; the World window changes it (_travel()).
@@ -126,12 +131,17 @@ func _ready() -> void:
 	_data_dir = data_dir
 	SoundPlayer.load_from(data_dir)
 	add_child(_frames)
-	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
+	_village_path = _options.get("village", _chosen_save)
 	if _options.has("town"):
 		_town = int(_options["town"])
 	_host = Host.from_settings(_options.get("host", ""))
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
+	if _village_path.is_empty() and _config != null and _show_start_screen():
+		if _options.has("screenshot"):
+			await _save_screenshot(_options["screenshot"])
+			get_tree().quit()
+		return
 	_store = Store.load_from_file(data_dir.path_join("shop.json"), _config) if _config != null else null
 	_village = Village.load_from_file(_village_path, _config, _town) if _store != null else null
 	if _village != null:
@@ -294,6 +304,33 @@ func _ready() -> void:
 	if _options.has("screenshot"):
 		await _save_screenshot(_options["screenshot"])
 		get_tree().quit()
+
+
+## Shows the start screen. Returns false when the import has no starting
+## village or no windows; the scene then reports the missing import.
+func _show_start_screen() -> bool:
+	var initial := _data_dir.path_join("villages/initial.json")
+	_ui = UiLibrary.load_from(_data_dir, _frames)
+	if _ui == null or not FileAccess.file_exists(initial):
+		return false
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var screen := StartScreen.new(_ui, SAVES_DIR)
+	screen.save_chosen.connect(_start_with_save)
+	screen.empire_requested.connect(func(player_name: String) -> void:
+		var path := Village.new_empire(initial, SAVES_DIR, player_name, _config, _now())
+		if path.is_empty():
+			screen.show_error("Cannot make the new empire in %s." % ProjectSettings.globalize_path(SAVES_DIR))
+		else:
+			_start_with_save(path))
+	layer.add_child(screen)
+	return true
+
+
+func _start_with_save(path: String) -> void:
+	_chosen_save = path
+	_town = 0
+	get_tree().reload_current_scene.call_deferred()
 
 
 func _start_battle(map_path: String, effects: SpriteLibrary) -> void:

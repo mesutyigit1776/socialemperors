@@ -131,7 +131,9 @@ godot --path godot -- --data <data folder>
 
 Import the files again after an update of the port when it reports that a file in the data folder is missing; with the same `--out` folder, the tool skips the graphics that are still up to date. The port reads the data folder from `--data`, then from the `SE_DATA_DIR` environment variable, then from `user://imported`. Use `--village <file>` to open a different save, `--town 1` to start in its troll town, `--host female` or `--host male` to choose the host for one run, and `--screenshot <file.png>` to save an image and quit.
 
-The port writes each change to the village file that it opened. By default this is `<data>/villages/initial.json`, the starting village of the import, so the first game changes it. To play a server save, give its path, for example `--village saves/<USERID>.save.json`. Do not run the server with the same save at the same time.
+Without `--village`, the port opens a start screen. It lists the saves in `user://saves`, each with a Play button, and has a name field to start a new empire. As on the server, the name has 3 to 16 letters, numbers and spaces, and the new empire is a copy of `<data>/villages/initial.json` with a new player id. The saves have the format and the file names of the server (`<USERID>.save.json`), and the previous version of each save goes to `<USERID>.save.json.bak`. So you can copy a save between `user://saves` and the `saves/` folder of the server. On Linux, `user://` is `~/.local/share/godot/app_userdata/Social Empires/`.
+
+With `--village <file>`, the port opens that file and writes each change to it, for example `--village saves/<USERID>.save.json` for a save of the server. Do not run the server with the same save at the same time.
 
 ## Check the rules
 
