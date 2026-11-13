@@ -141,7 +141,7 @@ const NURSERY_PAIR := 2
 ## The altar sacrifices a unit for 1/SELL_DIVISOR of its cost.
 const SACRIFICE_ALTAR := 225
 ## Refuges and the fortress keep units. Units in the fortress shoot in battles,
-## which the port does not have yet.
+## see FortressAbility.
 const SUBCAT_REFUGE := 1311
 const FORTRESS := 469
 ## The unit warehouse keeps units outside the map and outside the population.

@@ -20,6 +20,7 @@ const MILL := 300  # 2x2, produces: a target
 const TOWN_HALL := 26  # 4x4, no attack
 const WAR_TROLL := 529  # population 4, life 200
 const STONE_GOLEM := 538  # boss, life 6500
+const FORTRESS := 469  # 6x6, range 11, every 35 frames, 6 units
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 
@@ -41,7 +42,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon, _check_village_attacks]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_fortress, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon, _check_village_attacks]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -404,6 +405,48 @@ func _check_tower() -> bool:
 	sim.receive_attack(tower, 10, near)
 	_check(tower.dead and deaths == [tower] and not tower in sim.fighters, "a destroyed enemy tower leaves the map")
 	_check(sim._is_walkable(Vector2i(50, 50)), "units can walk where the tower was")
+	return true
+
+
+## Each unit in the Fortress fires an arrow of 1 point with each cannonball, at
+## one of the nearest enemies, and keeps its target within half the range.
+func _check_fortress() -> bool:
+	var sim := _sim(9)
+	var fortress := sim.add_item(_config.get_item(FORTRESS), Vector2i(50, 50), ENEMY)
+	var units: Array[BattleFighter] = []
+	for tile: Vector2i in [Vector2i(47, 52), Vector2i(47, 55), Vector2i(47, 58)]:
+		var unit := sim.add_item(_config.get_item(SPEARMAN), tile, PLAYER)
+		unit.ai.condition = BattleAI.Condition.PASSIVE
+		unit.health = 100000
+		units.append(unit)
+	var shots: Array[BattleProjectile] = []
+	sim.shot_fired.connect(func(shot: BattleProjectile) -> void: shots.append(shot))
+	sim.step()
+	_check(shots.size() == 1 and shots[0].graphic_name == "p.cannonBall", "an empty Fortress fires only a cannonball")
+
+	sim = _sim(9)
+	fortress = sim.add_item(_config.get_item(FORTRESS), Vector2i(50, 50), ENEMY)
+	fortress.units_inside = 2
+	units.clear()
+	for tile: Vector2i in [Vector2i(47, 52), Vector2i(47, 55), Vector2i(47, 58)]:
+		var unit := sim.add_item(_config.get_item(SPEARMAN), tile, PLAYER)
+		unit.ai.condition = BattleAI.Condition.PASSIVE
+		unit.health = 100000
+		units.append(unit)
+	shots.clear()
+	sim.shot_fired.connect(func(shot: BattleProjectile) -> void: shots.append(shot))
+	sim.step()
+	var arrows := shots.filter(func(shot: BattleProjectile) -> bool: return shot.graphic_name == "p.arrow")
+	_check(shots.size() == 3 and arrows.size() == 2, "a Fortress with 2 units fires a cannonball and 2 arrows")
+	_check(arrows.all(func(shot: BattleProjectile) -> bool: return shot.damage == 1), "an arrow has 1 point")
+	_check(arrows.map(func(shot: BattleProjectile) -> BattleFighter: return shot.target) == [units[0], units[1]], "the arrows go to the 2 nearest enemies")
+	var nearer := sim.add_item(_config.get_item(SPEARMAN), Vector2i(48, 52), PLAYER)
+	nearer.ai.condition = BattleAI.Condition.PASSIVE
+	shots.clear()
+	for i in 35:
+		sim.step()
+	arrows = shots.filter(func(shot: BattleProjectile) -> bool: return shot.graphic_name == "p.arrow")
+	_check(arrows.map(func(shot: BattleProjectile) -> BattleFighter: return shot.target) == [units[0], units[1]], "the units keep their targets within half the range")
 	return true
 
 

@@ -27,6 +27,8 @@ var speed: int  ## Pixels per frame.
 var flying: bool
 ## The client gives each item a random delay of 0 to 4 frames for its attacks.
 var attack_delay: int
+## The units in the building in the save. The units in the Fortress shoot, see FortressAbility.
+var units_inside := 0
 var ability: BattleAbility
 var target: BattleFighter
 var targeted_by: Array[BattleFighter] = []

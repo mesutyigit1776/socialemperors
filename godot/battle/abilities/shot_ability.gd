@@ -24,10 +24,6 @@ const UNITS := {
 	# stream of fire arrows without damage while the castle keeps its target;
 	# the port does not draw it.
 	198: {"shot": "p.fireArrow"},
-	# Fortress (FortressDelegate): a cannonball. In the client each unit in the
-	# fortress also shoots an arrow of 1 point at its own target; the port
-	# has no units in buildings, so it does not.
-	469: {"shot": "p.cannonBall"},
 	873: {"melee": true},  # Dragon Hunter II (DragonHunter2Delegate)
 	# Chameleon (ChamaleonDelegate): a golden ball. Its button gives it the
 	# attack of its target for 30 seconds, see special_units/heroes.gd.

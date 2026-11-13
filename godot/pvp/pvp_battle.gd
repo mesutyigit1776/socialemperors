@@ -209,6 +209,7 @@ func _place_map(map: Village) -> void:
 			continue
 		var neutral := def.race == "n" or def.subcat_functional == SUBCAT_DECORATION
 		var item := _add(def, placed.tile, BattleFighter.Team.NEUTRAL if neutral else BattleFighter.Team.ENEMY, placed.frame)
+		item.units_inside = map.units_in(placed).size()
 		if neutral or def.is_unit():
 			continue
 		if def.subcat_functional == SUBCAT_TOWN_HALL:

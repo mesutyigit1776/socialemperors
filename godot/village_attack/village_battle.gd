@@ -62,6 +62,7 @@ func _init(village: Village, attacks: Array[VillageAttacks.Group], config: GameC
 			var fighter := _add(def, placed.tile, _team_of(placed, def), placed.frame)
 			# A building that burned down stays with a little life, see apply().
 			fighter.health = maxi(village.health(placed), 1)
+			fighter.units_inside = village.units_in(placed).size()
 			_placed[fighter] = placed
 	for group in groups:
 		_add_group(group)

@@ -31,7 +31,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [Spy screen art](#spy-screen-art) | Done |
 | [Achievement publish](#achievement-publish) | Done |
 | [Female host](#female-host) | Done |
-| [Units in buildings in battles](#units-in-buildings-in-battles) | Medium |
+| [Units in buildings in battles](#units-in-buildings-in-battles) | Done |
 | [Island Forge](#island-forge-collect-game) | Large; needs a decision |
 
 Do the save migration before the unit list, because the unit list reads `boughtUnits`.
@@ -217,9 +217,16 @@ Differences that are left:
 
 ### Units in buildings in battles
 
-In the client, refuges protect their units in battles, and each unit in a Fortress shoots an arrow of 1 point at its own target. The port has no units in buildings in battles: the units stay in the building, and the Fortress shoots only its cannonballs (`godot/battle/abilities/shot_ability.gd`).
+The client takes a unit off the map when it goes into a building, and puts it back on a free tile when it comes out. A unit in a building is therefore not in a fight: no unit can attack it, and it does not attack. The client has no other rule for refuges in battles. In a PvP attack the refuges are buildings of the enemy like the others, because their race is "a". The port already did the same: the units in a building are in the save entry of the building, not on the map.
 
-Work: read the rules of the client for units in buildings during a fight, then add them to `BattleSim`.
+The Fortress (`FortressDelegate`) was the missing part. With each cannonball, each unit in it fires an arrow of 1 point at a target of its own. The number of units comes from the save: in the own village the units in the building, in a PvP attack the units in the save of the other player. Each unit keeps its target while the target is on the map and within half the range of the Fortress. Otherwise it takes the next of the nearest opponents (units or buildings) around the centre of the Fortress, within its range plus half its width. The port now does this (`godot/battle/abilities/fortress_ability.gd`, `BattleFighter.units_inside`, set by `VillageBattle` and `PvpBattle`).
+
+Checks: `battle_check.gd` has a scenario for the Fortress: no arrows without units; 2 units fire 2 arrows of 1 point at the 2 nearest enemies; they keep these targets when a nearer enemy comes. A scratch run with a Fortress with 3 archers fired 11 arrows in a PvP attack and 22 arrows against trolls in the own village in 600 frames, and all arrows landed.
+
+Differences that are left:
+
+- In the client the arrows start at the places of the units in the graphic of the Fortress (`unit1` to `unit6`), and the units are drawn there with their idle frame. The port does not draw the units in the Fortress, and the arrows start at the shot point of the Fortress.
+- Not compared with the original game in Ruffle. A fight in the own village needs an attack that comes near a filled Fortress, and no village in `villages/` and no save in `saves/` has a Fortress.
 
 ### Island Forge (collect game)
 

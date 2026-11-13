@@ -578,7 +578,7 @@ const SCRIPTS := {
 	1361: preload("res://battle/abilities/towers_ability.gd"),  # Sky Tower
 	1360: preload("res://battle/abilities/towers_ability.gd"),  # Sky Tower II
 	429: preload("res://battle/abilities/towers_ability.gd"),  # Water Tower
-	469: preload("res://battle/abilities/shot_ability.gd"),  # Fortress
+	469: preload("res://battle/abilities/fortress_ability.gd"),  # Fortress
 	2135: preload("res://battle/abilities/gladiator_units_ability.gd"),  # 4-Weapons Gladiator
 	601: preload("res://battle/abilities/rhino_ability.gd"),  # Rhino Rider
 	640: preload("res://battle/abilities/rhino_ability.gd"),  # Rhino Rider

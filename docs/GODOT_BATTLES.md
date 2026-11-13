@@ -271,7 +271,7 @@ The rules come from the client. Where the client has an error that the player ca
 Not in the port (`docs/PORT_GAPS.md`):
 
 - Effects that the client only draws: the domes of protection (1357 to 1359), the colour of the Swamp Minion and of the Huge Egg when it is hit, the extra rocks of the Catapult, the red bubble of Anubis, the bigger balls of the Mother Monster, the white flash of Instant Limit, and the heads of the Three-Headed Dragon in turn.
-- The arrows of the units in a Fortress, and the refuges: the port has no units in buildings in battles, so the Fortress shoots only its cannonballs.
+- The units in a Fortress are not drawn in its graphic, and their arrows start at the shot point of the Fortress, not at the places of the units.
 - The Dummy (`DummyDelegate`, item 1533) is not in the configuration.
 
 Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.
