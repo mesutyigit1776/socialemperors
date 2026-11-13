@@ -1805,6 +1805,25 @@ func bought_units() -> Array[int]:
 	return bought
 
 
+## Records the first time that a unit with "achievement" comes on the map of
+## the player, as "rt_publish_achievement_unit" does: the unit goes into
+## "achievedUnits" once. The client also posts the achievement on Facebook,
+## which the port does not do. The owner calls this only for the village of
+## the player in the normal game, because Village also holds the villages of
+## other players. Returns true when the unit was recorded.
+func achieve_unit(unit_id: int) -> bool:
+	var item := _config.get_item(unit_id)
+	if item == null or not item.achievement:
+		return false
+	if not _document["privateState"].get("achievedUnits") is Array:
+		_document["privateState"]["achievedUnits"] = []
+	var achieved: Array = _document["privateState"]["achievedUnits"]
+	if achieved.any(func(id: Variant) -> bool: return GameConfig.to_int(id) == unit_id):
+		return false
+	achieved.append(unit_id)
+	return true
+
+
 ## The unit collections whose reward the player took ("unitCollectionsCompleted").
 func unit_collections_claimed() -> Array[int]:
 	var claimed: Array[int] = []

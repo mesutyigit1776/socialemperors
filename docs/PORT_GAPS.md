@@ -29,7 +29,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [Unit list and unit collections](#unit-list-and-unit-collections) | Done |
 | [News window](#news-window) | Done |
 | [Spy screen art](#spy-screen-art) | Done |
-| [Achievement publish](#achievement-publish) | Small |
+| [Achievement publish](#achievement-publish) | Done |
 | [Female host](#female-host) | Small |
 | [Units in buildings in battles](#units-in-buildings-in-battles) | Medium |
 | [Island Forge](#island-forge-collect-game) | Large; needs a decision |
@@ -189,9 +189,11 @@ Differences that are left:
 
 ### Achievement publish
 
-When a unit with `achievement` 1 first shows on the map, the client sends `rt_publish_achievement_unit` once and keeps the unit in `achievedUnits`. The server has the command. Only the post on Facebook needs Facebook.
+When a unit with `achievement` 1 of the player comes on the map in the normal game, and the unit is not in `achievedUnits`, the client sends `rt_publish_achievement_unit` and adds the unit to `achievedUnits` (`IsoEngine.addElement`). The server keeps the list. The client also posts the achievement on Facebook. 473 units have `achievement` 1; no building has it.
 
-Work: the save operation and the list of achieved units, without the post.
+The port now keeps the same list (`Village.achieve_unit`), without the post. `main.gd` calls it for each unit of the player on the map when the town loads, and for each unit that comes on the map later (`VillageEvent.Kind.UNIT_ARRIVED`). It does not call it for the villages of other players, because `Village` also holds them.
+
+Compared with the original client in Ruffle on the same save (`saves/initial.save.json`, with an empty list): at the load the client sent the command for the 7 units of the player on the map, and the port puts the same 7 units in the list. In the list of the client the dragons come first; the port uses the order of the map. The order has no effect, because the list is only searched.
 
 ### Female host
 

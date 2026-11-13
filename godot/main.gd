@@ -159,6 +159,10 @@ func _ready() -> void:
 		_tutorial = Tutorial.new(_village, _config)
 		_village.happened.connect(_on_village_event)
 		_unit_collections = UnitCollections.new(_config, _village)
+		# The client also records the units of the player that are on the map when it loads.
+		for placed in _village.items:
+			if _village.is_own_unit(placed):
+				_village.achieve_unit(placed.item_id)
 		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
@@ -1359,8 +1363,10 @@ func _record(kind: VillageEvent.Kind, data: Dictionary) -> void:
 ## The events of the village that the tutorial waits for.
 func _on_village_event(kind: VillageEvent.Kind, data: Dictionary) -> void:
 	# The client tells the player to take the reward when a new unit completes a unit collection (UnitCollectionsManager).
-	if kind == VillageEvent.Kind.UNIT_ARRIVED and _unit_collections.add_unit(data["unit"]):
-		_alert(_config.text("ALERT_UNIT_COLLECTION_COMPLETED"))
+	if kind == VillageEvent.Kind.UNIT_ARRIVED:
+		_village.achieve_unit(data["unit"])
+		if _unit_collections.add_unit(data["unit"]):
+			_alert(_config.text("ALERT_UNIT_COLLECTION_COMPLETED"))
 	if not _tutorial.is_active():
 		return
 	var item := _config.get_item(int(data.get("item", data.get("unit", 0))))

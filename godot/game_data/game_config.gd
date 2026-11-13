@@ -56,6 +56,8 @@ class ItemDef:
 	var pack_num: int
 	var pack_category: int
 	var pack_chance: int
+	## The client publishes an achievement the first time the player has this unit on the map, see Village.achieve_unit().
+	var achievement: bool
 
 	func is_unit() -> bool:
 		return type == "u"
@@ -480,6 +482,7 @@ static func _parse_item(entry: Variant) -> ItemDef:
 	item.sm_training_time = numbers["sm_training_time"]
 	item.potion = numbers["potion"]
 	item.cost_unit_cash = numbers["cost_unit_cash"]
+	item.achievement = str(entry.get("achievement", "0")) == "1"
 	# Most items do not have these values, or have them empty.
 	for key: String in ["pack_num", "pack_category", "pack_chance"]:
 		var value: Variant = to_int(entry.get(key))

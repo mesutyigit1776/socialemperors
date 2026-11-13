@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_offer_packs]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1560,6 +1560,20 @@ func _check_unit_collections() -> bool:
 	_check(collections.claim(groups[0]) == Village.Placement.OK and village.get_resource("c") == 21 and village.unit_collections_claimed() == [1], "the reward gives 1 cash and goes into unitCollectionsCompleted")
 	_check(collections.claim(groups[0]) == Village.Placement.NOT_ALLOWED and village.get_resource("c") == 21, "the player takes the reward once")
 	_check(village.save_to_file(path) == OK and UnitCollections.new(_config, Village.load_from_file(path, _config)).is_claimed(groups[0]), "the save keeps the reward")
+	return true
+
+
+## The list of achieved units (rt_publish_achievement_unit): a unit with
+## "achievement" goes into "achievedUnits" once; other items do not.
+func _check_achieved_units() -> bool:
+	var path := _write_fixture("achieved_units", 10, _config.levels[9].exp_required, 1000)
+	_patch_private(path, {"achievedUnits": [510.0]}, 20)
+	var village := Village.load_from_file(path, _config)
+	_check(_config.get_item(608).achievement and not _config.get_item(TOWN_HALL).achievement, "the configuration marks the units of achievements")
+	_check(village.achieve_unit(608) and not village.achieve_unit(608), "a unit goes into the list once")
+	_check(not village.achieve_unit(510), "a unit of the list from the save is not recorded again")
+	_check(not village.achieve_unit(TOWN_HALL), "an item without achievement is not recorded")
+	_check(village.save_to_file(path) == OK and Village.load_from_file(path, _config)._document["privateState"]["achievedUnits"] == [510.0, 608.0], "the save keeps the list")
 	return true
 
 
