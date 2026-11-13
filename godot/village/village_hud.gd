@@ -40,6 +40,8 @@ const NO_CASH_SHOP := "The port has no cash shop."
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
 const BAR_HEIGHT := 125
+## TutorialMain puts its host at this place from the top-left of the stage.
+const TUTORIAL_HOST_PLACE := Vector2(0, -190)
 const CLIENT_Y := 525
 ## The parts at the top, which the client moves to the top of a full screen.
 const TOP_PARTS := ["experienceBar", "topLeft", "topRight", "barraAttackArriba", "cash", "addCashButton"]
@@ -97,6 +99,7 @@ const PLACEMENT_MESSAGES := {
 var store: StoreWindow
 var selection: SelectionPanel
 var _goal_box: GoalBox
+var _tutorial_host: HostSprite
 var _shield_graphics: Array = []  # [shieldEnabled, shieldDisabled], see set_shield_graphics().
 var _shield: ShieldSprite
 var _shield_enabled := false
@@ -273,6 +276,8 @@ func _layout() -> void:
 		_offer_icon.position = Vector2(size.x - _gui.position.x, ICON_PANEL_Y) + ICON_OFFSET
 	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
 	_message.size = Vector2(CLIENT_WIDTH - 120, 60)
+	if _tutorial_host != null:
+		_tutorial_host.position = Vector2(_gui.position.x, 0) + TUTORIAL_HOST_PLACE
 
 
 ## Shows the icon of the first purchase offer (viralFirstOffer) in the icon
@@ -469,9 +474,36 @@ func open_rename() -> void:
 	_rename_dialog.popup_centered(Vector2i(320, 0))
 
 
-## The host of the goal box: the imported GameShowHostMissionMC, or null.
-func show_goal_host(host: SpriteLibrary.ItemSprite) -> void:
-	_goal_box.show_host(host)
+## The host of the goal box: graphic is the imported Host.goal_symbol(), or null.
+func show_goal_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
+	_goal_box.show_host(graphic, host)
+
+
+## The host of the tutorial (TutorialMain), under the bars of the HUD as in
+## the client; the client hides the host of the goal box while it shows.
+## graphic: the imported Host.tutorial_symbol(), or null.
+func show_tutorial_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
+	if graphic == null:
+		return
+	_tutorial_host = HostSprite.new(graphic, host)
+	add_child(_tutorial_host)
+	move_child(_tutorial_host, 0)
+	_goal_box.set_host_visible(false)
+	_layout()
+
+
+## The client plays "bien1" at each new step of the tutorial while its host
+## shows; it removes the host when the tutorial no longer needs it, and shows
+## the host of the goal box again.
+func tutorial_step(host_shown: bool) -> void:
+	if _tutorial_host == null:
+		return
+	if host_shown:
+		_tutorial_host.well_done()
+		return
+	_tutorial_host.queue_free()
+	_tutorial_host = null
+	_goal_box.set_host_visible(true)
 
 
 ## The graphics shieldEnabled and shieldDisabled of the shield (ShieldSprite); without them the shield has no picture.

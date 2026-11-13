@@ -21,19 +21,15 @@ const ICON_FRAMES := 4
 ## The client marks these goals with "Click here!" (NewGoalMC) until the
 ## player clicks the goal in the session, but not in the tutorial.
 const NEW_GOAL_MARKED: Array[int] = [6, 7, 8, 9, 249, 250, 1008]
-## The host of the box (GameShowHostMissionMC) is mirrored at half size, and
+## The host of the box (Host.goal_symbol()) is mirrored at half size, and
 ## the mask of the box cuts it; adjustToScreen puts them this far from the
 ## left edge.
-const HOST_SYMBOL := "GameShowHostMissionMC"
 const HOST_X := 49.0
 const HOST_MASK_X := 75.35
 const HOST_SCALE := Vector2(-0.5, 0.5)
-## Frames (from 0) of the host: it appears ("apparait"), then waits
-## ("attend1" up to "parle").
-const HOST_APPEAR := Vector2i(327, 344)
-const HOST_WAIT := Vector2i(0, 268)
 
 var _clip: UiClip
+var _host_area: Control
 var _ids := [0, 0]
 var _clicked := [false, false]
 var _marks: Array[UiClip] = []
@@ -85,10 +81,10 @@ func show_goals(goals: Array) -> void:
 		_marks[index].visible = goal.visible and _ids[index] in NEW_GOAL_MARKED and not _clicked[index] and marks_allowed
 
 
-## The host of the box, which appears and then waits, behind the icons.
-## host: the imported GameShowHostMissionMC, or null.
-func show_host(host: SpriteLibrary.ItemSprite) -> void:
-	if host == null:
+## The host of the box behind the icons (HostSprite).
+## graphic: the imported Host.goal_symbol(), or null.
+func show_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
+	if graphic == null:
 		return
 	var mask := _clip.clip("mayorMask")
 	var bounds := mask.bounds()
@@ -99,10 +95,17 @@ func show_host(host: SpriteLibrary.ItemSprite) -> void:
 	area.size = bounds.size * mask.scale
 	_clip.add_child(area)
 	_clip.move_child(area, mask.get_index())
-	var sprite := HostSprite.new(host)
+	var sprite := HostSprite.new(graphic, host)
 	sprite.position = Vector2(HOST_X, _clip.part("mayor").position.y) - area.position
 	sprite.scale = HOST_SCALE
 	area.add_child(sprite)
+	_host_area = area
+
+
+## The client hides the host of the box while the host of the tutorial shows.
+func set_host_visible(shown: bool) -> void:
+	if _host_area != null:
+		_host_area.visible = shown
 
 
 func _on_goal_clicked(index: int) -> void:
@@ -124,27 +127,3 @@ func _show_title(goal: UiClip, shown: bool) -> void:
 			background.scale.x = (width + 16) / natural
 			background.position.x = label.position.x + width / 2
 
-
-## Plays the appearance of the host once, then its waiting frames in a loop.
-class HostSprite:
-	extends Sprite2D
-	const FRAME_SECONDS := 1.0 / 30.0
-	var _host: SpriteLibrary.ItemSprite
-	var _frame := HOST_APPEAR.x
-	var _time := 0.0
-
-	func _init(host: SpriteLibrary.ItemSprite) -> void:
-		_host = host
-		centered = false
-		offset = host.origin
-		texture = host.get_frame(_frame)
-
-	func _process(delta: float) -> void:
-		_time += delta
-		if _time < FRAME_SECONDS:
-			return
-		_time = fmod(_time, FRAME_SECONDS)
-		_frame += 1
-		if _frame > HOST_WAIT.y and _frame < HOST_APPEAR.x or _frame > HOST_APPEAR.y:
-			_frame = HOST_WAIT.x
-		texture = _host.get_frame(_frame)

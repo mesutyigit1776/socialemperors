@@ -85,6 +85,8 @@ var _last_click_msec := 0
 ## The other players, see NeighbourSource.
 var _neighbours: NeighbourSource
 var _neighbour_bar: NeighbourBar
+## Arthur or Guinevere, see Host.
+var _host: Host
 ## The neighbours that the player visited in this session: the client lets the
 ## player help each neighbour once in a session (arFriendsAssisted).
 static var _visited := {}
@@ -126,6 +128,7 @@ func _ready() -> void:
 	_village_path = _options.get("village", data_dir.path_join("villages/initial.json"))
 	if _options.has("town"):
 		_town = int(_options["town"])
+	_host = Host.from_settings(_options.get("host", ""))
 
 	_config = GameConfig.load_from_file(data_dir.path_join("config.json"))
 	_store = Store.load_from_file(data_dir.path_join("shop.json"), _config) if _config != null else null
@@ -155,8 +158,8 @@ func _ready() -> void:
 		_view.map_clicked.connect(_on_map_clicked)
 		_view.units_boxed.connect(_on_units_boxed)
 		_specials = SpecialActions.new(_village, _config, _rng)
-		_goals = GoalBook.new(_village, _config, _goal_steps)
-		_tutorial = Tutorial.new(_village, _config)
+		_goals = GoalBook.new(_village, _config, _goal_steps, _host)
+		_tutorial = Tutorial.new(_village, _config, _host)
 		_village.happened.connect(_on_village_event)
 		_unit_collections = UnitCollections.new(_config, _village)
 		# The client also records the units of the player that are on the map when it loads.
@@ -217,10 +220,10 @@ func _ready() -> void:
 		_hud.units_requested.connect(_open_unit_list)
 		_hud.news_requested.connect(_open_news)
 		add_child(_hud)
-		_hud.show_goal_host(_view.effects.get_sprite(GoalBox.HOST_SYMBOL))
+		_hud.show_goal_host(_view.effects.get_sprite(_host.goal_symbol()), _host)
 		_hud.set_shield_graphics(_view.effects.get_sprite(SHIELD_ENABLED), _view.effects.get_sprite(SHIELD_DISABLED))
 		_hud.show_zoom(_camera.zoom.x)
-		_neighbour_bar = NeighbourBar.new(_ui, _config)
+		_neighbour_bar = NeighbourBar.new(_ui, _config, _host)
 		_neighbour_bar.visit_requested.connect(_visit_neighbour)
 		_hud.neighbour_anchor().add_child(_neighbour_bar)
 		_update_neighbour_bar()
@@ -239,7 +242,10 @@ func _ready() -> void:
 			_tutorial_box = TutorialBox.new(_ui)
 			_tutorial_box.button_pressed.connect(func() -> void: _tutorial.handle(Tutorial.Action.BOX_BUTTON))
 			add_child(_tutorial_box)
+			if _tutorial.shows_host():
+				_hud.show_tutorial_host(_view.effects.get_sprite(_host.tutorial_symbol()), _host)
 			_tutorial.step_changed.connect(func(_step: int) -> void:
+				_hud.tutorial_step(_tutorial.shows_host())
 				_show_tutorial()
 				_save())
 			_tutorial.finished.connect(_on_tutorial_finished)
@@ -1600,7 +1606,7 @@ func _speed_up_tutorial_farm(now: int) -> bool:
 func _update_neighbour_bar() -> void:
 	var helped: Array[String] = []
 	helped.assign(_visited.keys())
-	_neighbour_bar.show_entries(NeighbourBar.entries(_neighbours.neighbours(_village.player_id()), _village, _config, _now(), helped))
+	_neighbour_bar.show_entries(NeighbourBar.entries(_neighbours.neighbours(_village.player_id()), _village, _config, _host, _now(), helped))
 
 
 ## The client visits a neighbour from the neighbour bar; not during the tutorial.

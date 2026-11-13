@@ -30,7 +30,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [News window](#news-window) | Done |
 | [Spy screen art](#spy-screen-art) | Done |
 | [Achievement publish](#achievement-publish) | Done |
-| [Female host](#female-host) | Small |
+| [Female host](#female-host) | Done |
 | [Units in buildings in battles](#units-in-buildings-in-battles) | Medium |
 | [Island Forge](#island-forge-collect-game) | Large; needs a decision |
 
@@ -197,9 +197,23 @@ Compared with the original client in Ruffle on the same save (`saves/initial.sav
 
 ### Female host
 
-The goal box shows a female host (`GameShowFemaleMissionMC`) when the page gives the client `sex=f`; the tutorial has a female host too (`GameShowFemaleHostMC`). The goal texts also use the gender. The server page always sends `sex=m` (`templates/play.html`, `templates/ruffle.html`), so the original game on this server always shows the male host. Both symbols are in the client.
+The client takes the gender of the player from the page (`sex`; `f` is female, any other value male). The gender chooses the host: Arthur or Guinevere. It changes the host of the tutorial (`GameShowHostMC` or `GameShowFemaleHostMC`), the host of the goal box (`GameShowHostMissionMC` or `GameShowFemaleMissionMC`), the picture and the name of the host in the neighbour bar (`thumbrey.jpg` or `thumbprincess.jpg`), and the name in the texts with `#0#` (tutorial and goals). The server page always sends `sex=m`, so the original game on this server always shows Arthur.
 
-Work: a setting in the port, the import of the two symbols, and the choice in `goal_box.gd` and the tutorial.
+The port now has the choice (`godot/host/`): `host="female"` in the section `[game]` of `user://settings.cfg`, or `--host female` for one run. The default is Arthur, as on the server. The launcher can offer the setting later. The importer now also imports the three other host symbols and `thumbprincess.jpg`.
+
+The port did not show the host of the tutorial before. It now shows it as the client does: at the top-left of the stage at y −190, under the bars of the HUD, from step 0 to step 13. It appears, and at each new step it plays "bien1". While it shows, the host of the goal box is hidden. The two hosts behave differently after an animation, because the frame scripts of their symbols differ: Arthur waits in a loop after he appears and talks in a loop after "bien1"; Guinevere stops at the end of each animation. The port follows these frame scripts (`Host.frame_scripts()`).
+
+Compared in Ruffle, with `sex=f` in a copy of the page and with the original page:
+
+- Guinevere at step 0 and after Next: the same frame at the same place (the crown at x 622–719, y 138–195, and after "bien1" at x 619–722, y 129–191), and the texts name Guinevere.
+- Arthur: the crown moves with his waiting animation, and the port stays within the same range (for example x 587–755, y 121–201 in both).
+- The neighbour bar shows Guinevere with her picture, level 1 and 29 experience, in both.
+- The goal box after the tutorial shows no host in Ruffle with `sex=f`, and none in the port with either host: the icons of the goals cover it.
+
+Differences that are left:
+
+- The client hides the Goals button of the goal box during the tutorial; the port shows it, as before this change.
+- In a window larger than 760 × 600, the port keeps the host at the top of the screen, at the left edge of the HUD of 760 pixels; how the client places it on a larger stage was not compared.
 
 ### Units in buildings in battles
 

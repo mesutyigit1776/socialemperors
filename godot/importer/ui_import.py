@@ -139,7 +139,7 @@ SYMBOLS = [
 IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "rockdriller_start.jpg", "boss2_ini.jpg", "ataque_ganado.jpg", "ataque_perdido.jpg", "pop_up5_sueno2.jpg", "llibre.png", "mago_altar.png", "alert_magic.jpg"] \
 	+ ["SURVIVAL_DESIERTO.jpg", "SURVIVAL_MINERAL.jpg", "SURVIVAL_NUBES.jpg", "SURVIVAL_NIEVE.jpg", "SURVIVAL_SELVA.jpg", "aldeana-regalos.png"] \
 	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
-	+ ["thumbrey.jpg", "townHuman.png", "townTroll.png"] \
+	+ ["thumbrey.jpg", "thumbprincess.jpg", "townHuman.png", "townTroll.png"] \
 	+ [f"gods_{n}.jpg" for n in range(1, 8)] \
 	+ ["generic_bg.png"]
 # The login bonus window loads its background and the pictures of the days

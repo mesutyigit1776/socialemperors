@@ -2,7 +2,7 @@ class_name NeighbourBar
 extends Control
 ## The neighbour bar of the client (FriendsWindow and FriendButton) in the
 ## bottom bar of the HUD: the neighbours sorted by experience, then the host
-## of the tutorial, who stands for Arthur and Guinevere. It shows SHOWN
+## of the tutorial, Arthur or Guinevere (Host). It shows SHOWN
 ## neighbours; the arrows move the list by one or by SHOWN. A click on a
 ## neighbour opens the menu with "Visit" (PopOverVisit). A neighbour whose
 ## buildings the player can help has the mark of the client.
@@ -19,10 +19,10 @@ const BUTTON_STEP := 88.0
 ## FriendButton grows by 10 % under the mouse.
 const HOVER_SCALE := 1.1
 const HOVER_SHIFT := Vector2(-4, -5.4)
-const HOST_PICTURE := "thumbrey.jpg"
 
 var _ui: UiLibrary
 var _config: GameConfig
+var _host: Host
 var _window: UiClip
 var _buttons: Array[UiClip] = []
 var _entries: Array[Dictionary] = []
@@ -30,9 +30,10 @@ var _start := 0
 var _popover: UiClip
 
 
-func _init(ui: UiLibrary, config: GameConfig) -> void:
+func _init(ui: UiLibrary, config: GameConfig, host: Host) -> void:
 	_ui = ui
 	_config = config
+	_host = host
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_window = ui.make("MenuTabFriendsMC")
 	_window.position = WINDOW_POSITION
@@ -70,14 +71,14 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 ## round(1.2 × the level of the player). can_assist(pid) tells whether the
 ## player can help the neighbour now. Each entry: {"pid", "name", "level",
 ## "xp", "host", "assist"}.
-static func entries(neighbours: Array[Dictionary], village: Village, config: GameConfig, now: int, helped: Array[String]) -> Array[Dictionary]:
+static func entries(neighbours: Array[Dictionary], village: Village, config: GameConfig, host: Host, now: int, helped: Array[String]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for neighbour in neighbours:
 		result.append({"pid": neighbour["pid"], "name": neighbour["name"], "level": neighbour["level"], "xp": neighbour["xp"], "host": false,
 				"assist": village.can_assist(neighbour["pid"], now) and not neighbour["pid"] in helped})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["xp"] < b["xp"])
 	var host_level := mini(roundi(village.get_level() * 1.2), config.levels.size() - 1)
-	result.append({"pid": host_pid(village.get_level()), "name": config.text("TUTORIAL_HOST_NAME_MALE"), "level": host_level,
+	result.append({"pid": host_pid(village.get_level()), "name": host.name(config), "level": host_level,
 			"xp": config.levels[host_level].exp_required, "host": true, "assist": false})
 	return result
 
@@ -107,7 +108,7 @@ func _refresh() -> void:
 		button.set_part_visible("mcassist", entry.get("assist", false))
 		# The client centres the picture of the host on the holder.
 		var picture: TextureRect = button.clip("holder").get_node("picture")
-		picture.texture = _ui.image(HOST_PICTURE) if entry.get("host", false) else null
+		picture.texture = _ui.image(_host.picture()) if entry.get("host", false) else null
 		picture.position = -picture.texture.get_size() / 2 if picture.texture != null else Vector2.ZERO
 		button.mouse_filter = Control.MOUSE_FILTER_STOP if has_entry else Control.MOUSE_FILTER_IGNORE
 	_set_arrows("shiftLeft", "oneLeft", _start > 0)

@@ -32,13 +32,16 @@ const FIGHTER_SUBCATS: Array[int] = [78, 79, 80]
 
 var _village: Village
 var _config: GameConfig
+var _host: Host
 var _steps: Dictionary  # Goal id -> count of this session. The owner keeps it when the scene starts again.
 var _active: Array[GameConfig.GoalDef] = []
 var _updating := false  # The gold of a completed goal is an event too.
 
 
 ## steps: the counts of the session, which the caller keeps; it can be empty.
-func _init(village: Village, config: GameConfig, steps: Dictionary) -> void:
+## host: the client uses the male host when the page gives no gender.
+func _init(village: Village, config: GameConfig, steps: Dictionary, host := Host.new()) -> void:
+	_host = host
 	_village = village
 	_config = config
 	_steps = steps
@@ -73,10 +76,9 @@ func progress_text(goal: GameConfig.GoalDef) -> String:
 	return "%d/%d" % [mini(steps_done(goal), steps_needed(goal)), steps_needed(goal)]
 
 
-## The title or description with the name of the host for "#0#". The client
-## takes the name for the gender of the player, which the save does not keep.
+## The title or description with the name of the host for "#0#".
 func text(value: String) -> String:
-	return value.replace("#0#", _config.text("TUTORIAL_HOST_NAME_MALE"))
+	return _host.fill(value, _config)
 
 
 ## The client loaded the map: the building goals count the buildings on it.

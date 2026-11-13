@@ -38,6 +38,8 @@ enum Action {
 }
 
 const LAST_STEP := 31
+## The client removes its host when step 13 ends (TutorialMain.nextStep).
+const LAST_HOST_STEP := 13
 const SUBCAT_TOWN_HALL := 135
 const SUBCAT_PEASANT := 71
 const SUBCAT_TREE := 125
@@ -96,10 +98,13 @@ var step := 0
 var _active := false
 var _village: Village
 var _config: GameConfig
+var _host: Host
 var _trees_cut := 0
 
 
-func _init(village: Village, config: GameConfig) -> void:
+## host: the client uses the male host when the page gives no gender.
+func _init(village: Village, config: GameConfig, host := Host.new()) -> void:
+	_host = host
 	_village = village
 	_config = config
 	_active = village.tutorial_step() == 0 and village.is_first_map()
@@ -109,14 +114,18 @@ func is_active() -> bool:
 	return _active
 
 
+## The host of the tutorial shows; the goal box shows its own host only after this.
+func shows_host() -> bool:
+	return _active and step <= LAST_HOST_STEP
+
+
 ## [title, lesson, page, has a button] of the box of the step, or [] when the step has no box.
 func box() -> Array:
 	if not BOXES.has(step):
 		return []
 	var entry: Array = BOXES[step]
-	var host := _config.text("TUTORIAL_HOST_NAME_MALE")
 	var page := _config.text("POPUP_TUTORIAL_PAGINA").replace("#0#", str((step + 1) / 2)).replace("#1#", "7")
-	return [_config.text(entry[0]), _config.text(entry[1]).replace("#0#", host), page, entry[2]]
+	return [_config.text(entry[0]), _host.fill(_config.text(entry[1]), _config), page, entry[2]]
 
 
 func arrow_text() -> String:
