@@ -14,7 +14,7 @@ var _dir: String
 var _art: FlashArt
 var _frame_cache: FrameCache
 var _frames: Dictionary = {}  # Sprite id -> SpriteLibrary.Frames.
-var _button_images: Dictionary = {}  # [button id, state] -> Texture2D, or null.
+var _button_images: Dictionary = {}  # [button id, state, scale] -> Texture2D, or null.
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
 var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "frames": [[part, ...], ...], "labels": {label: frame}}
 var _buttons: Dictionary = {}  # Button id (int) -> top-left of its images (Vector2).
@@ -102,12 +102,16 @@ func clip_label(sprite_id: int, label: String) -> int:
 	return int(_clips[sprite_id]["labels"].get(label, -1))
 
 
-## The image of a button in state "up", "over" or "down", or null.
-func button_image(button_id: int, state: String) -> Texture2D:
-	var key := [button_id, state]
+## The image of a button in state "up", "over" or "down", or null. scale:
+## the scale of the window (see UiScale); the texture has the size at scale 1.
+func button_image(button_id: int, state: String, scale: float) -> Texture2D:
+	var key := [button_id, state, scale]
 	if not _button_images.has(key):
-		var image := _art.render_button(button_id, BUTTON_STATES[state])
-		_button_images[key] = ImageTexture.create_from_image(image) if image != null else null
+		var image := _art.render_button(button_id, BUTTON_STATES[state], scale)
+		var texture := ImageTexture.create_from_image(image) if image != null else null
+		if texture != null:
+			texture.set_size_override(_art.canvas(button_id).size)
+		_button_images[key] = texture
 	return _button_images[key]
 
 

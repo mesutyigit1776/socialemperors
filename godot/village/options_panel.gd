@@ -130,16 +130,19 @@ func _show_pause() -> void:
 	_pause = CanvasLayer.new()
 	_pause.layer = PAUSE_LAYER
 	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
-	var size := _panel.get_viewport_rect().size
 	var curtain := _ui.make("CortinaMC")
-	curtain.scale = size / curtain.bounds().size if curtain.bounds().size.x > 0 else Vector2.ONE
+	var cover := func() -> void:
+		curtain.scale = _panel.get_viewport_rect().size / curtain.bounds().size if curtain.bounds().size.x > 0 else Vector2.ONE
+	cover.call()
+	get_viewport().size_changed.connect(cover)
 	curtain.take_mouse()
 	_pause.add_child(curtain)
 	var window := _ui.make("GamePausedMC")
-	window.position = size / 2
+	window.keep_centred()
 	_pause.add_child(window)
 	(window.part("bpo") as UiButton).pressed.connect(func() -> void:
 		get_tree().paused = false
+		get_viewport().size_changed.disconnect(cover)
 		_pause.queue_free()
 		_pause = null)
 	add_child(_pause)

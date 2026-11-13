@@ -44,7 +44,7 @@ func _init(ui: UiLibrary, config: GameConfig, pack: Dictionary) -> void:
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 func close() -> void:

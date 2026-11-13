@@ -48,4 +48,4 @@ func _init(ui: UiLibrary, config: GameConfig, cash: int) -> void:
 
 
 func _ready() -> void:
-	get_node("window").position = get_viewport_rect().size / 2
+	(get_node("window") as UiClip).keep_centred()

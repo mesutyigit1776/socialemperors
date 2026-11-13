@@ -89,7 +89,7 @@ func _add_start_window() -> void:
 	var cover := _cover()
 	var window := _ui.make("PopupLoadingSurvivalMC")
 	cover.add_child(window)
-	window.position = _screen_size() / 2
+	window.keep_centred()
 	window.set_text("title", _config.text("POPUP_LOADING_SURVIVAL_TITLE"))
 	window.set_text("helpText", _config.text("POPUP_LOADING_SURVIVAL_TEXT"))
 	var start := window.clip("btnStartBattle")
@@ -104,7 +104,7 @@ func _start() -> void:
 	battle.start()
 	_bar = _ui.make("GuiMC/barraAttackArriba")
 	_bar.show_frame(BAR_FRAME)
-	_bar.position = Vector2(_screen_size().x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
+	_bar.keep_at(Vector2(0.5, 0), Vector2(-STAGE_WIDTH / 2, 0) + BAR_POSITION)
 	_bar.set_part_visible("nameText", false)
 	_bar.set_part_visible("attackedTxt", false)
 	_bar.set_text("infoTxt", "")
@@ -172,7 +172,7 @@ func _show_result() -> void:
 	var cover := _cover()
 	var window := _ui.make("PopupSurvivalResultsMC")
 	cover.add_child(window)
-	window.position = _screen_size() / 2
+	window.keep_centred()
 	var picture := TextureRect.new()
 	picture.texture = _ui.image("aldeana-regalos.png" if reward != 0 else "ataque_perdido.jpg")
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE

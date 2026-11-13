@@ -76,7 +76,7 @@ func _ready() -> void:
 	var cover := _cover()
 	var window := _ui.make("PopupLoadingTournamentMC")
 	cover.add_child(window)
-	window.position = _screen_size() / 2
+	window.keep_centred()
 	window.set_text("title", _config.text("POPUP_LOADING_TOURNAMENT_TITLE"))
 	# The configuration of this project has no text for the help of this window.
 	window.set_part_visible("helpText", not _config.text("POPUP_LOADING_TOURNAMENT_TEXT").begins_with("["))
@@ -93,7 +93,7 @@ func _start() -> void:
 	battle.start()
 	_bar = _ui.make("GuiMC/barraAttackArriba")
 	_bar.show_frame(BAR_FRAME)
-	_bar.position = Vector2(_screen_size().x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
+	_bar.keep_at(Vector2(0.5, 0), Vector2(-STAGE_WIDTH / 2, 0) + BAR_POSITION)
 	_bar.set_text("nameText", _player_name)
 	_bar.set_text("foeNameText", _bot["name"])
 	var picture := TextureRect.new()
@@ -109,7 +109,7 @@ func _start() -> void:
 	_windows.add_child(_bar)
 	var exit := _ui.make("GuiMC/bgBar/btnExit")
 	exit.scale = EXIT_SCALE
-	exit.position = _screen_size() - EXIT_FROM_BOTTOM_RIGHT
+	exit.keep_at(Vector2.ONE, -EXIT_FROM_BOTTOM_RIGHT)
 	exit.set_text("lbl", _config.text("AUX_WITHDRAW"))
 	exit.make_button(true)
 	exit.pressed.connect(func() -> void:
@@ -146,7 +146,7 @@ func _show_result() -> void:
 	var cover := _cover()
 	var window := _ui.make("PopupTournamentFinishedMC")
 	cover.add_child(window)
-	window.position = _screen_size() / 2
+	window.keep_centred()
 	var picture := TextureRect.new()
 	picture.texture = _ui.image("ataque_ganado.jpg" if battle.won else "ataque_perdido.jpg")
 	picture.scale = Vector2.ONE * RESULT_PICTURE_SCALE

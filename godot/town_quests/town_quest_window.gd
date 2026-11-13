@@ -45,7 +45,7 @@ func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, pictu
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 	if _completed:
 		var stamp := _window.clip("mcCompleted")
 		stamp.modulate.a = 0.0

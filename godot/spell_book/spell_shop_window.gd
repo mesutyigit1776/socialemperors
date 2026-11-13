@@ -59,7 +59,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village) -> void:
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 ## Shows the mana, the page and the chosen spell again, for example after a purchase.

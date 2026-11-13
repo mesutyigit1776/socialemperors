@@ -76,6 +76,11 @@ func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int,
 
 
 func _ready() -> void:
+	_layout()
+	get_viewport().size_changed.connect(_layout)
+
+
+func _layout() -> void:
 	var screen := get_viewport_rect().size
 	_bar.position = Vector2(screen.x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
 	for name: String in BUTTONS:

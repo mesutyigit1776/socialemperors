@@ -110,6 +110,7 @@ func _replace(window: UiClip) -> void:
 
 func _ready() -> void:
 	_place()
+	resized.connect(_place)
 
 
 ## Puts the point of the window at this position in the middle of the screen.

@@ -51,7 +51,7 @@ func _init(ui: UiLibrary, village: Village, config: GameConfig) -> void:
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 ## The client centres the pictures of its windows on their container.

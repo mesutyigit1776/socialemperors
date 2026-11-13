@@ -88,7 +88,7 @@ func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, village: V
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 ## The arrows move the items by one.

@@ -81,14 +81,17 @@ impl Art {
 }
 
 impl Art {
-    /// Draws the state (0 up, 1 over, 2 down) of a button on a new image of
-    /// its canvas, which covers all its states.
-    pub fn render_button(&self, id: CharacterId, state: usize, canvas: Canvas) -> Option<Pixmap> {
+    /// Draws the state (0 up, 1 over, 2 down) of a button at a scale on a new
+    /// image of its canvas, which covers all its states. The image has the
+    /// size of the canvas times the scale, rounded up.
+    pub fn render_button(&self, id: CharacterId, state: usize, canvas: Canvas, scale: f32) -> Option<Pixmap> {
         let Some(Character::Button(states)) = self.characters.get(&id) else { return None };
-        let mut samples = Samples::new(canvas.width, canvas.height)?;
-        let transform = Transform::from_row(1.0 / TWIPS, 0.0, 0.0, 1.0 / TWIPS, -canvas.x, -canvas.y);
+        let width = ((canvas.width as f32 * scale).ceil() as u32).max(1);
+        let height = ((canvas.height as f32 * scale).ceil() as u32).max(1);
+        let mut samples = Samples::new(width, height)?;
+        let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -canvas.x * scale, -canvas.y * scale);
         let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
-        Renderer { art: self, scale: 1.0 }.draw_list(&mut samples, states.get(state)?, 0, 1, transform, &flash, &ColorTransform::IDENTITY, None);
+        Renderer { art: self, scale }.draw_list(&mut samples, states.get(state)?, 0, 1, transform, &flash, &ColorTransform::IDENTITY, None);
         Some(samples.resolve())
     }
 }

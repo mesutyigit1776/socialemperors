@@ -24,6 +24,11 @@ func _init(village: Village, config: GameConfig) -> void:
 
 
 func _ready() -> void:
+	_place()
+	get_viewport().size_changed.connect(_place)
+
+
+func _place() -> void:
 	position = (get_viewport_rect().size - Vector2(WIDTH, 0)) / 2 - Vector2(0, 200)
 
 

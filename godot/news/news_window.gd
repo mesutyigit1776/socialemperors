@@ -75,7 +75,7 @@ func _init(ui: UiLibrary, config: GameConfig, cash: int) -> void:
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2 + OFFSET
+	_window.keep_centred(OFFSET)
 	_timer.start()
 
 

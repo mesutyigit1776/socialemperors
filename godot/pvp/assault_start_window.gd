@@ -94,7 +94,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2 + OFFSET
+	_window.keep_centred(OFFSET)
 
 
 ## The texts of the three buttons are in the art of the client.
@@ -179,7 +179,7 @@ func _open_help() -> void:
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	var help := _ui.make("PopupPvpHelpMC")
-	help.position = get_viewport_rect().size / 2
+	help.keep_centred()
 	help.show_picture("bg/bgAnchor", _ui.image(HELP_BACKGROUND), false)
 	help.button("btnClose").pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)

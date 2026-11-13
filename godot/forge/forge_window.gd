@@ -84,7 +84,7 @@ func _init(ui: UiLibrary, bar_ui: UiLibrary, hammer_ui: UiLibrary, config: GameC
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 func _process(_delta: float) -> void:

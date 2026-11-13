@@ -38,4 +38,4 @@ func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, image
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2 + BELOW_MIDDLE
+	_window.keep_centred(BELOW_MIDDLE)

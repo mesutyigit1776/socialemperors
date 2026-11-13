@@ -61,6 +61,11 @@ func _init(ui: UiLibrary, config: GameConfig, quest: QuestBattle) -> void:
 
 
 func _ready() -> void:
+	_layout()
+	get_viewport().size_changed.connect(_layout)
+
+
+func _layout() -> void:
 	var screen := get_viewport_rect().size
 	_bar.position = Vector2(screen.x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
 	_exit.position = screen - EXIT_FROM_BOTTOM_RIGHT

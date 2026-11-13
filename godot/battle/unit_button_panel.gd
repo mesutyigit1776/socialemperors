@@ -41,6 +41,10 @@ func _init(sim: BattleSim, ui: UiLibrary, config: GameConfig) -> void:
 	add_child(_message)
 
 
+func _ready() -> void:
+	get_viewport().size_changed.connect(_place)
+
+
 ## Shows the buttons of the only selected unit, when it is a unit of the player with buttons.
 func show_selection(selected: Array[BattleFighter]) -> void:
 	var unit: BattleFighter = selected[0] if selected.size() == 1 else null

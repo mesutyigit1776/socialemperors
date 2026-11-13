@@ -99,7 +99,7 @@ func _init(ui: UiLibrary, book: QuestBook, config: GameConfig, now: Callable) ->
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 func _island_button(ui: UiLibrary, quest_id: String, place: Vector2) -> UiClip:

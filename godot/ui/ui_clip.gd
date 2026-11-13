@@ -27,6 +27,31 @@ var _parts: Dictionary = {}  # Part name (or "#depth" for an unnamed text or but
 var _button := false
 var _hover_frame := false
 static var _colour_materials := {}  # Color -> ShaderMaterial, see set_colour().
+var _kept := false  # keep_at() places the clip.
+var _screen_anchor := Vector2.ZERO
+var _screen_offset := Vector2.ZERO
+
+
+## Keeps the clip at a point of the screen: anchor is the point as a part of
+## the screen size (0.5, 0.5 is the middle), plus offset. The clip moves when
+## the size of the screen changes: a new window size, or UiScale.
+func keep_at(anchor: Vector2, offset := Vector2.ZERO) -> void:
+	var first := not _kept
+	_kept = true
+	_screen_anchor = anchor
+	_screen_offset = offset
+	if first:
+		tree_entered.connect(_follow_screen.bind(true))
+		tree_exiting.connect(_follow_screen.bind(false))
+		if is_inside_tree():
+			_follow_screen(true)
+	elif is_inside_tree():
+		_place_on_screen()
+
+
+## Keeps the clip at the middle of the screen plus offset, see keep_at().
+func keep_centred(offset := Vector2.ZERO) -> void:
+	keep_at(Vector2(0.5, 0.5), offset)
 
 
 func _init(ui_library: UiLibrary, id: int) -> void:
@@ -330,3 +355,15 @@ func _make_part(part: Dictionary) -> Control:
 		label.add_theme_color_override("font_outline_color", Color.html(part["glow"][0]))
 		label.add_theme_constant_override("outline_size", int(round(float(part["glow"][1]))) + 1)
 	return label
+
+
+func _follow_screen(entered: bool) -> void:
+	if entered:
+		get_viewport().size_changed.connect(_place_on_screen)
+		_place_on_screen()
+	else:
+		get_viewport().size_changed.disconnect(_place_on_screen)
+
+
+func _place_on_screen() -> void:
+	position = get_viewport_rect().size * _screen_anchor + _screen_offset

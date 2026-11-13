@@ -40,12 +40,11 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 
 | Item | Work |
 |---|---|
-| [HUD on modern screens](#the-hud-on-modern-screens) | Medium to large; the layout for wide screens needs a decision |
+| [HUD on modern screens](#the-hud-on-modern-screens) | Done |
 | [Blend modes with the map](#blend-modes-with-the-map) | Medium to large |
 | [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Small to medium |
 | [PvP attack screen art](#pvp-attack-screen-art) | Medium |
 
-Do the HUD before the builds, because it changes the window settings and the options panel.
 
 ### Group 4: parts of a release that are not the launcher
 
@@ -60,7 +59,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 1. Group 1 (done).
 2. Group 2 (done).
 3. The player save and the start screen (done).
-4. The HUD, then the blend modes and the other graphics.
+4. The HUD (done), then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
 
 Group 2 is about two to three weeks of work (*estimate*). With group 3 and the player save, about four to six weeks.
@@ -70,7 +69,7 @@ Group 2 is about two to three weeks of work (*estimate*). With group 3 and the p
 1. **Mini-games of the nests and the Rider Academy.** Keep the rule of the port (each game counts as won), or write a new flying game. See [Nest and Rider Academy mini-games](#nest-and-rider-academy-mini-games).
 2. **Darts.** Players cannot open it in 1.4.07. Adding it is a change from 1.4.07. See [Darts](#darts).
 3. **The text of tutorial steps 15 to 31.** The client shows only the arrow; the port also shows its own short text. See [Tutorial](#tutorial).
-4. **HUD on wide screens.** Only a UI scale, or also a new layout. See [The HUD on modern screens](#the-hud-on-modern-screens).
+4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
 7. **Server bugs.** Fix them in the server or leave them. The port already uses the correct rule of `fix_bought_units` in its save migration. See [Server bugs](#server-bugs).
@@ -269,35 +268,24 @@ Differences that are left:
 
 ### The HUD on modern screens
 
-The client was made for a Flash stage of 760 × 600 pixels in a Facebook page. In full screen it keeps the HUD at 760 pixels and puts it in the middle of the screen, with the bottom bar at the bottom and the top bars at the top (`StateNormal.setFullScreen`). The port does the same in its window.
+Done. Decision 4: a UI scale only; the layout of the client stays.
 
-What the port does now:
+The client was made for a Flash stage of 760 × 600 pixels in a Facebook page. In full screen it keeps the HUD at 760 pixels and puts it in the middle of the screen, with the bottom bar at the bottom and the top bars at the top (`StateNormal.setFullScreen`). The port did the same at one pixel for each pixel of the client, so on a large screen the HUD was a narrow strip with text of about 1.6 mm at 3840 × 2160.
 
-- `project.godot` sets a window of 1280 × 800 and no stretch mode. The HUD, the windows and their text are drawn at one pixel for each pixel of the client.
-- The windows of the client are drawn by FlashArt at scale 1 only (`sprites/frame_cache.gd`). Only the map frames are drawn again at the scale of the camera (1, 1.5 or 2).
-- The zoom of the map (0.7 at the start, 0.15 to 1.4) does not change with the size of the window.
-- Some screens place parts from the 760-pixel stage of the client (`QuestHud`, `SurvivalScreen`, `TournamentScreen`, `CastBanner`, `SpellBookHud`); the goal box and the zoom slider are at the edges of the window.
+What the port does now (`godot/ui/ui_scale.gd`, autoload `InterfaceScale`):
 
-Measurement: screenshots of the village of Arthur with the login bonus window, at four window sizes (Xvfb, OpenGL 3). The HUD and the windows have the same size in pixels at all window sizes; the numbers of the resources are about 10 pixels high. Only their share of the screen and their size on the screen change:
+- The window has a content scale factor (the interface size), in steps of 0.25 from 1 to 4. The nodes keep the coordinates of the client; the viewport is the window size divided by the factor. The map is enlarged with the HUD, so the village shows the same part of the map as at 100%; the zoom limits of the camera do not change.
+- Automatic: the largest step that leaves at least 760 × 600 pixels of the client in the window (1280 × 800: 1.25, 1920 × 1080: 1.75, 2560 × 1440 and 3440 × 1440: 2.25, 3840 × 2160: 3.5). Ctrl and + or − choose a fixed size, at most the automatic one; Ctrl and 0 goes back to automatic. The choice is `ui_scale` in `[display]` of `user://settings.cfg`. A message at the top-left shows the new size for 2 seconds. The options panel of the client has no place for this setting, so the port uses the keys.
+- Sharp art: `FrameCache` draws the frames of the windows at the interface size and the frames of the map at the camera zoom times the interface size, rounded up to a step of 0.5 (at most 6). When a scale changes, it draws the frames that show again. `FlashArt.render_button` has a scale, and `UiButton` draws its image again when the size of the screen changes. The fonts of the text fields are drawn at the scaled size by Godot. Bitmaps in the art (the pictures of the windows, the ground of the map) have a fixed size and get soft above 1.
+- A change of the window size or of the interface size moves the windows and bars: `UiClip.keep_at()` and `keep_centred()` keep a clip at a point of the screen, and the quest HUD, the spy screen, the unit buttons of battles, the PvP window, the tournament window and the pause window are placed again. Before, the windows that were open during a change of the window size (for example the full screen button) stayed at their old place.
 
-| Window | HUD width / window width | Text height on a typical screen |
-|---|---|---|
-| 1280 × 800 | 59% | the size at which the port was checked |
-| 1920 × 1080 (24-inch, 92 pixels per inch) | 40% | about 2.8 mm |
-| 2560 × 1440 (27-inch, 109 pixels per inch) | 30% | about 2.3 mm |
-| 3840 × 2160 (27-inch, 163 pixels per inch) | 20% | about 1.6 mm |
+Checks: screenshots of the village with the login bonus at 1280 × 800, 1920 × 1080, 2560 × 1440, 3840 × 2160 and 3440 × 1440 (Xvfb, OpenGL 3, llvmpipe), before and after. A scale change with the keys while the village, the login bonus, the tournament window, the start windows of the tournament and survival and the pause window show; the shop and the quest list opened after a change. The village zoomed in at 2560 × 1440 (map frames at scale 3.5). The start screen at 1920 × 1080. The village, battle, quest and spell checks pass with the same counts as before (899, 136, 134, 85).
 
-At 3840 × 2160 the HUD and the windows are a narrow strip in the middle of the screen, and the goal box is far from them at the left edge. The village also looks small, because the zoom does not follow the window size.
+Limits:
 
-Godot 4 gives the window the physical pixels of the screen (`display/window/dpi/allow_hidpi` is on by default), so the scaling of the operating system (for example 200% on a 4K laptop) does not make the HUD larger.
-
-What must change:
-
-1. **A UI scale.** Scale the HUD and the windows by a factor from the window height (for example height / 600, rounded to steps of 0.25), with a setting in the options panel. Godot can do this with the content scale of the window (`content_scale_mode` "canvas_items" with aspect "expand"), or with a scale on the CanvasLayers of the HUD and the windows. The content scale is the smaller change, but it also scales the map; the CanvasLayer scale keeps the map at its own zoom.
-2. **Sharp art at the UI scale.** FlashArt must draw the window frames at the UI scale, as it does for the map frames, else the scaled HUD is blurred. The fonts of the text fields must be drawn at the scaled size. The bitmap pictures of the windows (for example `DailyBonus/imgs`, the quest pictures) have a fixed size and get soft above scale 1.
-3. **Layout for wide screens.** The client puts everything in a 760-pixel column. With a UI scale this column is still narrow on 16:9 and 21:9 screens. Decide for each part if it stays in the column (the bottom bar) or goes to an edge (the goal box, the zoom slider, the spell book; the neighbour bar could be wider and show more neighbours). This is a change of the look of the original game (decision 4).
-4. **Map zoom for the window size.** Scale the start zoom and the zoom limits by the same factor, so that the village shows the same area of the map as on the client's screen.
-5. **Checks.** Screenshots at 1280 × 800, 1920 × 1080, 2560 × 1440, 3840 × 2160 and 3440 × 1440 of the village, a quest, the windows and the tournament, before and after.
+- Memory: the frames of the map need the square of the scale. At 2560 × 1440 with the camera at its largest zoom, the frames used 500 MB of the 512 MB limit of `FrameCache` right after the start; above the limit the cache removes frames that no node shows and draws them again when they show. Whether the limit must be larger for 3840 × 2160 was not measured on a GPU; this machine renders 4K too slowly with llvmpipe for a test of play.
+- The banner of a cast spell (`CastBanner`) is placed when it appears; it shows for about 2 seconds and does not move after a change of the size.
+- The tool tips and the menus of the HUD were not checked during a change of the size.
 
 ### Blend modes with the map
 

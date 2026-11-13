@@ -28,12 +28,13 @@ func _init(ui: UiLibrary, config: GameConfig, places: Array[int], formation: int
 	cover.color = Color(0, 0, 0, 0.5)
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(cover)
+	# A CenterContainer keeps the panel in the middle after a change of the window size or of UiScale.
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(centre)
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(WIDTH, 0)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(panel)
+	centre.add_child(panel)
 	var column := VBoxContainer.new()
 	panel.add_child(column)
 	var picture := TextureRect.new()

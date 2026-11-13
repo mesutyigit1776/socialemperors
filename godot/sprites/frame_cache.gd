@@ -9,21 +9,25 @@ extends Node
 ## used now. A removed frame is drawn again when the game asks for it.
 ##
 ## Zoom: the frames of the map are drawn at the scale of the view (the zoom of
-## the camera), rounded up to one of SCALES, so that they stay sharp when the
-## camera zooms in. When the scale changes, the threads of FlashArt draw the
-## frames that nodes show again, and each frame changes when its new image is
-## ready; until then it shows the old image, enlarged. The other frames are
-## drawn again when the game next asks for them. The windows are not zoomed:
-## their frames stay at scale 1.
+## the camera times the scale of the window, see UiScale), rounded up to a
+## step of SCALE_STEP, so that they stay sharp when the camera zooms in. The
+## frames of the windows are drawn at the scale of the window. When a scale
+## changes, the threads of FlashArt draw the frames that nodes show again, and
+## each frame changes when its new image is ready; until then it shows the old
+## image, enlarged. The other frames are drawn again when the game next asks for them.
 
-## The scales at which the frames of the map are drawn. MapCamera zooms up to 2.
-const SCALES: Array[float] = [1.0, 1.5, 2.0]
+## The map frames are drawn at a multiple of this scale, from 1 to MAX_SCALE:
+## MapCamera.ZOOM_MAX times UiScale.MAX_SCALE.
+const SCALE_STEP := 0.5
+const MAX_SCALE := 6.0
 const DEFAULT_LIMIT := 512 << 20
 
 ## The memory that the frames can use, in bytes.
 var limit := DEFAULT_LIMIT
 ## The scale at which the frames of the map are drawn now.
 var map_scale := 1.0
+## The scale at which the frames of the windows are drawn now.
+var window_scale := 1.0
 ## The memory that the frames use now, in bytes.
 var used := 0
 var _entries := {}  # Entry -> true, the least recently used first.
@@ -45,38 +49,50 @@ class Entry:
 	var references: int  # The references to texture while only the cache has it.
 
 
+func _enter_tree() -> void:
+	_read_scales()
+
+
 func _process(_delta: float) -> void:
-	var scale := scale_for(_view_scale())
-	if scale != map_scale:
-		map_scale = scale
+	if _read_scales():
 		_waiting.clear()
 		for entry: Entry in _entries:
-			if entry.on_map and entry.scale != scale and is_shown(entry):
+			if entry.scale != scale_of(entry.on_map) and is_shown(entry):
 				_draw_again(entry)
 	for entry: Entry in _waiting.keys():
 		# _replace() can remove frames that come later in this list.
 		if entry.removed:
 			continue
-		var image :=entry.art.take_ahead(entry.id, entry.frame, map_scale)
+		var scale := scale_of(entry.on_map)
+		var image := entry.art.take_ahead(entry.id, entry.frame, scale)
 		if image != null:
 			_replace(entry, image)
 		# Without an image and not drawn ahead, the limit of the extension
 		# removed it; the next use asks for it again.
-		if image != null or not entry.art.is_ahead(entry.id, entry.frame, map_scale):
+		if image != null or not entry.art.is_ahead(entry.id, entry.frame, scale):
 			_waiting.erase(entry)
 
 
-## The scale of the frames for a view scale: the smallest of SCALES that is not smaller.
+## Sets map_scale and window_scale from the viewport. True when one changed.
+func _read_scales() -> bool:
+	var view := get_viewport()
+	var window := view.get_final_transform().get_scale().x
+	var map := scale_for(view.canvas_transform.get_scale().x * window)
+	if map == map_scale and window == window_scale:
+		return false
+	map_scale = map
+	window_scale = window
+	return true
+
+
+## The scale of the map frames for a view scale: the smallest step that is not smaller.
 static func scale_for(view_scale: float) -> float:
-	for scale in SCALES:
-		if view_scale <= scale + 0.001:
-			return scale
-	return SCALES[-1]
+	return clampf(ceilf(view_scale / SCALE_STEP - 0.001) * SCALE_STEP, 1.0, MAX_SCALE)
 
 
-## The scale at which frames are drawn now: map_scale for the map, 1 for the windows.
+## The scale at which frames are drawn now: map_scale for the map, window_scale for the windows.
 func scale_of(on_map: bool) -> float:
-	return map_scale if on_map else 1.0
+	return map_scale if on_map else window_scale
 
 
 ## Draws a frame of a character. canvas_size: the size of the canvas of the
@@ -116,7 +132,7 @@ func draw(art: FlashArt, id: int, frame: int, on_map: bool, canvas_size: Vector2
 func use(entry: Entry) -> void:
 	_entries.erase(entry)
 	_entries[entry] = true
-	if entry.on_map and entry.scale != map_scale and not _waiting.has(entry):
+	if entry.scale != scale_of(entry.on_map) and not _waiting.has(entry):
 		_draw_again(entry)
 
 
@@ -132,13 +148,8 @@ static func _references(entry: Entry) -> int:
 	return entry.texture.get_reference_count()
 
 
-func _view_scale() -> float:
-	var view := get_viewport()
-	return view.canvas_transform.get_scale().x * view.get_final_transform().get_scale().x
-
-
 func _draw_again(entry: Entry) -> void:
-	entry.art.draw_ahead(entry.id, PackedInt32Array([entry.frame]), map_scale)
+	entry.art.draw_ahead(entry.id, PackedInt32Array([entry.frame]), scale_of(entry.on_map))
 	_waiting[entry] = true
 
 
@@ -150,7 +161,7 @@ func _replace(entry: Entry, image: Image) -> void:
 	pixels.set_size_override(size)
 	used += image.get_data_size() - entry.bytes
 	entry.bytes = image.get_data_size()
-	entry.scale = map_scale
+	entry.scale = scale_of(entry.on_map)
 	_trim(entry)
 
 

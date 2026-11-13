@@ -70,7 +70,7 @@ func _init(ui: UiLibrary, config: GameConfig, forge: IslandForge, village: Villa
 
 
 func _ready() -> void:
-	_window.position = get_viewport_rect().size / 2
+	_window.keep_centred()
 
 
 func _process(_delta: float) -> void:

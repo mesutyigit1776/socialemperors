@@ -185,14 +185,16 @@ impl FlashArt {
         ahead.queued.contains(&key) || ahead.ready.contains_key(&key)
     }
 
-    /// Draws the state (0 up, 1 over, 2 down) of a button on an image of its
-    /// canvas, which covers all its states. Null when the id is not a button.
+    /// Draws the state (0 up, 1 over, 2 down) of a button at a scale on an
+    /// image of its canvas, which covers all its states. The image has the
+    /// size of the canvas times the scale, rounded up. Null when the id is not a button.
     #[func]
-    fn render_button(&self, id: i64, state: i64) -> Option<Gd<Image>> {
+    fn render_button(&self, id: i64, state: i64, scale: f32) -> Option<Gd<Image>> {
         let art = &self.shared.art;
         let canvas = art.canvas(id as u16)?;
-        let pixmap = art.render_button(id as u16, state.clamp(0, 2) as usize, canvas)?;
-        Image::create_from_data(canvas.width as i32, canvas.height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take(), canvas.width as usize)))
+        let pixmap = art.render_button(id as u16, state.clamp(0, 2) as usize, canvas, scale)?;
+        let (width, height) = (pixmap.width(), pixmap.height());
+        Image::create_from_data(width as i32, height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take(), width as usize)))
     }
 
     /// A font of the file as the bytes of a TrueType file, for FontFile.data.

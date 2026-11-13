@@ -19,6 +19,7 @@ var enabled := true:
 var _library: UiLibrary
 var _id: int
 var _image := TextureRect.new()
+var _state := "up"
 
 
 func _init(library: UiLibrary, button_id: int) -> void:
@@ -33,6 +34,20 @@ func _init(library: UiLibrary, button_id: int) -> void:
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	mouse_entered.connect(func() -> void: _show("over"))
 	mouse_exited.connect(func() -> void: _show("up"))
+
+
+## The image is drawn at the scale of the window, and again when it changes.
+func _enter_tree() -> void:
+	_show(_state)
+	get_viewport().size_changed.connect(_on_view_resized)
+
+
+func _exit_tree() -> void:
+	get_viewport().size_changed.disconnect(_on_view_resized)
+
+
+func _on_view_resized() -> void:
+	_show(_state)
 
 
 ## The rectangle of the image, in the coordinates of the button.
@@ -54,5 +69,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _show(state: String) -> void:
-	_image.texture = _library.button_image(_id, state)
+	_state = state
+	var scale := get_viewport().get_final_transform().get_scale().x if is_inside_tree() else 1.0
+	_image.texture = _library.button_image(_id, state, scale)
 	_image.size = _image.texture.get_size() if _image.texture != null else Vector2.ZERO
