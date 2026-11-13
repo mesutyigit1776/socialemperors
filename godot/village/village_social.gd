@@ -129,6 +129,17 @@ func shield_cooldown_seconds(now: int) -> int:
 	return maxi(_private_int("shieldCooldown") - now, 0)
 
 
+## True while the shields are on cooldown, as the shield window of the client
+## shows it (ShieldManager.cooldownActive): before the end of the cooldown,
+## without a shield, or with a shield while no shield of the cooldown is
+## bought. The client forgets the cooldown when it ends.
+func shield_cooldown_active(now: int) -> bool:
+	var cooldown := _private_int("shieldCooldown")
+	if cooldown <= 0 or now > cooldown:
+		return false
+	return shield_seconds(now) == 0 or _bought_shields(now).is_empty()
+
+
 ## True when the player can buy the shield now: each shield once in its cooldown.
 func can_buy_shield(shield_id: int, now: int) -> bool:
 	return not shield_id in _bought_shields(now)

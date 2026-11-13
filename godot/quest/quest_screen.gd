@@ -59,7 +59,7 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	_config = config
 	var island := quest.island
 	add_child(_view)
-	_view.show_battle(quest.sim, config, sprites, effects, island.land_item, island.land_frames())
+	_view.show_battle(quest.sim, config, sprites, effects, island.land_item, island.land_frames(), ui)
 	_camera.position = IsoGrid.tile_to_map(island.start_tile)
 	add_child(_camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.

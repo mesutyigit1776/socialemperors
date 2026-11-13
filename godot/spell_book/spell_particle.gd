@@ -13,6 +13,7 @@ var _loop_from: Variant
 var _frames_left: int
 var _frame := 0
 var _time := 0.0
+var _colour := Color.BLACK  # Added to the graphic, see FrameMaterial.
 
 
 ## look: see BattleSpell.particle_shown.
@@ -24,7 +25,8 @@ func _init(sprite: SpriteLibrary.ItemSprite, look: Dictionary) -> void:
 	offset = sprite.origin
 	scale = Vector2.ONE * float(look.get("scale", 1.0))
 	modulate.a = float(look.get("alpha", 1.0))
-	texture = sprite.get_frame(0)
+	_colour = look.get("colour", Color.BLACK)
+	FrameMaterial.show(self, sprite.get_frame(0), _colour)
 
 
 func _process(delta: float) -> void:
@@ -43,4 +45,4 @@ func _next_frame() -> void:
 		_frame += 1
 	elif _loop_from != null:
 		_frame = int(_loop_from) - 1
-	texture = _sprite.get_frame(_frame)
+	FrameMaterial.show(self, _sprite.get_frame(_frame), _colour)

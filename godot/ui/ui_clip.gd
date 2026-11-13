@@ -4,7 +4,8 @@ extends Control
 ## its named parts, and the parts as children, in the depth order of the
 ## client: a UiClip for a sprite, a UiButton for a button and a Label for a
 ## text field. The node sits on the registration point of the sprite, as in
-## Flash. Parts can be scaled, mirrored and turned; the port does not skew them.
+## Flash. Parts can be scaled, mirrored, turned and skewed. A Control cannot
+## skew, so a skewed part is the child of a Node2D with the matrix of Flash.
 ##
 ## A part keeps its text, visibility and frame when the clip shows another
 ## frame that has a part with the same name. Masks of the client are hidden.
@@ -13,6 +14,9 @@ signal pressed  ## The player clicked a clip that is a button, see make_button()
 
 ## Flash draws the text of a field 2 pixels inside its rectangle.
 const TEXT_GUTTER := 2.0
+## A matrix whose axes are further than this from a right angle (the cosine
+## of their angle) skews; see _is_skewed().
+const SKEW_LIMIT := 0.001
 ## The key in _parts of the shapes under a mask, after the key of the mask.
 const MASKED_SUFFIX := "#masked"
 
@@ -88,23 +92,33 @@ func show_frame(new_frame: int) -> void:
 		if node is Label and part.has("text") and not part["text"]["html"] and node.get_meta("frame_colour", "") != part["text"]["color"]:
 			node.set_meta("frame_colour", part["text"]["color"])
 			node.add_theme_color_override("font_color", Color.html(part["text"]["color"]))
+		var m: Array = part["matrix"]
 		if node == null:
 			node = _make_part(part)
 			node.set_meta("part", key)
 			_parts[key] = node
-			add_child(node)
+			if _is_skewed(m):
+				var holder := Node2D.new()
+				holder.add_child(node)
+				add_child(holder)
+			else:
+				add_child(node)
+		var in_clip: CanvasItem = _holder(node)
 		# The parts come in the order of their depths, above the base image,
 		# except the parts under all shapes of the base image.
-		move_child(node, get_child_count() - 1)
+		move_child(in_clip, get_child_count() - 1)
 		if part.get("under", false):
-			move_child(node, _base.get_index())
-		var m: Array = part["matrix"]
-		# The matrix of Flash is [a, b, c, d, x, y]: a turn, then a scale.
-		var x_scale := Vector2(m[0], m[1]).length()
-		node.rotation = atan2(m[1], m[0])
-		node.scale = Vector2(x_scale, (m[0] * m[3] - m[1] * m[2]) / x_scale if x_scale != 0 else m[3])
-		# A text field keeps the offset of its rectangle, see _make_part().
-		node.position = Vector2(m[4], m[5]) + (node.get_meta("offset", Vector2.ZERO) * node.scale).rotated(node.rotation)
+			move_child(in_clip, _base.get_index())
+		if in_clip != node:
+			(in_clip as Node2D).transform = Transform2D(Vector2(m[0], m[1]), Vector2(m[2], m[3]), Vector2(m[4], m[5]))
+			node.position = node.get_meta("offset", Vector2.ZERO)
+		else:
+			# The matrix of Flash is [a, b, c, d, x, y]: a turn, then a scale.
+			var x_scale := Vector2(m[0], m[1]).length()
+			node.rotation = atan2(m[1], m[0])
+			node.scale = Vector2(x_scale, (m[0] * m[3] - m[1] * m[2]) / x_scale if x_scale != 0 else m[3])
+			# A text field keeps the offset of its rectangle, see _make_part().
+			node.position = Vector2(m[4], m[5]) + (node.get_meta("offset", Vector2.ZERO) * node.scale).rotated(node.rotation)
 		# A part that the clip fades gets its full alpha back in the frames without a fade.
 		if part.has("alpha"):
 			node.modulate.a = part["alpha"]
@@ -117,8 +131,20 @@ func show_frame(new_frame: int) -> void:
 				_show_masked(key, node, int(part["masked"]))
 	for key: String in _parts.keys():
 		if not shown.has(key) and not shown.has(key.trim_suffix(MASKED_SUFFIX)):
-			_parts[key].queue_free()
+			_holder(_parts[key]).queue_free()
 			_parts.erase(key)
+
+
+## True when the matrix [a, b, c, d, x, y] of Flash skews: its axes are not at right angles.
+static func _is_skewed(m: Array) -> bool:
+	var x_axis := Vector2(m[0], m[1])
+	var y_axis := Vector2(m[2], m[3])
+	return x_axis.length() > 0 and y_axis.length() > 0 and absf(x_axis.normalized().dot(y_axis.normalized())) > SKEW_LIMIT
+
+
+## The node of a part that is a child of the clip: the part, or the Node2D of a skewed part.
+func _holder(node: Control) -> CanvasItem:
+	return node.get_parent() if node.get_parent() is Node2D else node
 
 
 ## The shapes under a named mask (see importer/ui_import.py) show only
@@ -299,6 +325,8 @@ func bounds() -> Rect2:
 		var rect: Rect2 = node.bounds() if node is UiClip or node is UiButton else Rect2(Vector2.ZERO, node.size)
 		if rect.size != Vector2.ZERO:
 			rect = Transform2D(node.rotation, node.scale, 0.0, node.position) * rect
+			if _holder(node) != node:
+				rect = (_holder(node) as Node2D).transform * rect
 			result = rect if result.size == Vector2.ZERO else result.merge(rect)
 	return result
 

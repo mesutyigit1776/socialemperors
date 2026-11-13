@@ -10,6 +10,8 @@ extends BattleAbility
 ## unit in it) around the centre of the Fortress, within its range plus half
 ## its width. As in the client, two units can take the same target, the check
 ## stops when no new target is left, and a unit does not shoot at a dead target.
+## The arrow of unit n starts at the place "unit<n>" of the graphic of the
+## Fortress, where the client shows the unit.
 
 const ARROW_DAMAGE := 1
 const ARROW := "p.arrow"
@@ -41,7 +43,9 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			kept = found[next]
 			next += 1
 		_targets[i] = kept
-	for target in _targets:
+	for i in _targets.size():
+		var target := _targets[i]
 		if target != null and not target.dead:
-			sim.shoot(fighter, target, ARROW, ARROW_DAMAGE)
+			var place: Variant = fighter.graphic.named_point("unit%d" % (i + 1)) if fighter.graphic != null else null
+			sim.shoot(fighter, target, ARROW, ARROW_DAMAGE, Callable(), place)
 	return true

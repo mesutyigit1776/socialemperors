@@ -21,6 +21,8 @@ const TOWN_HALL := 26  # 4x4, no attack
 const WAR_TROLL := 529  # population 4, life 200
 const STONE_GOLEM := 538  # boss, life 6500
 const FORTRESS := 469  # 6x6, range 11, every 35 frames, 6 units
+const PROTECTION_DOME := 1358  # range 10: covers the tiles up to 9 away
+const TOWER_ENHANCER := 1359  # range 10
 const PLAYER := BattleFighter.Team.PLAYER
 const ENEMY := BattleFighter.Team.ENEMY
 
@@ -42,7 +44,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_fortress, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon, _check_village_attacks]:
+	for scenario: Callable in [_check_damage, _check_siege_and_elements, _check_attack_timing, _check_walk, _check_route, _check_target_choice, _check_formation, _check_group_orders, _check_shots, _check_shot_points, _check_tower, _check_fortress, _check_healer, _check_help_and_flight, _check_fights, _check_stun_and_freeze, _check_poison, _check_enlarge_and_shield, _check_swallow_and_summon, _check_village_attacks, _check_domes]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -736,6 +738,42 @@ func _check_village_attacks() -> bool:
 	for i in 1891:
 		sim.step()
 	_check(siege.step == CollectiveAI.ATTACK_1 and engine.target == near, "after the wait the siege engine attacks the building nearest to the spawn tile")
+	return true
+
+
+## A Protection Dome halves the damage to the items of its side within its
+## range; a Tower Enhancer halves the attack interval of the towers of its
+## side that come after it within its range, until it leaves the map.
+func _check_domes() -> bool:
+	var sim := _sim(12)
+	var dome := sim.add_item(_config.get_item(PROTECTION_DOME), Vector2i(40, 40), ENEMY)
+	var inside := sim.add_item(_config.get_item(TOWER_I), Vector2i(49, 40), ENEMY)
+	var outside := sim.add_item(_config.get_item(TOWER_I), Vector2i(50, 40), ENEMY)
+	var other_side := sim.add_item(_config.get_item(SPEARMAN), Vector2i(41, 41), PLAYER)
+	var damages := {}
+	sim.hit.connect(func(target: BattleFighter, _a: BattleFighter, damage: int, _c: bool) -> void: damages[target] = damage)
+	for target: BattleFighter in [inside, outside, other_side]:
+		target.health = 100000
+		var copy := RandomNumberGenerator.new()
+		copy.seed = 5
+		sim.rng.seed = 5
+		sim.receive_attack(target, 21, null)
+		var points := 10 if target == inside else 21
+		_check(damages.get(target) == _expected_damage(copy, points, target.defense), "an attack of 21 on %s does the damage of %d" % [["the tower 9 tiles from a Protection Dome", "the tower 10 tiles from it", "a unit of the other side next to it"][[inside, outside, other_side].find(target)], points])
+	var interval := _config.get_item(TOWER_I).attack_interval
+	var before := sim.add_item(_config.get_item(TOWER_I), Vector2i(20, 20), PLAYER)
+	var enhancer := sim.add_item(_config.get_item(TOWER_ENHANCER), Vector2i(20, 22), PLAYER)
+	var after := sim.add_item(_config.get_item(TOWER_I), Vector2i(22, 20), PLAYER)
+	_check(before.attack_interval == interval and after.attack_interval == interval / 2, "a Tower Enhancer halves the interval of a tower that comes after it (%d), not of one before it (%d)" % [after.attack_interval, before.attack_interval])
+	sim.remove_item(enhancer)
+	_check(after.attack_interval == interval, "the tower has its own interval again when the Tower Enhancer leaves")
+	sim.remove_item(dome)
+	inside.health = 100000
+	var copy := RandomNumberGenerator.new()
+	copy.seed = 6
+	sim.rng.seed = 6
+	sim.receive_attack(inside, 21, null)
+	_check(damages[inside] == _expected_damage(copy, 21, inside.defense), "without the dome the tower takes the full damage")
 	return true
 
 

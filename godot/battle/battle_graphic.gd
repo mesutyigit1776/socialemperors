@@ -50,6 +50,14 @@ func shot_start(offset: Vector2, stepped: bool) -> Vector2:
 	return Vector2(0, -_sprite.get_frame_size(frame).y * (STEPPED_SHOT_HEIGHT if stepped else SHOT_HEIGHT))
 
 
+## The point of the part with this instance name of the graphic of a
+## building, relative to the position of the item, or null; see
+## SpriteLibrary.ItemSprite.named_point().
+func named_point(name: String) -> Variant:
+	var point: Variant = _sprite.named_point(_frame, name)
+	return _registration(_frame) + point if point != null else null
+
+
 ## The number of frames of the animation of action (UnitSprite.Action) looking
 ## down, or 0 when the graphic does not have it.
 func clip_frames(action: int) -> int:

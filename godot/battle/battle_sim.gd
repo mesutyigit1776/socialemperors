@@ -48,6 +48,8 @@ signal converted(unit: BattleFighter, new_team: BattleFighter.Team)
 ## An ability plays a sound of the client (SoundEffect) after delay_ms, or
 ## after a short random wait when delay_ms is -1; see BattleSounds.
 signal sound_played(effect: int, delay_ms: int)
+## A spell flashes the unit white (highlightElement of the client); only the view uses it.
+signal highlighted(unit: BattleFighter)
 
 ## The eagle and the ships make a sound when they get an order to walk (setMove).
 const MOVE_SOUNDS := {543: SoundEffect.MOVEMENT_EAGLE, 542: SoundEffect.MOVEMENT_SHIP, 582: SoundEffect.MOVEMENT_SHIP}
@@ -101,6 +103,13 @@ const SUPPORT_UNITS: Array[int] = [502, 570, 590, 866, 886]
 
 const FRAMES_PER_SECOND := 30
 const SUBCAT_BOSS := 84
+## The domes (DomeManager of the client): a Protection Dome halves the damage
+## to the items of its side whose tile is within its range; a Tower Enhancer
+## halves the attack interval of the towers of its side that come on the map
+## after it within its range, until it leaves the map.
+const SUBCAT_DOMES := 1511
+const PROTECTION_DOMES: Array[int] = [1357, 1358]
+const TOWER_ENHANCER_DOME := 1359
 ## A stunned unit jumps for 1 second and stays down for 1.5 seconds.
 const STUN_FRAMES := 75
 const STUN_POPULATION_LIMIT := 4  ## Only units with less population can be stunned.
@@ -132,6 +141,8 @@ var _tiles := {}  # Vector2i -> BattleFighter on the tile, like the tile array o
 var _blocked := {}  # Vector2i -> true for tiles that walking units go around.
 var _water := {}  # Vector2i -> true for the water of a quest island, see add_water().
 var _towers := 0
+var _domes: Array[BattleFighter] = []  # In the order in which they came on the map.
+var _enhanced := {}  # Tower Enhancer -> Array[BattleFighter]: the towers that it makes faster.
 var _timers: Array[Array] = []  # [frame, Callable], in the order in which they were set.
 var _shields := {}  # Shield id -> [Rect2i of the protected tiles, part of the damage that passes, team or null].
 var _last_shield_id := 0
@@ -183,6 +194,13 @@ func add_item(def: GameConfig.ItemDef, tile: Vector2i, team: BattleFighter.Team)
 					_blocked[Vector2i(x, y)] = true
 	if def.subcat_functional == SUBCAT_TOWER:
 		_towers += 1
+		var enhancer := dome_over(item, [TOWER_ENHANCER_DOME])
+		if enhancer != null:
+			item.attack_interval = floori(def.attack_interval / 2.0)
+			_enhanced[enhancer].append(item)
+	if def.subcat_functional == SUBCAT_DOMES:
+		_domes.append(item)
+		_enhanced[item] = [] as Array[BattleFighter]
 	fighters.append(item)
 	if item.is_unit():
 		item.ai.on_added(self, item)
@@ -292,6 +310,19 @@ func open_door(door: BattleFighter) -> void:
 			_blocked.erase(Vector2i(x, y))
 	door.opened = true
 	state_changed.emit(door)
+
+
+## The first dome with one of ids on the side of item whose range covers the
+## tile of item (DomeManager.isInDomeRange of the client), or null. A dome
+## covers the square of the tiles within its range - 1 of its tile.
+func dome_over(item: BattleFighter, ids: Array[int]) -> BattleFighter:
+	if item.dead:
+		return null
+	for dome in _domes:
+		var reach := dome.attack_range - 1
+		if dome.def.id in ids and dome.team == item.team and absi(item.tile.x - dome.tile.x) <= reach and absi(item.tile.y - dome.tile.y) <= reach:
+			return dome
+	return null
 
 
 ## Takes an item off the map, for example a treasure that the player collects.
@@ -424,6 +455,10 @@ func heal(target: BattleFighter, amount: int, healer: BattleFighter = null) -> v
 func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter) -> void:
 	if amount == 0 or target.dead or target.untouchable:
 		return
+	if dome_over(target, PROTECTION_DOMES) != null:
+		amount = floori(amount / 2.0)
+		if amount == 0:
+			return
 	if target.ability != null and not target.ability.on_attacked(self, target, amount, attacker):
 		return
 	var points := float(amount)
@@ -875,8 +910,8 @@ func spawn(def: GameConfig.ItemDef, near: Vector2i, team: BattleFighter.Team, su
 ## A shot of shooter at target with its own graphic, which hurts target by
 ## damage when it lands, or does nothing when damage is negative. on_land runs
 ## when it lands. Returns the shot.
-func shoot(shooter: BattleFighter, target: BattleFighter, graphic: String, damage: int, on_land := Callable()) -> BattleProjectile:
-	var shot := BattleProjectile.fire(shooter, target, rng, graphic)
+func shoot(shooter: BattleFighter, target: BattleFighter, graphic: String, damage: int, on_land := Callable(), from: Variant = null) -> BattleProjectile:
+	var shot := BattleProjectile.fire(shooter, target, rng, graphic, from)
 	shot.damage = damage
 	shot.on_land = on_land
 	projectiles.append(shot)
@@ -1239,6 +1274,11 @@ func _remove(item: BattleFighter) -> void:
 	if not item in fighters:
 		return
 	fighters.erase(item)
+	if item in _domes:
+		_domes.erase(item)
+		for tower: BattleFighter in _enhanced[item]:
+			tower.attack_interval = tower.def.attack_interval
+		_enhanced.erase(item)
 	_removed.append(item)
 	set_target(item, null)
 	for tile: Vector2i in _tiles.keys():

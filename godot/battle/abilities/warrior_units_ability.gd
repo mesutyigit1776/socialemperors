@@ -65,8 +65,12 @@ extends BattleAbility
 ##   later, enemy units within 5 tiles with at most 350 life become Mini
 ##   Anubis (item 878) of its side, up to 4 minions. A new minion cannot act
 ##   for 1.5 seconds and is poisoned (the attack of Anubis every 3 seconds).
-##   The port does not draw the red bubble.
+##   The bubble is the particle of Force Shield, twice as big, red (offsets
+##   +255, -120, -255) and at alpha 0.7, two tiles right and down of Anubis;
+##   it fades out after 2 seconds.
 
+const FORCE_SHIELD := 9  ## SPELL_FORCE_SHIELD, whose particle is the bubble of Anubis.
+const ANUBIS_BUBBLE_LOOK := {"scale": 2.0, "alpha": 0.7, "colour": Color(1, -120 / 255.0, -1), "frames": 2 * BattleSim.FRAMES_PER_SECOND}
 const UNITS := {
 	825: "double_sword",
 	829: "punisher",
@@ -155,7 +159,7 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			_count += 1
 			_anubis_minions = _anubis_minions.filter(func(unit: BattleFighter) -> bool: return not unit.dead)
 			if _count % 8 == 0 and _anubis_minions.size() < ANUBIS_MINIONS and distance <= ANUBIS_RANGE:
-				sim.play_special(fighter, SP2, 22 + 3 * BattleSim.FRAMES_PER_SECOND, {22 + 16: func() -> void: _anubis_convert(sim, fighter)}, Callable(), true)
+				sim.play_special(fighter, SP2, 22 + 3 * BattleSim.FRAMES_PER_SECOND, {22: func() -> void: _anubis_bubble(sim, fighter), 22 + 16: func() -> void: _anubis_convert(sim, fighter)}, Callable(), true)
 				return false
 			if _count % 4 == 0 and distance <= ANUBIS_RANGE:
 				play(sim, fighter, SP1, 30, {19: func() -> void:
@@ -340,6 +344,13 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 			_count = _count + 1 if _count < 16 else 1
 			return false
 	return true
+
+
+## The red bubble of Anubis; only the view uses it.
+static func _anubis_bubble(sim: BattleSim, fighter: BattleFighter) -> void:
+	var shield := sim.unit_spell(FORCE_SHIELD)
+	if shield != null:
+		shield.show_particle(sim, fighter.tile + Vector2i(2, 2), 0, ANUBIS_BUBBLE_LOOK)
 
 
 func _anubis_convert(sim: BattleSim, fighter: BattleFighter) -> void:

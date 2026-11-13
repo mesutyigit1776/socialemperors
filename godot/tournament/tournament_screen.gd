@@ -56,7 +56,9 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	battle.sim.spell_graphics = spell_graphics
 	battle.sim.spell_uses = village.spell_uses()
 	add_child(_view)
-	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land))
+	# The client shows the health bars of the enemies of a tournament all the time.
+	_view.enemy_bars = true
+	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land), ui)
 	_camera.position = IsoGrid.tile_to_map((TournamentBattle.PLAYER_ORIGIN + TournamentBattle.BOT_ORIGIN) / 2)
 	# The client shows the whole field at zoom 0.1, below the limit of the mouse wheel.
 	_camera.set_mode_zoom(TOURNAMENT_ZOOM)

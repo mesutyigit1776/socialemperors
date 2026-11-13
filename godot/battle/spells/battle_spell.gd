@@ -15,7 +15,8 @@ extends RefCounted
 ## spells.json. The spell tells a view about each particle, see particle_shown.
 
 ## A particle of the spell appears. look: "scale" and "alpha" of the graphic,
-## "frames": the frames until it fades out for FADE_FRAMES, or -1 when it
+## "colour": a Color added to it (as a color transform with offsets of the
+## client; it can be negative), "frames": the frames until it fades out for FADE_FRAMES, or -1 when it
 ## stays, "depth": "below" the items, "mixed" with them or "above" them, and
 ## "loop_from": see read_graphics(). The view plays the graphic; it does not
 ## change the battle.
@@ -171,6 +172,13 @@ func _particle(sim: BattleSim, tile: Vector2i, delay: float, attack_frame: int, 
 	shown["loop_from"] = _loop_from
 	sim.after(spawn, func() -> void: particle_shown.emit(def.img_name, tile, shown))
 	sim.after(spawn + attack_frame, action)
+
+
+## Shows a particle of the spell on tile after delay frames, without its
+## action: for units that draw the graphic of the spell and act by their own
+## rules (for example the cracks of the Mole). look: see particle_shown.
+func show_particle(sim: BattleSim, tile: Vector2i, delay: float, look: Dictionary) -> void:
+	_particle(sim, tile, delay, _attack_frame, func() -> void: pass, look)
 
 
 ## Bosses, town halls, treasures and activators are safe from most spells.

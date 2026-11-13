@@ -13,6 +13,11 @@ const BUTTON_STATES := {"up": 0, "over": 1, "down": 2}
 var _dir: String
 var _art: FlashArt
 var _frame_cache: FrameCache
+var _on_map := false
+var _data_dir: String
+var _folder: String
+var _map_copy: UiLibrary  # See for_map().
+var _others := {}  # [folder, on map] -> UiLibrary, see other().
 var _frames: Dictionary = {}  # Sprite id -> SpriteLibrary.Frames.
 var _button_images: Dictionary = {}  # [button id, state, scale] -> Texture2D, or null.
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
@@ -25,8 +30,10 @@ var _font_ids: Dictionary = {}  # Font name -> font id, for the texts that the c
 
 ## Returns null and reports an error when <data_dir>/<folder>/layout.json is
 ## missing or not valid. The folder "ui/cast" has the banner of a cast spell.
-## frames: keeps the frames of the sprites.
-static func load_from(data_dir: String, frames: FrameCache, folder := "ui") -> UiLibrary:
+## frames: keeps the frames of the sprites. on_map: the clips are on the map
+## (health bars, selection marks), so their frames are drawn at the scale of
+## the map, see FrameCache.
+static func load_from(data_dir: String, frames: FrameCache, folder := "ui", on_map := false) -> UiLibrary:
 	var path := data_dir.path_join(folder).path_join("layout.json")
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not (data is Dictionary and data.get("symbols") is Dictionary and data.get("clips") is Dictionary):
@@ -35,6 +42,9 @@ static func load_from(data_dir: String, frames: FrameCache, folder := "ui") -> U
 	var library := UiLibrary.new()
 	library._dir = data_dir.path_join(folder)
 	library._frame_cache = frames
+	library._on_map = on_map
+	library._data_dir = data_dir
+	library._folder = folder
 	for name: String in data["symbols"]:
 		library._symbols[name] = int(data["symbols"][name])
 	for key: String in data["clips"]:
@@ -75,6 +85,12 @@ func has_symbol(name: String) -> bool:
 ## A new node that shows the window or part of the client with this name, see importer/ui_import.py.
 func make(symbol: String) -> UiClip:
 	return UiClip.new(self, _symbols[symbol])
+
+
+## A symbol as a graphic of the map that plays its clips, for a ClipSprite:
+## for example the dome over a selected dome building.
+func map_graphic(symbol: String) -> SpriteLibrary.ItemSprite:
+	return SpriteLibrary.item_sprite(_art, _symbols[symbol], _frame_cache, true)
 
 
 ## A picture of the windows, for example "quests_manager_img_1.jpg", or null.
@@ -139,6 +155,25 @@ func font(font_id: Variant) -> Font:
 	return _fonts[font_id]
 
 
+## The same library for clips on the map, whose frames are drawn at the
+## scale of the map (see load_from()). Null when it cannot be loaded.
+func for_map() -> UiLibrary:
+	if _on_map:
+		return self
+	if _map_copy == null:
+		_map_copy = UiLibrary.load_from(_data_dir, _frame_cache, _folder, true)
+	return _map_copy
+
+
+## The library of another folder of the same data, for example "ui/dome" on
+## the map or "ui/anim_win" in a window. Null when it cannot be loaded.
+func other(folder: String, on_map := false) -> UiLibrary:
+	var key := [folder, on_map]
+	if not _others.has(key):
+		_others[key] = UiLibrary.load_from(_data_dir, _frame_cache, folder, on_map) if FileAccess.file_exists(_data_dir.path_join(folder).path_join("layout.json")) else null
+	return _others[key]
+
+
 ## A font of the client by its name, for example "Arial Rounded MT Bold", for
 ## a text that the client makes in code (TextFieldUtil.getEmbeddedFontName).
 func named_font(name: String) -> Font:
@@ -147,7 +182,7 @@ func named_font(name: String) -> Font:
 
 func _clip_frames(sprite_id: int) -> SpriteLibrary.Frames:
 	if not _frames.has(sprite_id):
-		_frames[sprite_id] = SpriteLibrary.Frames.new(_art, sprite_id, _art.frame_count(sprite_id), _frame_cache, false)
+		_frames[sprite_id] = SpriteLibrary.Frames.new(_art, sprite_id, _art.frame_count(sprite_id), _frame_cache, _on_map)
 	return _frames[sprite_id]
 
 

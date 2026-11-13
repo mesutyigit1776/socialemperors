@@ -2,8 +2,8 @@ class_name InstantLimitSpell
 extends BattleSpell
 ## Instant Limit (SpellFullLimitArea of the client): up to 20 units of the
 ## player within half the area of the middle of the square, which have a limit
-## bar, get a full bar when the spell acts. The client also makes these units
-## flash white; the port does not.
+## bar, get a full bar when the spell acts, and flash white
+## (SpellAlterState.highlightElement, see BattleSim.highlighted).
 
 const MAX_ITEMS := 20
 const DELAY := 10
@@ -16,7 +16,8 @@ func cast(sim: BattleSim, tile: Vector2i, level: int) -> void:
 		return item.is_unit() and not item.dead and item.ability != null and item.ability.has_limit)
 	_particle(sim, tile, DELAY, _attack_frame, func() -> void:
 		for unit in found:
-			unit.ability.limit = unit.ability.limit_max, {"scale": side / 3.0})
+			unit.ability.limit = unit.ability.limit_max
+			sim.highlighted.emit(unit), {"scale": side / 3.0})
 
 
 func descriptions(config: GameConfig) -> Array[String]:

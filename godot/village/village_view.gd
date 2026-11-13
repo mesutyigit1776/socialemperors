@@ -82,6 +82,9 @@ var selection_tool := false
 var _box_start := Vector2.INF  # Map position where the box started.
 var _box := Polygon2D.new()
 var _group_outlines := Node2D.new()
+var _selection_marks: Array[UiClip] = []  # Children of the item nodes, see show_selection().
+var _group_marks: Array[UiClip] = []  # The same for show_group().
+var _selected_dome: DomeRange  # The range of a selected dome building, see show_selection().
 var _marks := Node2D.new()
 
 
@@ -132,6 +135,7 @@ func add_placed(placed: Village.PlacedItem) -> void:
 		node = place_sprite(_item_layer, _sprites, item, placed.tile, placed.frame)
 		if node != null:
 			_show_style(node, item, placed.frame)
+			FortressUnits.show_in(node, _sprites.get_sprite(item.img_name), placed.frame, _sprites, _config, _village.units_in(placed))
 	if node != null:
 		_nodes[placed] = node
 
@@ -150,6 +154,7 @@ func update_placed(placed: Village.PlacedItem) -> void:
 	node.offset = building_offset(sprite, placed.frame)
 	FrameMaterial.show(node, sprite.get_frame(placed.frame))
 	_show_style(node, item, placed.frame)
+	FortressUnits.show_in(node, sprite, placed.frame, _sprites, _config, _village.units_in(placed))
 	if _ready_marks.has(placed):
 		_ready_marks[placed].position = _mark_position(node)
 
@@ -218,21 +223,16 @@ func update_damage() -> void:
 				_fires[placed][1].queue_free()
 				_fires.erase(placed)
 			continue
-		if not _health_bars.has(placed):
-			var new_bar := ColorRect.new()
-			new_bar.color = BattleView.BAR_BORDER_COLOR
-			new_bar.size = BattleView.HEALTH_BAR_SIZE + Vector2(2, 2)
-			var filled := ColorRect.new()
-			filled.color = BattleView.HEALTH_COLOR
-			filled.position = Vector2.ONE
-			new_bar.add_child(filled)
-			node.add_child(new_bar)
-			_health_bars[placed] = new_bar
-		var bar: ColorRect = _health_bars[placed]
-		var top: float = (node as UnitSprite).map_rect().position.y - node.position.y if node is UnitSprite else node.offset.y
-		bar.position = Vector2(-bar.size.x / 2, top - BattleView.HEALTH_BAR_GAP - bar.size.y)
 		var share := clampf(float(_village.health(placed)) / maxf(_config.get_item(placed.item_id).life, 1), 0, 1)
-		(bar.get_child(0) as ColorRect).size = Vector2(BattleView.HEALTH_BAR_SIZE.x * share, BattleView.HEALTH_BAR_SIZE.y)
+		var map_ui := ui.for_map() if ui != null else null
+		if HealthBar.can_make(map_ui):
+			if not _health_bars.has(placed):
+				_health_bars[placed] = HealthBar.new(map_ui, false)
+				node.add_child(_health_bars[placed])
+			_health_bars[placed].show_life(share)
+			_health_bars[placed].place(Vector2.ZERO, _graphic_height(placed, node))
+		else:
+			_show_plain_bar(placed, node, share)
 		if not node is UnitSprite:
 			_show_fire(placed, node)
 
@@ -326,22 +326,80 @@ func show_marks(items: Array[Village.PlacedItem], tiles: Array[Vector2i]) -> voi
 		_marks.add_child(outline)
 
 
-## Outlines the tiles of the units of a selected group; an empty list removes the outlines.
+## A bar of simple shapes over a damaged item, for an import without the bar of the client.
+func _show_plain_bar(placed: Village.PlacedItem, node: Sprite2D, share: float) -> void:
+	if not _health_bars.has(placed):
+		var new_bar := ColorRect.new()
+		new_bar.color = BattleView.BAR_BORDER_COLOR
+		new_bar.size = BattleView.HEALTH_BAR_SIZE + Vector2(2, 2)
+		var filled := ColorRect.new()
+		filled.color = BattleView.HEALTH_COLOR
+		filled.position = Vector2.ONE
+		new_bar.add_child(filled)
+		node.add_child(new_bar)
+		_health_bars[placed] = new_bar
+	var bar: ColorRect = _health_bars[placed]
+	var top: float = (node as UnitSprite).map_rect().position.y - node.position.y if node is UnitSprite else node.offset.y
+	bar.position = Vector2(-bar.size.x / 2, top - BattleView.HEALTH_BAR_GAP - bar.size.y)
+	(bar.get_child(0) as ColorRect).size = Vector2(BattleView.HEALTH_BAR_SIZE.x * share, BattleView.HEALTH_BAR_SIZE.y)
+
+
+## The height of the graphic of an item (ghostBuilding.height of the client).
+func _graphic_height(placed: Village.PlacedItem, node: Sprite2D) -> float:
+	if node is UnitSprite:
+		return node.map_rect().size.y
+	var sprite := _sprites.get_sprite(_config.get_item(placed.item_id).img_name)
+	return sprite.get_frame_size(placed.frame).y if sprite != null else 0.0
+
+
+## Marks the units of a selected group; an empty list removes the marks.
 func show_group(units: Array[Village.PlacedItem]) -> void:
 	for child in _group_outlines.get_children():
 		child.queue_free()
+	_clear_marks(_group_marks)
 	for placed in units:
+		if _attach_mark(placed, _group_marks):
+			continue
 		var outline := Polygon2D.new()
 		outline.color = SELECTION_COLOR
 		outline.polygon = IsoGrid.footprint_outline(Village.footprint(_config.get_item(placed.item_id), placed.tile))
 		_group_outlines.add_child(outline)
 
 
-## Outlines the tiles of the item, or removes the outline when placed is null.
+## Marks the item, or removes the mark when placed is null. The mark is the
+## selection mark of the client (SelectionMark), or an outline of its tiles
+## for an import without it.
 func show_selection(placed: Village.PlacedItem) -> void:
-	_selection.visible = placed != null
-	if placed != null:
+	_clear_marks(_selection_marks)
+	if is_instance_valid(_selected_dome):
+		_selected_dome.queue_free()
+	_selected_dome = null
+	var map_ui := ui.for_map() if ui != null else null
+	if placed != null and _nodes.has(placed) and map_ui != null and DomeRange.is_dome(_config.get_item(placed.item_id)):
+		_selected_dome = DomeRange.attach(_nodes[placed], _config.get_item(placed.item_id), map_ui, map_ui.other("ui/dome", true))
+		_selected_dome.show_state(true, false)
+	_selection.visible = placed != null and not _attach_mark(placed, _selection_marks)
+	if _selection.visible:
 		_selection.polygon = IsoGrid.footprint_outline(Village.footprint(_config.get_item(placed.item_id), placed.tile))
+
+
+## Puts the selection mark of the client under the node of placed and adds it
+## to marks. False when there is no node or no mark.
+func _attach_mark(placed: Village.PlacedItem, marks: Array[UiClip]) -> bool:
+	if not _nodes.has(placed):
+		return false
+	var item := _config.get_item(placed.item_id)
+	var mark := SelectionMark.attach(_nodes[placed], ui.for_map() if ui != null else null, SelectionMark.Party.PLAYER, item.is_unit(), item.width)
+	if mark != null:
+		marks.append(mark)
+	return mark != null
+
+
+static func _clear_marks(marks: Array[UiClip]) -> void:
+	for mark in marks:
+		if is_instance_valid(mark):
+			mark.queue_free()
+	marks.clear()
 
 
 ## Shows a new item from the store at the tile under the mouse until the player
@@ -467,7 +525,7 @@ static func place_land(layer: Node2D, config: GameConfig, sprites: SpriteLibrary
 
 ## Draws an item that is not a unit at its tile in layer. Returns null when its graphic is missing.
 static func place_sprite(layer: Node2D, sprites: SpriteLibrary, item: GameConfig.ItemDef, tile: Vector2i, frame: int) -> Sprite2D:
-	var sprite := sprites.get_sprite(item.img_name)
+	var sprite := sprites.get_item_sprite(item)
 	if sprite == null:
 		return null
 	var node := _make_sprite(sprite, frame, tile)
@@ -507,7 +565,7 @@ static func building_offset(sprite: SpriteLibrary.ItemSprite, frame: int) -> Vec
 
 
 func _place_unit(item: GameConfig.ItemDef, tile: Vector2i) -> Sprite2D:
-	var sprite := _sprites.get_sprite(item.img_name)
+	var sprite := _sprites.get_item_sprite(item)
 	if sprite == null:
 		return null
 	# The client picks the start direction at random. A fixed choice per tile keeps screenshots stable.

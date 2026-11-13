@@ -35,7 +35,7 @@ Most of the volume is in the special abilities and the quest scripts. The core r
 - Stats come from the configuration: `life`, `attack`, `defense`, `attack_range` (tiles), `attack_interval` (frames), `velocity`, `flying`, `protect`. Towers and some buildings also attack.
 - The simulation runs in frames at 30 frames per second. A unit attacks when the frame counter is a multiple of its `attack_interval`.
 - Damage: the attack plus a random value from -4 to +4. In 10% of attacks the damage is a critical hit: (attack + |random|) × 1.5. A magic shield takes a part of it. The defence is then subtracted. The damage is at least 1.
-- Buffs, domes and some units change the attack or the damage (for example × 1.5 near a god colossus).
+- Buffs, domes and some units change the attack or the damage (for example × 1.5 near a god colossus). A Protection Dome (1357, 1358) halves the damage to the items of its side within its range; a Tower Enhancer (1359) halves the attack interval of the towers of its side that come on the map after it within its range, until it leaves the map (`DomeManager` of the client).
 - The AI has states (idle, hold position, patrol, forced move, attacked, attacking) and conditions (defensive, aggressive, passive, survive). Units find targets, walk to them, and help allies that are attacked. Healers heal.
 - Ranged units shoot projectiles that fly to the target. The damage comes when the projectile arrives.
 - A dead unit of the player goes to the graveyard, or to the Heroes Grave for a hero. Villagers, summoned units and animals do not.
@@ -94,7 +94,7 @@ A unit whose path becomes blocked while it walks stops, as in the client; no che
 | `battle_graphic.gd` | `BattleGraphic`: the points of a graphic where shots start and aim, as the client measures them. |
 | `sprites/clip_sprite.gd` | `ClipSprite`: plays the animation of one frame of a graphic, for units, shots and effects. |
 
-The importer reads the quest maps, so that their items have graphics, and the graphics of the shots and effects. `BattleView` moves the shots as the client does, with the trails (smoke) and the blasts of rocks and cannonballs. The health bar and the selection mark are simple shapes; their graphics are in the main file of the client and are not imported yet (`docs/PORT_GAPS.md`).
+The importer reads the quest maps, so that their items have graphics, and the graphics of the shots and effects. `BattleView` moves the shots as the client does, with the trails (smoke) and the blasts of rocks and cannonballs. The health bars (`BarraVidaMC`, `BarraVidaEnemyMC`) and the selection marks (`PeanaMC` and `PeanaBuilding<w>x<w>MC`, for the player, an enemy or a neutral item) are the graphics of the client (`battle/health_bar.gd`, `ui/selection_mark.gd`).
 
 ## Campaign quests
 
@@ -241,8 +241,6 @@ Changes from the original game:
 Differences from the client:
 
 - Enemy units do not use the attacks of the portrait buttons, as in the client.
-- The minions of Titan Lythos have full size; the client draws them at 0.3 of their size.
-- The port does not draw the cracks of the Mole.
 
 Tests: `checks/quest_check.gd` has scenarios for the keys and the boss of the Arctic island, the altar of the Desert island, the second dragon island, the doors of the Heroes island, the team rules and the item rewards. A scratch test ran every island of the list for 3000 frames with a fixed army and found no script errors. The played tests and the comparisons with the client are in "Comparison with the original client".
 
@@ -270,8 +268,7 @@ The rules come from the client. Where the client has an error that the player ca
 
 Not in the port (`docs/PORT_GAPS.md`):
 
-- Effects that the client only draws: the domes of protection (1357 to 1359), the colour of the Swamp Minion and of the Huge Egg when it is hit, the extra rocks of the Catapult, the red bubble of Anubis, the bigger balls of the Mother Monster, the white flash of Instant Limit, and the heads of the Three-Headed Dragon in turn.
-- The units in a Fortress are not drawn in its graphic, and their arrows start at the shot point of the Fortress, not at the places of the units.
+- The units in a Fortress are drawn over its whole graphic; the client puts them into places in the graphic, so parts of the graphic in front of a place cover them.
 - The Dummy (`DummyDelegate`, item 1533) is not in the configuration.
 
 Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.

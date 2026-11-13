@@ -161,6 +161,14 @@ impl FlashArt {
         self.shared.art.shot_points(id as u16).iter().map(|p| p.map_or(Variant::nil(), |p| (Vector2::new(p.x, p.y) / 20.0).to_variant())).collect()
     }
 
+    /// For each frame of a sprite, the point in pixels of its part with this
+    /// instance name (Vector2), or null; see Art::named_points().
+    #[func]
+    fn named_points(&self, id: i64, name: GString) -> VarArray {
+        let name = name.to_string();
+        self.shared.art.named_points(id as u16, &[name.as_str()]).iter().map(|p| p.map_or(Variant::nil(), |p| (Vector2::new(p.x, p.y) / 20.0).to_variant())).collect()
+    }
+
     /// For each frame of a sprite, its clip, or null: a nested sprite with
     /// more frames that the frame shows alone. A clip is [sprite id, Transform2D in pixels].
     #[func]

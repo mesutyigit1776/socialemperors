@@ -66,6 +66,9 @@ class Frames:
 
 class ItemSprite:
 	var frames: Frames
+	## A placeholder of the client for a missing graphic of a unit, which it
+	## shows black (IsoElement.setProvisionalGrahic); see get_item_sprite().
+	var silhouette := false
 	var frame_sizes: Array[Vector2] = []  ## Size of each frame as Flash measures it.
 	## Top-left of the bounds of each frame relative to the registration point,
 	## as Flash measures them.
@@ -80,6 +83,17 @@ class ItemSprite:
 	var _id: int
 	var _cache: FrameCache
 	var _still_clips: Array = []  # The FrameClip of each frame of a still graphic, see still_clip().
+	var _named_points := {}  # Name -> the point of each frame (Vector2 or null), see named_point().
+
+	## The point of the part with this instance name in frame, relative to
+	## the registration point, or null: for example "unit1" to "unit6", the
+	## places of the units in a Fortress.
+	func named_point(frame: int, name: String) -> Variant:
+		if not _named_points.has(name):
+			_named_points[name] = _art.named_points(_id, name) if _art != null else []
+		var points: Array = _named_points[name]
+		frame = _index(frame)
+		return points[frame] if frame < points.size() else null
 
 	## The clip in frame of a graphic that does not play its clips, or null.
 	## The client shows another frame of such a clip for some items, for
@@ -152,6 +166,9 @@ class FrameClip:
 
 var _sprites_dir: String
 var _frames: FrameCache
+var _placeholders := {}  # Symbol name -> ItemSprite or null, see get_item_sprite().
+var _placeholder_art: FlashArt
+var _placeholder_ids := {}  # Symbol name -> character id in the windows of the client.
 
 
 ## The clip clip_id that a frame shows with transform. The game draws a clip
@@ -167,6 +184,35 @@ var _cache: Dictionary = {}  # img_name -> ItemSprite, or null when the graphic 
 func _init(data_dir: String, frames: FrameCache, folder := "sprites") -> void:
 	_sprites_dir = data_dir.path_join(folder)
 	_frames = frames
+
+
+## The graphic of item, or the graphic that the client shows while the
+## graphic of an item loads, and that stays when it is missing: LoadingUnit,
+## black, for a unit, Loading1x1 to Loading4x4 for a building of that width
+## (4x4 for wider ones). Null without the graphic and without the placeholders.
+func get_item_sprite(item: GameConfig.ItemDef) -> ItemSprite:
+	var sprite := get_sprite(item.img_name)
+	if sprite != null:
+		return sprite
+	var symbol := "LoadingUnit" if item.is_unit() else "Loading%dx%d" % [clampi(item.width, 1, 4), clampi(item.width, 1, 4)]
+	if not _placeholders.has(symbol):
+		_placeholders[symbol] = _load_placeholder(symbol)
+	return _placeholders[symbol]
+
+
+func _load_placeholder(symbol: String) -> ItemSprite:
+	var ui_dir := _sprites_dir.get_base_dir().path_join("ui")
+	if _placeholder_art == null:
+		var layout: Variant = JSON.parse_string(FileAccess.get_file_as_string(ui_dir.path_join("layout.json"))) if FileAccess.file_exists(ui_dir.path_join("layout.json")) else null
+		if not (layout is Dictionary and layout.get("symbols") is Dictionary) or not FileAccess.file_exists(ui_dir.path_join(UiLibrary.WINDOWS_FILE)):
+			return null
+		_placeholder_ids = layout["symbols"]
+		_placeholder_art = FlashArt.open_map(ui_dir.path_join(UiLibrary.WINDOWS_FILE))
+	if _placeholder_art == null or not _placeholder_ids.has(symbol):
+		return null
+	var sprite := item_sprite(_placeholder_art, int(_placeholder_ids[symbol]), _frames, false)
+	sprite.silhouette = symbol == "LoadingUnit"
+	return sprite
 
 
 ## Returns null when the graphic was not imported. Reports each missing graphic once.
@@ -187,8 +233,14 @@ func _load(img_name: String) -> ItemSprite:
 	if id < 0 or art.frame_count(id) == 0:
 		push_warning("Graphic '%s' has no symbol in its SWF file. Import the files again." % img_name)
 		return null
+	return item_sprite(art, id, _frames, meta["animated"])
+
+
+## The graphic of character id of art on the map. animated: its frames play
+## the clips that they show (see ItemSprite.frame_clips).
+static func item_sprite(art: FlashArt, id: int, cache: FrameCache, animated: bool) -> ItemSprite:
 	var sprite := ItemSprite.new()
-	sprite.frames = Frames.new(art, id, art.frame_count(id), _frames, true)
+	sprite.frames = Frames.new(art, id, art.frame_count(id), cache, true)
 	sprite.origin = sprite.frames.origin
 	for rect: Rect2 in art.frame_rects(id):
 		sprite.frame_sizes.append(rect.size)
@@ -196,8 +248,8 @@ func _load(img_name: String) -> ItemSprite:
 	sprite.shot_points = art.shot_points(id)
 	sprite._art = art
 	sprite._id = id
-	sprite._cache = _frames
-	if meta["animated"]:
+	sprite._cache = cache
+	if animated:
 		var clips := {}
 		for entry: Variant in art.frame_clips(id):
 			if entry == null:
@@ -205,7 +257,7 @@ func _load(img_name: String) -> ItemSprite:
 				continue
 			var clip_id: int = entry[0]
 			if not clips.has(clip_id):
-				clips[clip_id] = make_clip(art, clip_id, entry[1], _frames)
+				clips[clip_id] = make_clip(art, clip_id, entry[1], cache)
 			var frame_clip := FrameClip.new()
 			frame_clip.clip = clips[clip_id]
 			frame_clip.transform = entry[1]

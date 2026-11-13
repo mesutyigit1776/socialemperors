@@ -19,6 +19,9 @@ port must place them itself. This module writes:
   <out>/ui/viral/...            the icon of the first purchase offer, from its own SWF file, in the same form
   <out>/ui/forge_icon/..., forge_bar/..., forge_hammer/...
                                 the icon, the progress bar and the hammer of the Island Forge, the same
+  <out>/ui/dome/..., anim_win/..., anim_lose/...
+                                the dome of a selected dome building and the animations of the
+                                result of a PvP attack, the same
 
 A part is {"name", "depth", "matrix": [a, b, c, d, x, y], and "clip": id (a
 sprite), "button": id (a button) or "text": settings (see SwfFile.edit_text)},
@@ -131,6 +134,34 @@ SYMBOLS = [
 	"PopupPvpHelpMC",
 	# The window of the Island Forge (the class name of the client has this spelling).
 	"PoupIslandForgeMC",
+	# Battles: the health bar of an item of the player and of an enemy, the
+	# selection marks under a unit and under a building of each width, for
+	# the player, an enemy and a neutral item, and the range of a dome.
+	"BarraVidaMC",
+	"BarraVidaEnemyMC",
+	"PeanaMC",
+	"PeanaEnemyMC",
+	"PeanaNeutralMC",
+] + [f"PeanaBuilding{side}{n}x{n}MC" for side in ("", "Enemy", "Neutral") for n in range(1, 7)] + [
+	"DomeRangeBottom",
+	# PvP: the window of the army and the search, the window that sells
+	# shields with a shield in it, the attack log with its lines and its end,
+	# the place of a unit in the army, and the result window of an attack.
+	"PopupPvpMC",
+	"PopupBuyShieldsMC",
+	"PopupBuyShields.ShieldItemMC",
+	"PopupAttackLogMC",
+	"AttackLogItemMC",
+	"AttackLogEndItemMC",
+	"ArmyUnitCellMC",
+	"PopupPVPFInishedMC",
+	# The graphics that the client shows while the graphic of an item loads,
+	# and that stay when it is missing (IsoElement.setProvisionalGrahic).
+	"LoadingUnit",
+	"Loading1x1",
+	"Loading2x2",
+	"Loading3x3",
+	"Loading4x4",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
@@ -148,11 +179,18 @@ IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "
 	+ ["generic_bg.png"] \
 	+ ["hell_forge.jpg", "quests_island_manager_img_1.jpg"]
 # The login bonus window loads its background and the pictures of the days
-# from assets/externalized/DailyBonus, and the help of a PvP attack its tips
-# from assets/externalized/popup_elements; the port keeps the same folders.
+# from assets/externalized/DailyBonus, the help of a PvP attack its tips
+# from assets/externalized/popup_elements, and the PvP windows their
+# backgrounds, shields and flags from there and from PopupBuyShields and
+# PopupPVPFinished; the port keeps the same folders.
 EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)] \
 	+ [f"popup_elements/popup_pvp_help/tip_{n}.png" for n in range(1, 5)] \
-	+ ["IslandForge/bg.jpg", "IslandForge/dragonBG.png"] + [f"IslandForge/{n}.{kind}" for n in range(1, 7) for kind in ("jpg", "png")]
+	+ ["IslandForge/bg.jpg", "IslandForge/dragonBG.png"] + [f"IslandForge/{n}.{kind}" for n in range(1, 7) for kind in ("jpg", "png")] \
+	+ ["popup_elements/popup_pvp/pvp_bg.png", "popup_elements/popup_pvp/red_shield.png", "popup_elements/popup_pvp/units_frame.png"] \
+	+ ["PopupBuyShields/background.png"] + [f"PopupBuyShields/shield_{n}.png" for n in range(1, 4)] \
+	+ [f"popup_elements/popup_pvp_shields_help/tip_{n}.png" for n in range(1, 5)] \
+	+ ["popup_elements/popup_attack_log/attack_log_bg.png", "popup_elements/popup_end_battle/end_pvp_bg.jpg", "popup_elements/popup_end_battle/bg_units_container.png", \
+		"PopupPVPFinished/blue_flag.png", "PopupPVPFinished/red_flag.png"]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
@@ -165,6 +203,13 @@ FORGE_SWFS = [
 	(os.path.join("assets", "externalized", "viral_buttons", "easterDragon.swf"), ["easterDragon"], "forge_icon"),
 	(os.path.join("assets", "externalized", "IslandForge", "island_progressbar.swf"), ["island_progressbar"], "forge_bar"),
 	(os.path.join("assets", "externalized", "IslandForge", "forge_hammer.swf"), ["forge_hammer"], "forge_hammer"),
+]
+# The dome over a selected dome building (DomeDelegate), and the animations
+# of the result window of a PvP attack (PopupPVPFinished).
+EXTRA_SWFS = [
+	(os.path.join("assets", "swf", "blue_dome.swf"), ["blue_dome"], "dome"),
+	(os.path.join("assets", "swf", "anim_win.swf"), ["anim_win"], "anim_win"),
+	(os.path.join("assets", "swf", "anim_lose.swf"), ["anim_lose"], "anim_lose"),
 ]
 # The copy of a SWF file with the windows, from which the port draws them.
 WINDOWS_FILE = "windows.swf"
@@ -180,7 +225,7 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
 	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
 	count += _import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
-	for swf_path, symbols, folder in FORGE_SWFS:
+	for swf_path, symbols, folder in FORGE_SWFS + EXTRA_SWFS:
 		count += _import_windows(os.path.join(source, swf_path), symbols, os.path.join(ui_dir, folder))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:

@@ -29,6 +29,8 @@ func _init(sprite: SpriteLibrary.ItemSprite) -> void:
 	_sprite = sprite
 	centered = false
 	offset = sprite.origin
+	if sprite.silhouette:
+		self_modulate = Color.BLACK
 	_clip_node.centered = false
 	add_child(_clip_node)
 

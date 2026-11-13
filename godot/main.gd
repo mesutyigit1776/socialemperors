@@ -226,6 +226,7 @@ func _ready() -> void:
 		_hud.survival_requested.connect(_open_survival)
 		_hud.tournament_requested.connect(_open_tournament)
 		_hud.pvp_requested.connect(_open_pvp)
+		_hud.shields_requested.connect(_open_shields)
 		_hud.towns_requested.connect(_open_towns)
 		_hud.first_offer_requested.connect(_open_first_offer)
 		_hud.units_requested.connect(_open_unit_list)
@@ -341,7 +342,7 @@ func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 	var battle := BattleScreen.practice_battle(map, _village, _config, _sprites, _rng)
 	var view := BattleView.new()
 	add_child(view)
-	view.show_battle(battle, _config, _sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land))
+	view.show_battle(battle, _config, _sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land), _ui)
 	var camera := MapCamera.new()
 	camera.position = _start_position(map)
 	add_child(camera)
@@ -1748,20 +1749,55 @@ func _open_pvp() -> void:
 	if _village.get_level() < VillageSocial.PVP_LEVEL:
 		_hud.show_message("Attacks on other players open at level %d." % VillageSocial.PVP_LEVEL)
 		return
-	var window := PvpWindow.new(_village, _config)
+	var window := PvpWindow.new(_ui, _config, _village)
 	window.search_requested.connect(func() -> void:
 		window.queue_free()
 		_search_enemy())
-	window.shield_requested.connect(func(shield_id: int) -> void:
+	window.attack_log_requested.connect(func() -> void:
+		window.queue_free()
+		_open_attack_log(_open_pvp))
+	_hud.windows().add_child(window)
+
+
+## The window that sells the shields (PopupBuyShields).
+func _open_shields() -> void:
+	if not _tutorial.allows_other():
+		return
+	var window := ShieldWindow.new(_ui, _config, _village, _now)
+	window.buy_requested.connect(func(shield_id: int) -> void:
 		var result := _village.buy_shield(shield_id, _now())
 		_hud.show_placement_result(result)
 		if result == Village.Placement.OK:
 			_save()
 			_hud.refresh(_village)
-		window.show_main(_now()))
-	window.attack_log_opened.connect(func() -> void: _record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"}))
+		window.show_shields())
 	_hud.windows().add_child(window)
-	window.show_main(_now())
+
+
+## The attack log (PopupAttackLog); back runs when the player closes it, as
+## the client opens the PvP window again.
+func _open_attack_log(back: Callable) -> void:
+	_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"})
+	var window := AttackLogWindow.new(_ui, _config, _village.attacks_received(), _village.player_id(), _now())
+	window.closed.connect(back)
+	window.revenge_requested.connect(func(attack: Dictionary) -> void:
+		window.queue_free()
+		_revenge(attack))
+	_hud.windows().add_child(window)
+
+
+## The button of an attack in the log (AttackLogItem.viewEnemyMap): the
+## village of the attacker in the spy screen, without the cost of a search.
+func _revenge(attack: Dictionary) -> void:
+	if _village.quest_army().is_empty():
+		_hud.show_message(_config.text("NO_ARMY_ALERT"))
+		return
+	var pid := str(attack.get("id", ""))
+	var enemy := _neighbours.load_village(pid, _now()) if not pid.is_empty() else null
+	if enemy == null:
+		_hud.show_message("The village of %s is not here." % attack.get("name", "?"))
+		return
+	_show_spy(pid, enemy)
 
 
 ## The town window: buy the troll town ("buy_map"), then travel to it, as the client does; or travel between the towns.
@@ -1808,6 +1844,12 @@ func _search_enemy() -> void:
 		_hud.refresh(_village)
 		_hud.show_message("No enemy found. Try again later.")
 		return
+	_show_spy(pid, enemy)
+
+
+## The village of the player pid in the spy screen.
+func _show_spy(pid: String, enemy: Village) -> void:
+	_close_spy()
 	_enemy = {"pid": pid, "village": enemy, "name": enemy.player_name(), "loot": PvpBattle.loot_of(enemy, _village.get_level(), _config, _rng)}
 	_spy = SpyScreen.new(enemy, _enemy["name"], _enemy["loot"], _village.pvp_search_cost(), _config, _ui, _sprites, _start_position(enemy))
 	_spy.next_requested.connect(_search_enemy)

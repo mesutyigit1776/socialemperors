@@ -6,7 +6,7 @@ extends BattleAbility
 ## - mother_monster (MotherMonsterDelegate): a purple ball 18 frames after the
 ##   attack; attack 5 of each 5 (special attack 1) fires 6 balls, at frames 25
 ##   to 55. A ball that hits a unit poisons it (25 points, 5 times). The
-##   client draws these balls 1.6 times bigger; the port does not.
+##   balls are 1.6 times bigger than the graphic.
 ## - mother_minion (MotherMonsterMinionDelegate): a hit. It starts small; after
 ##   each 4 attacks it grows one step, to the scales 0.7, 0.85 and 1, with an
 ##   attack of 45, 55 and 65. After the first step, attack 4 of each 4 (special
@@ -31,6 +31,7 @@ extends BattleAbility
 ##   28): the 10 nearest enemy units within 2 tiles, not on its tile, that can
 ##   fly and can act take the attack and fly 2 tiles.
 
+const MOTHER_BALL_SCALE := 1.6
 const UNITS := {
 	2127: "mother_monster",
 	2128: "mother_minion",
@@ -202,9 +203,10 @@ static func _mother_ball(sim: BattleSim, fighter: BattleFighter) -> void:
 	var target := fighter.target
 	if fighter.dead or target == null or target.dead:
 		return
-	sim.shoot(fighter, target, "p.necroSpit", fighter.attack, func(_shot: BattleProjectile) -> void:
+	var ball := sim.shoot(fighter, target, "p.necroSpit", fighter.attack, func(_shot: BattleProjectile) -> void:
 		if target.is_unit() and not target.dead:
 			sim.poison(target, MOTHER_POISON, MOTHER_POISON_TICKS, 0, fighter if fighter in sim.fighters else null))
+	ball.scale = MOTHER_BALL_SCALE
 
 
 static func _edible(fighter: BattleFighter, unit: BattleFighter) -> bool:

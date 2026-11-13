@@ -127,6 +127,8 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 			# 10 minions for 12 seconds, when none is alive.
 			add(ability, 2, "", "2137_3", SpecialAttacks.Frames.new(sim, unit, SP2, [17], func() -> void:
 				var minions := unit.ability.spawn_minions(sim, unit, 2146, 10)
+				for minion in minions:
+					minion.grows_in = true
 				sim.after(12 * BattleSim.FRAMES_PER_SECOND, func() -> void:
 					for minion in minions:
 						if not minion.dead:

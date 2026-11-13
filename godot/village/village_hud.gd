@@ -19,6 +19,7 @@ signal quests_requested
 signal survival_requested
 signal tournament_requested
 signal pvp_requested
+signal shields_requested  ## The shield of the HUD opens the shield window (ShieldDisplay.onShieldClick).
 ## The player opens the town window (the town selector of the client).
 signal towns_requested
 signal packs_requested
@@ -170,7 +171,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	name_field.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _locked:
 			open_rename())
-	_clip_button("topRight/hudShield", func() -> void: pvp_requested.emit())
+	_clip_button("topRight/hudShield", func() -> void: shields_requested.emit())
 	_options = OptionsPanel.new(ui, _gui, _gui.clip("options_panel"))
 	add_child(_options)
 	# The client puts the zoom slider under the bottom bar.

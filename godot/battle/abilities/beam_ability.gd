@@ -180,8 +180,8 @@ const UNITS := {
 	2134: [[["p.hellBeam", ""], ["p.beamWater", ""], ["p.brownBeam", ""]], 20],
 	2336: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],  # CerberusAncientDragonDelegate
 	2338: [[["p.cerberusPoisonBeam", "b.cerberusPoisonBlast"], ["p.cerberusFireBeam", "b.cerberusFireBlast"], ["p.cerberusSkullBeam", "b.cerberusSkullBlast"]], 13, "random"],
-	# Three-Headed Dragon (ThreeHeadedDragonDelegate): the client shows the
-	# heads in turn (special attacks 1 to 3); the port shows the attack.
+	# Three-Headed Dragon (ThreeHeadedDragonDelegate): each beam comes from the
+	# next head, the animations of special attacks 1 to 3 in turn.
 	2057: ["p.lightBeam", 22],
 	2058: ["p.lightBeam", 22],
 }
@@ -194,6 +194,8 @@ const LONG_BEAMS := {2057: 90, 2058: 90}
 ## frames after the start of each attack.
 const SILENT_BEAMS: Array[int] = [2057, 2058]
 const THREE_HEADED: Array[int] = [2057, 2058, 2132, 2134]
+## The units whose heads beam in turn: the view shows the head (startBeam of ThreeHeadedDragonDelegate).
+const HEADS_IN_TURN: Array[int] = [2057, 2058]
 const THREE_HEADED_BEAM_MS := 18 * 1000 / 30
 
 var _beaming := false
@@ -202,6 +204,7 @@ var _choices: Array = []  # [beam, blast] pairs, see UNITS.
 var _random := false
 var _turn := 0
 var _item_id := 0
+var _head := 0  # The Three-Headed Dragon: the next head that beams.
 
 
 func configure(item_id: int) -> void:
@@ -240,11 +243,15 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 		var tile := target.tile
 		if not _item_id in SILENT_BEAMS:
 			sim.sound_played.emit(SoundEffect.MAGIC_FIRE, -1)
+		if _item_id in HEADS_IN_TURN:
+			fighter.shown_action = UnitSprite.Action.SPECIAL + _head % 3
+			_head += 1
 		sim.shoot(fighter, target, shot_graphic, fighter.attack, func(_shot: BattleProjectile) -> void:
 			if blast != "":
 				sim.effect(blast, tile)
 			if beam_id == _beam:
-				_beaming = false))
+				_beaming = false
+				fighter.shown_action = -1))
 	return false
 
 
@@ -252,6 +259,7 @@ func on_update(_sim: BattleSim, fighter: BattleFighter) -> void:
 	if _beaming and fighter.moving:
 		_beaming = false
 		_beam += 1
+		fighter.shown_action = -1
 
 
 func on_start_move(sim: BattleSim, _fighter: BattleFighter) -> void:

@@ -29,11 +29,6 @@ const FRAME_SECONDS := 1.0 / 30.0
 ## The client checks each second whether the map has loaded and then waits
 ## 2 seconds more before it shows Start Battle; the port loads at once.
 const READY_SECONDS := 3.0
-const HELP_TIPS: Array[String] = ["PVP_HELP_TIP_1", "PVP_HELP_TIP_2", "PVP_HELP_TIP_3", "PVP_HELP_TIP_4"]
-const HELP_BACKGROUND := "generic_bg.png"
-const HELP_PICTURES := "popup_elements/popup_pvp_help/tip_%d.png"
-## PopupPvpHelp puts each tip text 3 pixels above its picture.
-const HELP_TEXT_GAP := 3.0
 
 var _ui: UiLibrary
 var _config: GameConfig
@@ -174,26 +169,4 @@ func _process(delta: float) -> void:
 
 
 func _open_help() -> void:
-	SoundPlayer.play(SoundEffect.BUTTON_CLICK)
-	var cover := Control.new()
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	cover.mouse_filter = Control.MOUSE_FILTER_STOP
-	var help := _ui.make("PopupPvpHelpMC")
-	help.keep_centred()
-	help.show_picture("bg/bgAnchor", _ui.image(HELP_BACKGROUND), false)
-	help.button("btnClose").pressed.connect(func() -> void:
-		SoundPlayer.play(SoundEffect.BUTTON_CLICK)
-		cover.queue_free())
-	cover.add_child(help)
-	add_child(cover)
-	# A Label counts its lines only inside the tree.
-	for index in HELP_TIPS.size():
-		var tip := "tip%d" % (index + 1)
-		var label := "lblTip%d" % (index + 1)
-		help.show_picture(tip, _ui.image(HELP_PICTURES % (index + 1)), false)
-		help.set_text(label, _config.text(HELP_TIPS[index]))
-		var field: Label = help.part(label)
-		var text_height := field.get_line_count() * field.get_line_height()
-		# The client moves the field (its y in Flash); the port keeps the offset of the text in the field.
-		var offset: Vector2 = field.get_meta("offset", Vector2.ZERO) * field.scale
-		field.position.y = help.part(tip).position.y - (text_height + HELP_TEXT_GAP) + offset.y
+	PvpHelp.open(self, _ui, _config, PvpHelp.ATTACK_TIPS, PvpHelp.ATTACK_PICTURES)

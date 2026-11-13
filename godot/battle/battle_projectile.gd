@@ -95,11 +95,14 @@ var arc: bool  ## A timed shot flies in an arc.
 var graphic_name := ""  ## The graphic of a shot of an ability, see BattleSim.shoot().
 var beam := false  ## A beam of an ability, see BattleAbility.beam.
 var on_land := Callable()  ## Runs when a shot of an ability lands, with the shot.
+var scale := 1.0  ## The client draws the shot this much bigger; only the view uses it.
 
 
 ## A shot from attacker to the current position of target. graphic: the
 ## graphic of a timed shot of an ability, see BattleAbility.shot_graphic.
-static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumberGenerator, graphic := "") -> BattleProjectile:
+## from: the start of the shot relative to the attacker, for a shot that does
+## not start at the shot point of its graphic (the units in a Fortress).
+static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumberGenerator, graphic := "", from: Variant = null) -> BattleProjectile:
 	var shot := BattleProjectile.new()
 	shot.attacker = attacker
 	shot.target = target
@@ -119,7 +122,9 @@ static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumb
 		shot.frames_left = attacker.ability.beam_frames
 		return shot
 	shot.start = attacker.position
-	if attacker.graphic != null:
+	if from != null:
+		shot.start += from
+	elif attacker.graphic != null:
 		shot.start += attacker.graphic.shot_start(target.position - attacker.position, stepped != null)
 	if stepped != null:
 		shot.kind = Kind.STEPPED
@@ -141,6 +146,28 @@ static func fire(attacker: BattleFighter, target: BattleFighter, rng: RandomNumb
 		if shot.arc:
 			seconds *= ARC_TIME
 		shot.frames_left = maxi(roundi(seconds * FRAMES_PER_SECOND), 1)
+	return shot
+
+
+## A stepped shot of attacker at target with definition (see ARROW) that
+## carries no damage: a shot that only the view shows, for example the stream
+## of fire arrows of Castle III. It uses rng in the same way as fire().
+static func stepped_for_view(attacker: BattleFighter, target: BattleFighter, rng: RandomNumberGenerator, definition: Dictionary) -> BattleProjectile:
+	var shot := BattleProjectile.new()
+	shot.attacker = attacker
+	shot.target = target
+	shot.damage = -1
+	shot.kind = Kind.STEPPED
+	shot.definition = definition
+	shot.start = attacker.position
+	if attacker.graphic != null:
+		shot.start += attacker.graphic.shot_start(target.position - attacker.position, true)
+	shot.aim = stepped_aim(target, definition["aim"])
+	var offset: float = definition["offset"]
+	shot.end = shot.aim + Vector2(rng.randf() * offset - offset / 2, rng.randf() * offset - offset / 2)
+	shot.steps = maxf(shot.start.distance_to(shot.end) / definition["speed"], 1.0)
+	shot.first_step = rng.randf() * 0.94 + 0.05
+	shot.frames_left = maxi(ceili(shot.steps - shot.first_step), 1)
 	return shot
 
 

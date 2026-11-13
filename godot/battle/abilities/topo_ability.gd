@@ -8,13 +8,17 @@ extends BattleAbility
 ##   (3 frames for each tile). Each crack swallows one unit next to it, like
 ##   the Hell Abyss spell with an area of 1. The client looks for these units
 ##   on the enemy side of the battle, also when the mole is an enemy; the port
-##   does the same. The port does not draw the cracks.
+##   does the same. A crack is the hole of the Hell Abyss at 0.4 of its size
+##   (MagicParticleSpell with the asset of the spell of the Mole); like the
+##   hole of the spell, it stays at its last frame.
 ## - Each normal attack on a unit pushes it 2 tiles away.
 
 const RANGE := 5
 const CHANCE := 0.1
 const DELAY_PER_TILE := 3
 const CRACK_ATTACK_FRAME := 10  ## BattleSpell.DEFAULT_ATTACK_FRAME
+const HELL_ABYSS := 7  ## The spell of the Mole (SpellCrack).
+const CRACK_LOOK := {"scale": 0.4, "frames": -1}
 
 var _in_special := false
 
@@ -38,11 +42,15 @@ func on_attack(sim: BattleSim, fighter: BattleFighter) -> bool:
 
 
 func _cracks(sim: BattleSim, fighter: BattleFighter) -> void:
+	# Only the view uses the spell: it draws the cracks.
+	var abyss := sim.unit_spell(HELL_ABYSS)
 	for dx in range(-RANGE, RANGE + 1):
 		for dy in range(-RANGE, RANGE + 1):
 			var tile := fighter.tile + Vector2i(dx, dy)
 			if sim.rng.randf() > CHANCE or tile.x <= 0 or tile.y <= 0 or tile.x >= IsoGrid.MAP_TILES or tile.y >= IsoGrid.MAP_TILES:
 				continue
+			if abyss != null:
+				abyss.show_particle(sim, tile, (absi(dx) + absi(dy)) * DELAY_PER_TILE, CRACK_LOOK)
 			sim.after((absi(dx) + absi(dy)) * DELAY_PER_TILE + CRACK_ATTACK_FRAME, func() -> void:
 				for unit in sim.items_near(tile, 1, 1, BattleFighter.Team.ENEMY, true, _can_fall):
 					sim.swallow(unit))

@@ -47,6 +47,14 @@ impl Art {
     /// frame, a sprite; the point can be in any frame of that sprite, and this
     /// takes the first frame that has it.
     pub fn shot_points(&self, id: CharacterId) -> Vec<Option<Point>> {
+        self.named_points(id, &SHOT_POINT_NAMES)
+    }
+
+    /// For each frame of a sprite, the point in twips of the first child with
+    /// one of these names (tried in order), or None. As for shot_points(),
+    /// the child is in the first child of the frame, in any frame of it; for
+    /// example the places "unit1" to "unit6" of the units in a Fortress.
+    pub fn named_points(&self, id: CharacterId, names: &[&str]) -> Vec<Option<Point>> {
         let Some(Character::Sprite(sprite)) = self.characters.get(&id) else { return Vec::new() };
         sprite
             .frames
@@ -54,7 +62,7 @@ impl Art {
             .map(|frame| {
                 let first = frame.first()?;
                 let Some(Character::Sprite(child)) = self.characters.get(&first.id) else { return None };
-                SHOT_POINT_NAMES.iter().find_map(|name| {
+                names.iter().find_map(|name| {
                     let point = child.frames.iter().flatten().find(|p| p.name.as_deref() == Some(*name))?;
                     let mut at = [Point::from_xy(point.matrix.tx, point.matrix.ty)];
                     first.matrix.map_points(&mut at);

@@ -29,6 +29,8 @@ var flying: bool
 var attack_delay: int
 ## The units in the building in the save. The units in the Fortress shoot, see FortressAbility.
 var units_inside := 0
+## The items of the units in a building, for the view (the Fortress shows them).
+var inside_ids: Array[int] = []
 var ability: BattleAbility
 var target: BattleFighter
 var targeted_by: Array[BattleFighter] = []
@@ -73,6 +75,15 @@ var special_index := 0  ## The special attack that comes next, see BattleAbility
 ## An animation (UnitSprite.Action) that an ability plays outside the cycle,
 ## see BattleSim.play_special(); -1 when none plays.
 var forced_action := -1
+## An animation that only the view shows in place of the pose, or -1; it does
+## not change the battle (the heads of the Three-Headed Dragon in turn).
+var shown_action := -1
+## The client draws the unit this much bigger or smaller; only the view uses
+## it (the minions of Titan Lythos).
+var draw_scale := 1.0
+## The view shows the unit coming: from half its height and transparent to its
+## size in APPEAR_SECONDS (the minions of the Swamp Monster, IsoSwapMonster).
+var grows_in := false
 var forced_frames := 0  ## Frames of the forced animation that are left.
 var forced_events := {}  # Frame of the forced animation -> Callable.
 var forced_frame := 0  # Frames since the forced animation started.

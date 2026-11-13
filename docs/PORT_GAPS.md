@@ -42,7 +42,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 |---|---|
 | [HUD on modern screens](#the-hud-on-modern-screens) | Done |
 | [Blend modes with the map](#blend-modes-with-the-map) | Done |
-| [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Small to medium |
+| [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Done |
 | [PvP attack screen art](#pvp-attack-screen-art) | Medium |
 
 
@@ -309,11 +309,22 @@ Limits:
 
 ### Graphics that the port does not draw
 
-- The health bars and the selection rings are simple shapes (`godot/battle/battle_view.gd`); the graphics of the client are in its main file.
-- Effects that the client only draws (`docs/GODOT_BATTLES.md`, "The islands of the campaign" and "Special abilities"): the domes of protection, the cracks of the Mole, the size of the minions of Titan Lythos, and other small effects.
-- The client skews some parts of its windows; the port turns and scales them, but does not skew them (`godot/ui/ui_clip.gd`).
-- Graphics that the original files do not have (`docs/FLASH_ART.md`, section 1, and some items without a SWF file in `assets/`, for example `2025_fire_draggy`). Neither game can draw them, unless a copy is found in other game files.
+Done. The importer now takes these symbols of the client file: the health bars, the selection marks, the range of a dome, and the placeholders of a missing graphic; and `swf/blue_dome.swf`. What the port draws now:
 
+- **Health bars** (`battle/health_bar.gd`): `BarraVidaMC` for the player and `BarraVidaEnemyMC` for an enemy, at 0.6 of their size, 5 pixels above the graphic; the red part covers the lost life. In a tournament the enemies always show theirs, twice as big. A damaged item in the village shows the bar too.
+- **Selection marks** (`ui/selection_mark.gd`): `PeanaMC` under a unit (half a tile below its position) and `PeanaBuilding<w>x<w>MC` under a building of width w, for the player, an enemy or a neutral item; a child of the item node, under its graphic, as in the client. In battles and in the village (selected item and selected group).
+- **Domes** (`battle/dome_range.gd`, rules in `BattleSim`): the client halves the damage to the items of its side within the range of a Protection Dome, and halves the attack interval of the towers of its side placed after a Tower Enhancer within its range. The port had neither the rules nor the graphics. Now it has both: the range on the ground (`DomeRangeBottom`) while the dome is under the mouse or selected, and the dome of `blue_dome.swf` over a selected dome, red for the Tower Enhancer. `battle_check.gd` checks the rules.
+- **Effects of units**: the cracks of the Mole (the hole of the Hell Abyss at 0.4), the red bubble of Anubis (the particle of Force Shield, twice as big, red, alpha 0.7), the Mother Monster balls at 1.6, the Titan Lythos minions at 0.3, the heads of the Three-Headed Dragon in turn (special animations 1 to 3 for its beams), the Swamp Minions that grow from half their height and fade in (0.5 seconds, elastic), the red flash of the Huge Egg when it is hit, the white flash of the units of Instant Limit, the 4 extra rocks without damage of the Catapult (speed 8 to 10), the stream of fire arrows of Castle III (one every 2 frames while it has a target), and the units in a Fortress at the places `unit1` to `unit6` of its graphic, in battles and in the village; their arrows start there. The list in `docs/GODOT_BATTLES.md` said "the colour of the Swamp Minion when it is hit"; the client has no such colour (its delegate is empty); the minions grow in when they come.
+- **Skew** (`ui/ui_clip.gd`): a skewed part of a window is the child of a Node2D with the matrix of Flash. Two parts of the imported windows skew: the titles of the goal list and of the PvP window (2.5°).
+- **Missing graphics**: no copy of the 33 missing graphics is in the 1936 SWF files of `assets/`. The client shows a placeholder while a graphic loads, and it stays when the graphic is missing (`IsoElement.setProvisionalGrahic`): `LoadingUnit` in black for a unit, `Loading1x1` to `Loading4x4` for a building. The port shows the same (`SpriteLibrary.get_item_sprite`).
+
+Checks: the battle check has a new scenario for the domes; the village, battle, quest and spell checks pass (counts in the commit). Screenshots: health bars and marks on a quest map (own dragons, an enemy building with a third of its life), the marks of a building and of a group in the village, the dome range.
+
+Limits:
+
+- The marks, bars and the dome are drawn with the frames of the windows at the scale of the map, not compared with the client in Ruffle.
+- The units of a Fortress are drawn over its whole graphic; in the client parts of the graphic in front of a place cover the unit.
+- The shots and effects above were read from the code of the client; they were not compared with Ruffle.
 
 ### PvP attack screen art
 

@@ -9,13 +9,14 @@ extends BattleAbility
 ##    within 2 tiles fly 3 tiles away and take its attack / 2.2.
 ## 3. Minions (special attack 3): at frame 42, 3 minions come 2 tiles beside it
 ##    for 5 seconds, when it has none. The client puts them on the side of the
-##    player, also when the titan is an enemy; the port does the same. The
-##    client draws them at 0.3 of their size; the port does not.
+##    player, also when the titan is an enemy; the port does the same. They
+##    are drawn at 0.3 of their size.
 ## Other numbers: a normal attack.
 
 const MINION := 763  ## ID_UNIT_TITAN_LITHOS_MINION
 const MINIONS := 3
 const MINION_LIFE_FRAMES := 150  ## 5 seconds.
+const MINION_SCALE := 0.3
 
 var _doing_attack := false
 var _minions: Array[BattleFighter] = []
@@ -67,6 +68,7 @@ func _spawn_minions(sim: BattleSim, fighter: BattleFighter) -> void:
 		var unit := sim.spawn(sim.config_item(MINION), fighter.tile + Vector2i(side, 0), BattleFighter.Team.PLAYER)
 		if unit == null:
 			continue
+		unit.draw_scale = MINION_SCALE
 		if fighter.target != null and fighter.target.team != unit.team:
 			sim.set_target(unit, fighter.target)
 		_minions.append(unit)

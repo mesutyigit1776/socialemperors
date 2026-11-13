@@ -53,7 +53,7 @@ func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: U
 	battle.sim.spell_graphics = spell_graphics
 	battle.sim.spell_uses = village.spell_uses()
 	add_child(_view)
-	_view.show_battle(battle.sim, config, sprites, effects, SurvivalMap.LANDS[battle.map.index], battle.map.land_frames())
+	_view.show_battle(battle.sim, config, sprites, effects, SurvivalMap.LANDS[battle.map.index], battle.map.land_frames(), ui)
 	_camera.position = IsoGrid.tile_to_map(SurvivalMap.START_TILE)
 	add_child(_camera)
 	_screen = BattleScreen.new(battle.sim, _view)
