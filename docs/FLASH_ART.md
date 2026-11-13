@@ -34,7 +34,7 @@ The import reports 3 graphics that it cannot import. All three are faults in the
 To do:
 
 - Find these graphics in another copy of the game files, for example an archive of the CDN files. The owner of this fork has no other copy now; this item stays open until a copy is found.
-- For 2213: read in the decompiled client what it does when a class is missing. If the client shows a placeholder, the port can show the same. A name alias in the importer (graphic 2213 uses sprite 448) is possible, but only when we know that sprite 448 is the art of the rider and not of the dragon.
+- When a graphic is missing, the client keeps the placeholder that it shows while a graphic loads (`IsoElement.setProvisionalGrahic`): `LoadingUnit` for a unit, `Loading1x1` to `Loading4x4` for a building. The port now does the same for these three items (`SpriteLibrary.get_item_sprite`). A name alias in the importer (graphic 2213 uses sprite 448) is possible, but only when we know that sprite 448 is the art of the rider and not of the dragon.
 
 ## 2. Frame data that changed
 
