@@ -95,4 +95,4 @@ func _draw() -> void:
 
 ## The size of an element as Flash measures it (width and height of the display object, with its scale).
 static func _size(element: Control) -> Vector2:
-	return ((element as UiClip).bounds().size if element is UiClip else element.size) * element.scale
+	return ((element as UiClip).bounds(true).size if element is UiClip else element.size) * element.scale

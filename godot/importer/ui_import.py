@@ -25,7 +25,10 @@ port must place them itself. This module writes:
 
 A part is {"name", "depth", "matrix": [a, b, c, d, x, y], and "clip": id (a
 sprite), "button": id (a button) or "text": settings (see SwfFile.edit_text)},
-with "alpha", "glow" or "mask" when the placement has them. Unnamed text
+with "alpha", "glow" or "mask" when the placement has them, and "start": the
+frame that placed the instance, when it is not the first frame, and
+"clip_rect": [x0, y0, x1, y1], the bounds of a shape that masks the part in
+the first frame, for example the frame of a unit picture. Unnamed text
 fields are parts too, so that the port draws their text with the font, and
 unnamed buttons, which the drawing of a sprite leaves out.
 """
@@ -34,7 +37,7 @@ import json
 import os
 import shutil
 
-from swf_bounds import SwfFile
+from swf_bounds import SwfFile, _transform
 
 CLIENT_SWF = os.path.join("assets", "flash", "SocialEmpires1.4.07sec_fixed.swf")
 # Windows of the quests, and parts of the screen of the client ("GuiMC/..."
@@ -331,7 +334,9 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 		return
 	details = {}
 	alphas = []
-	places = swf._frame_places(*swf.sprites[sprite_id], details=details, frame_alphas=alphas)
+	starts = []
+	glows = []
+	places = swf._frame_places(*swf.sprites[sprite_id], details=details, frame_alphas=alphas, frame_starts=starts, frame_glows=glows)
 	clip = {"origin": None, "frames": []}
 	# Labels are 1-based frame numbers in the SWF file; the layout counts from 0.
 	labels = {label: frame - 1 for label, frame in swf.sprite_frame_labels(sprite_id).items()}
@@ -340,7 +345,7 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 	clips[sprite_id] = clip
 	dropped = set()
 	nested = []
-	for frame, frame_alpha in zip(places, alphas):
+	for frame, frame_alpha, frame_start, frame_glow in zip(places, alphas, starts, glows):
 		parts = []
 		for depth in sorted(frame):
 			char_id, matrix, name = frame[depth]
@@ -348,8 +353,10 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 			extra = details.get(depth, {})
 			if depth in frame_alpha:
 				part["alpha"] = frame_alpha[depth]
-			if "glow" in extra:
-				part["glow"] = extra["glow"]
+			if frame_start[depth] > 0:
+				part["start"] = frame_start[depth]
+			if depth in frame_glow:
+				part["glow"] = frame_glow[depth]
 			if "clip_depth" in extra:
 				part["mask"] = True
 			if char_id in swf.edit_texts:
@@ -383,6 +390,18 @@ def _collect(swf, sprite_id, clips, drops, buttons, layers, next_id):
 					for other in frame_parts:
 						if other["name"] == part["name"] and other.get("mask"):
 							other["masked"] = layer_id
+		# A shape that masks parts, for example the picture that the client
+		# loads into an anchor. The port cuts the pictures to its bounds.
+		for depth, (char_id, matrix, _) in places[0].items():
+			clip_depth = details.get(depth, {}).get("clip_depth")
+			bounds = swf.character_bounds(char_id) if clip_depth is not None and depth not in named else None
+			if bounds is None:
+				continue
+			rect = [value / 20 for value in _transform(bounds, matrix)]
+			for frame_parts in clip["frames"]:
+				for part in frame_parts:
+					if depth < part["depth"] <= clip_depth:
+						part["clip_rect"] = rect
 	if len(places) == 1:
 		_split_above_anchors(swf, sprite_id, places[0], clip["frames"][0], dropped, layers, next_id)
 	# A part below all shapes of the base image, for example a faded panel

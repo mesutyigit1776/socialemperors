@@ -10,7 +10,7 @@ extends Node2D
 ## shows the result; its close button gives the result (closed).
 ##
 ## The bar is at the place of the spy screen (SpyScreen.BAR_POSITION), which
-## comes before the attack with the same bar; not compared with the client.
+## comes before the attack with the same bar.
 
 signal closed(result: Dictionary)  ## For Village.end_pvp_attack().
 signal village_changed  ## A spell changed the mana or the spells; the owner saves the village.
@@ -19,6 +19,9 @@ const BAR_FRAME := 7  ## Frame 8 of the attack bar holds pvpHud.
 const RESOURCE_FIELDS := {"g": "lblGold", "w": "lblWood", "s": "lblStone", "f": "lblFood"}
 ## StateAssault.adjustScreen puts Withdraw 150 pixels above the bottom of the screen.
 const EXIT_FROM_BOTTOM := 150.0
+## The size of the Withdraw label that the client shows in Ruffle
+## (SpyScreen.grow_label), before the scale of the button in the art (0.73).
+const WITHDRAW_FONT_SIZE := 21
 ## PVPManager colours the time red in the last 30 seconds.
 const ENDING_SECONDS := 30
 const TIMER_COLOUR := Color.WHITE
@@ -76,7 +79,8 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	_hud.set_text("lblDefenderLevel", str(map.get_level()))
 	_hud.set_text("lblDefenderName", enemy_name)
 	var withdraw := _hud.clip("btnExit")
-	withdraw.fit_text("lbl", config.text("AUX_WITHDRAW"))
+	withdraw.set_text("lbl", config.text("AUX_WITHDRAW"))
+	SpyScreen.grow_label(withdraw, WITHDRAW_FONT_SIZE)
 	withdraw.make_button(true)
 	withdraw.pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall

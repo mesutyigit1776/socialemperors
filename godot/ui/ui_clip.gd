@@ -87,6 +87,18 @@ func show_frame(new_frame: int) -> void:
 			key = "%s#%d" % [key, int(part["depth"])]
 		shown[key] = true
 		var node: Control = _parts.get(key)
+		# A field that the timeline removed and placed again is a new field
+		# with the text of its frame, for example "You've lost the battle" in
+		# the second frame of the result of the attack log. The client writes
+		# its texts again after a change of frame (the labels of its buttons),
+		# so a field with a text from the code keeps it. Only text fields: the
+		# port keeps the clips and buttons that the code holds.
+		var shown_before := true
+		if node is Label and int(node.get_meta("start", 0)) != int(part.get("start", 0)) and node.text == node.get_meta("art_text"):
+			shown_before = node.visible
+			_holder(node).queue_free()
+			_parts.erase(key)
+			node = null
 		# A frame can have the field with another colour, for example a lit
 		# number; the field keeps its text, and the port changes its colour.
 		if node is Label and part.has("text") and not part["text"]["html"] and node.get_meta("frame_colour", "") != part["text"]["color"]:
@@ -96,7 +108,17 @@ func show_frame(new_frame: int) -> void:
 		if node == null:
 			node = _make_part(part)
 			node.set_meta("part", key)
+			node.set_meta("start", int(part.get("start", 0)))
+			if node is Label:
+				node.set_meta("art_text", node.text)
+				# The code hides some fields, for example the key help of the square tool.
+				node.visible = shown_before
 			_parts[key] = node
+			if part.has("clip_rect") and node is UiClip:
+				# The mask of the part, in the coordinates of the part; see show_picture().
+				var r: Array = part["clip_rect"]
+				var to_part := Transform2D(Vector2(m[0], m[1]), Vector2(m[2], m[3]), Vector2(m[4], m[5])).affine_inverse()
+				node.set_meta("clip_rect", to_part * Rect2(r[0], r[1], r[2] - r[0], r[3] - r[1]))
 			if _is_skewed(m):
 				var holder := Node2D.new()
 				holder.add_child(node)
@@ -278,7 +300,21 @@ func show_picture(path: String, texture: Texture2D, centred := true, picture_sca
 	picture.scale = Vector2.ONE * picture_scale
 	if centred and texture != null:
 		picture.position = -texture.get_size() * picture_scale / 2
-	anchor.add_child(picture)
+	if anchor.has_meta("clip_rect"):
+		# A shape of the art masks the anchor, for example the frame of a
+		# unit picture (ArmyUnitCellMC); the picture shows only inside it.
+		var rect: Rect2 = anchor.get_meta("clip_rect")
+		var window := Control.new()
+		window.set_meta("picture", true)
+		window.clip_contents = true
+		window.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		window.position = rect.position
+		window.size = rect.size
+		picture.position -= rect.position
+		window.add_child(picture)
+		anchor.add_child(window)
+	else:
+		anchor.add_child(picture)
 	return picture
 
 
@@ -316,13 +352,22 @@ func take_mouse() -> void:
 	_base.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-## The rectangle of the images and texts of the clip, in its own coordinates.
-func bounds() -> Rect2:
+## The rectangle of the images and parts in the coordinates of the clip.
+## with_pictures: also the pictures of show_picture(), without their masks,
+## as Flash measures the width and height of a display object.
+func bounds(with_pictures := false) -> Rect2:
 	var result := Rect2(_base.position, _base.size) if _base.texture != null else Rect2()
+	if with_pictures:
+		for child in get_children():
+			if child.has_meta("picture"):
+				var picture: TextureRect = child if child is TextureRect else child.get_child(0)
+				var size := picture.texture.get_size() if picture.texture != null else Vector2.ZERO
+				var rect := Rect2(picture.position + (child.position if child != picture else Vector2.ZERO), size * picture.scale)
+				result = rect if result.size == Vector2.ZERO else result.merge(rect)
 	for node: Control in _parts.values():
 		if not node.visible:
 			continue
-		var rect: Rect2 = node.bounds() if node is UiClip or node is UiButton else Rect2(Vector2.ZERO, node.size)
+		var rect: Rect2 = (node as UiClip).bounds(with_pictures) if node is UiClip else node.bounds() if node is UiButton else Rect2(Vector2.ZERO, node.size)
 		if rect.size != Vector2.ZERO:
 			rect = Transform2D(node.rotation, node.scale, 0.0, node.position) * rect
 			if _holder(node) != node:
@@ -369,7 +414,12 @@ func _make_part(part: Dictionary) -> Control:
 				color = Color.html(color_value.get_string(1))
 		text = RegEx.create_from_string("<[^>]*>").sub(text.replace("<br>", "\n").replace("</p><p", "\n<p"), "", true)
 		text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
-	label.text = text.replace("\r", "\n")
+	# Flash does not count the spaces at the end of a line when it wraps the
+	# text; Godot does, and breaks "You've won \rthe battle" into three lines.
+	var lines := text.replace("\r", "\n").split("\n")
+	for i in lines.size():
+		lines[i] = lines[i].rstrip(" ")
+	label.text = "\n".join(lines)
 	label.add_theme_font_override("font", library.font(settings["font_id"]))
 	label.add_theme_font_size_override("font_size", int(round(size)))
 	label.add_theme_color_override("font_color", color)

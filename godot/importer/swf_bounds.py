@@ -365,31 +365,43 @@ class SwfFile:
 			frames.append(rect)
 		return frames
 
-	def _frame_places(self, pos, end, details=None, frame_alphas=None):
+	def _frame_places(self, pos, end, details=None, frame_alphas=None, frame_starts=None, frame_glows=None):
 		"""Returns for each frame of a sprite {depth: (character id, matrix, instance name or None)} of the placed characters.
 
 		details, a dict, receives for each depth of the last frame the other
 		settings of the placement: "alpha" (0 to 1), "clip_depth" (a mask covers
 		the depths up to it) and "glow" ([color "#rrggbbaa", blur, strength] of
 		the first glow filter). frame_alphas, a list, receives for each frame
-		{depth: alpha} of the placements with an alpha."""
+		{depth: alpha} of the placements with an alpha. frame_starts, a list,
+		receives for each frame {depth: index of the frame that placed the
+		instance}; a move, also one that changes the character, keeps the
+		instance. frame_glows, a list, receives for each frame {depth: glow}
+		of the placements with a glow filter, as the "glow" of details."""
 		data = self.data
 		depth_char = {}
 		depth_matrix = {}
 		depth_name = {}
 		depth_alpha = {}
+		depth_start = {}
+		depth_glow = {}
 		frames = []
 		for code, start, length in _tags(data, pos, end):
 			if code == SHOW_FRAME_TAG:
 				frames.append({depth: (char_id, depth_matrix[depth], depth_name.get(depth)) for depth, char_id in depth_char.items()})
 				if frame_alphas is not None:
 					frame_alphas.append({depth: alpha for depth, alpha in depth_alpha.items() if depth in depth_char})
+				if frame_starts is not None:
+					frame_starts.append({depth: depth_start[depth] for depth in depth_char})
+				if frame_glows is not None:
+					frame_glows.append({depth: glow for depth, glow in depth_glow.items() if depth in depth_char})
 				continue
 			if code == REMOVE_OBJECT2_TAG:
 				depth = struct.unpack_from('<H', data, start)[0]
 				depth_char.pop(depth, None)
 				depth_name.pop(depth, None)
 				depth_alpha.pop(depth, None)
+				depth_start.pop(depth, None)
+				depth_glow.pop(depth, None)
 				continue
 			if code not in PLACE_TAGS:
 				continue
@@ -413,6 +425,10 @@ class SwfFile:
 				depth_name.pop(depth, None)
 				if not flags & 0x01:  # a new character, not a move
 					depth_alpha.pop(depth, None)
+					depth_glow.pop(depth, None)
+					depth_start[depth] = len(frames)
+				else:
+					depth_start.setdefault(depth, len(frames))
 			if flags & 0x04:
 				depth_matrix[depth], p = _read_matrix(data, p)
 			alpha = None
@@ -430,16 +446,17 @@ class SwfFile:
 			if flags & 0x40:
 				clip_depth = struct.unpack_from('<H', data, p)[0]
 				p += 2
+			glow = _first_glow(data, p) if flags3 & 0x01 else None
+			if glow is not None:
+				depth_glow[depth] = glow
 			if details is not None:
 				entry = details.setdefault(depth, {})
 				if alpha is not None:
 					entry["alpha"] = alpha
 				if clip_depth is not None:
 					entry["clip_depth"] = clip_depth
-				if flags3 & 0x01:
-					glow = _first_glow(data, p)
-					if glow is not None:
-						entry["glow"] = glow
+				if glow is not None:
+					entry["glow"] = glow
 		return frames
 
 	def _symbol_sprite(self, class_name):

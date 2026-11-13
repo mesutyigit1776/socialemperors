@@ -55,7 +55,7 @@ func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int,
 	_hud.set_part_visible("loadingAnim", false)
 	var attack := _hud.clip("btnAttack")
 	attack.set_text("lbl", config.text("PVP_ATTACK").strip_edges())
-	_grow_label(attack)
+	SpyScreen.grow_label(attack, ATTACK_FONT_SIZE)
 	attack.make_button()
 	attack.pivot_offset = attack.bounds().get_center()
 	var normal := attack.scale
@@ -89,20 +89,20 @@ func _layout() -> void:
 
 ## ButtonGenericTall.setTextSize makes the font of the label grow until the
 ## text nearly fills the button; then the label is in the middle, 5 pixels
-## higher. The port does not measure text as Flash does, so it uses the size
-## that the client shows in Ruffle (ATTACK_FONT_SIZE).
-static func _grow_label(button: UiClip) -> void:
+## higher. The port does not measure text as Flash does, so the caller gives
+## the size that the client shows in Ruffle.
+static func grow_label(button: UiClip, font_size: int) -> void:
 	var label: Label = button.part("lbl")
 	label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	label.add_theme_font_size_override("font_size", ATTACK_FONT_SIZE)
+	label.add_theme_font_size_override("font_size", font_size)
 	var font := label.get_theme_font("font")
 	# The field of the client grows to both sides of its middle; a Label grows to the right.
-	var width := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, ATTACK_FONT_SIZE).x
+	var width := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	if width > label.size.x:
 		label.position.x -= (width - label.size.x) / 2
 		label.size.x = width
 	var offset: Vector2 = label.get_meta("offset", Vector2.ZERO) * label.scale
-	label.position.y = -font.get_height(ATTACK_FONT_SIZE) / 2 - LABEL_RISE + offset.y
+	label.position.y = -font.get_height(font_size) / 2 - LABEL_RISE + offset.y
 
 
 ## The client changes the bar for the attack when the start window opens.

@@ -211,14 +211,18 @@ func attacks_lost() -> int:
 
 
 ## The attacks on this player: the entries of privateState
-## "PVPattacksReceived", newest last.
+## "PVPattacksReceived" in the order of their numeric keys. The server gives
+## each new attack the next free key, so the last entry is normally the newest.
 func attacks_received() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
+	var keys: Array[int] = []
 	var log: Variant = _document["privateState"].get("PVPattacksReceived")
 	for key: Variant in log if log is Dictionary else {}:
 		if log[key] is Dictionary:
-			result.append(log[key])
-	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.get("attackTime", 0)) < float(b.get("attackTime", 0)))
+			keys.append(int(key))
+	keys.sort()
+	var result: Array[Dictionary] = []
+	for key: int in keys:
+		result.append(log[str(key)])
 	return result
 
 

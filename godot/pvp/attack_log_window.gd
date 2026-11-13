@@ -1,7 +1,7 @@
 class_name AttackLogWindow
 extends Control
 ## The attack log of the client (PopupAttackLog): the attacks on the player,
-## newest first, 4 on a page (AttackLogItem). Each shows the name and the level
+## the highest key of the log first, 4 on a page (AttackLogItem). Each shows the name and the level
 ## of the attacker, the resources that it took, the time since the attack,
 ## whether the attacker won (btnWinLose), and a button to attack the attacker
 ## while the player has not answered the attack: "Take Revenge!!" after a
@@ -50,9 +50,9 @@ func _init(ui: UiLibrary, config: GameConfig, attacks: Array[Dictionary], player
 	var pages := Paginator.new(_window.clip("AttackContainer"), _window.clip("bPrevButton"), _window.clip("bNextButton"), 1, PER_PAGE, GAP)
 	pages.set_closing(ui.make("AttackLogEndItemMC"), END_LIMIT)
 	var items: Array[Control] = []
-	var newest_first := attacks.duplicate()
-	newest_first.reverse()
-	for attack: Dictionary in newest_first:
+	var last_first := attacks.duplicate()
+	last_first.reverse()
+	for attack: Dictionary in last_first:
 		items.append(_make_item(attack, player_id, now))
 	var empty: Label = null
 	if attacks.is_empty():
@@ -73,7 +73,8 @@ func _ready() -> void:
 func _make_item(attack: Dictionary, player_id: String, now: int) -> UiClip:
 	var item := _ui.make("AttackLogItemMC")
 	item.set_text("lblPlayerName", str(attack.get("name", "")))
-	item.set_text("lblLevel", str(attack.get("level", "")))
+	var level: Variant = attack.get("level", "")
+	item.set_text("lblLevel", str(int(level)) if level is float else str(level))
 	var lost: Variant = attack.get("attackResourcesLost")
 	for code: String in RESOURCE_FIELDS:
 		item.set_text(RESOURCE_FIELDS[code], str(roundi(float(lost.get(code, 0)))) if lost is Dictionary else "0")
