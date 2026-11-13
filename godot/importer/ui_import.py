@@ -17,6 +17,8 @@ port must place them itself. This module writes:
   <out>/ui/thumbs/<img_name>.jpg  small pictures of the units, for the units lost in a quest
   <out>/ui/cast/...             the banner of a cast spell, from its own SWF file, in the same form
   <out>/ui/viral/...            the icon of the first purchase offer, from its own SWF file, in the same form
+  <out>/ui/forge_icon/..., forge_bar/..., forge_hammer/...
+                                the icon, the progress bar and the hammer of the Island Forge, the same
 
 A part is {"name", "depth", "matrix": [a, b, c, d, x, y], and "clip": id (a
 sprite), "button": id (a button) or "text": settings (see SwfFile.edit_text)},
@@ -127,6 +129,8 @@ SYMBOLS = [
 	# The window of the start point of a PvP attack and its help window.
 	"PopupLoadingAssaultMC",
 	"PopupPvpHelpMC",
+	# The window of the Island Forge (the class name of the client has this spelling).
+	"PoupIslandForgeMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
@@ -141,18 +145,27 @@ IMAGES = [f"quests_manager_img_{n}.jpg" for n in range(1, 8)] + ["TESORO.jpg", "
 	+ ["tournament_weekly_gold.jpg", "weekly_tournament_bot1.png", "weekly_tournament_bot2.png", "weekly_tournament_bot3.png"] \
 	+ ["thumbrey.jpg", "thumbprincess.jpg", "townHuman.png", "townTroll.png"] \
 	+ [f"gods_{n}.jpg" for n in range(1, 8)] \
-	+ ["generic_bg.png"]
+	+ ["generic_bg.png"] \
+	+ ["hell_forge.jpg", "quests_island_manager_img_1.jpg"]
 # The login bonus window loads its background and the pictures of the days
 # from assets/externalized/DailyBonus, and the help of a PvP attack its tips
 # from assets/externalized/popup_elements; the port keeps the same folders.
 EXTERNALIZED_IMAGES = ["DailyBonus/bg.png"] + [f"DailyBonus/imgs/day{n}.png" for n in range(1, 6)] \
-	+ [f"popup_elements/popup_pvp_help/tip_{n}.png" for n in range(1, 5)]
+	+ [f"popup_elements/popup_pvp_help/tip_{n}.png" for n in range(1, 5)] \
+	+ ["IslandForge/bg.jpg", "IslandForge/dragonBG.png"] + [f"IslandForge/{n}.{kind}" for n in range(1, 7) for kind in ("jpg", "png")]
 # The banner that shows the name of a cast spell.
 CAST_SWF = os.path.join("assets", "buildingsprites", "magic_cast_marquee.swf")
 CAST_SYMBOLS = ["magic_cast"]
 # The icon of the first purchase offer at the side of the HUD ("open me").
 VIRAL_SWF = os.path.join("assets", "externalized", "viral_buttons", "viralFirstOffer.swf")
 VIRAL_SYMBOLS = ["viralFirstOffer"]
+# The Island Forge: the icon of the event in the HUD (the viral offer 2 has
+# the icon "easterDragon"), and the progress bar and the hammer of its window.
+FORGE_SWFS = [
+	(os.path.join("assets", "externalized", "viral_buttons", "easterDragon.swf"), ["easterDragon"], "forge_icon"),
+	(os.path.join("assets", "externalized", "IslandForge", "island_progressbar.swf"), ["island_progressbar"], "forge_bar"),
+	(os.path.join("assets", "externalized", "IslandForge", "forge_hammer.swf"), ["forge_hammer"], "forge_hammer"),
+]
 # The copy of a SWF file with the windows, from which the port draws them.
 WINDOWS_FILE = "windows.swf"
 
@@ -167,6 +180,8 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
 	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
 	count += _import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
+	for swf_path, symbols, folder in FORGE_SWFS:
+		count += _import_windows(os.path.join(source, swf_path), symbols, os.path.join(ui_dir, folder))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:
 		target = os.path.join(ui_dir, "images", image)

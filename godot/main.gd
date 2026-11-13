@@ -87,6 +87,7 @@ var _neighbours: NeighbourSource
 var _neighbour_bar: NeighbourBar
 ## Arthur or Guinevere, see Host.
 var _host: Host
+var _forge: ForgeEvent  # The Island Forge, or null when the configuration has none.
 ## The neighbours that the player visited in this session: the client lets the
 ## player help each neighbour once in a session (arFriendsAssisted).
 static var _visited := {}
@@ -237,6 +238,17 @@ func _ready() -> void:
 		_enemies.fight_needed.connect(func() -> void: _start_village_fight())
 		add_child(_enemies)
 		_town_quests = TownQuests.new(_village, _config, _rng)
+		var island_forge := IslandForge.from_settings(_config, _village, SoundPlayer.SETTINGS_FILE)
+		if island_forge != null:
+			_forge = ForgeEvent.new(island_forge, _village, _view, _hud, _ui, data_dir, _frames, _config, _sprites, _rng, _windows, _now)
+			_forge.changed.connect(func() -> void:
+				_save()
+				_hud.refresh(_village))
+			_forge.pvp_requested.connect(_open_pvp)
+			_forge.quest_requested.connect(func(quest_id: String) -> void:
+				if _load_quest_graphics():
+					_land(quest_id, _village.quest_army()))
+			add_child(_forge)
 		_goals.goal_completed.connect(_on_goal_completed)
 		if _tutorial.is_active():
 			_tutorial_box = TutorialBox.new(_ui)
@@ -516,6 +528,9 @@ func _on_quest_closed(result: Dictionary) -> void:
 	var old_level := _village.get_level()
 	for found in _quest_screen.quest.collectibles:
 		_village.add_collectible(found)
+	var forge_quest := str(result["quest_id"]) in IslandForge.QUEST_IDS
+	if forge_quest and _forge != null:
+		_forge.quest_ended(result, _village.quest_rank(str(result["quest_id"])))
 	_village.end_quest(result)
 	# The client loads the village map again: new enemies come, and a new level
 	# of the quest brings no attacks of its own.
@@ -527,7 +542,8 @@ func _on_quest_closed(result: Dictionary) -> void:
 	_update_store()
 	_update_production()
 	_hud.show_message(_level_up_text(old_level).strip_edges())
-	_open_quests()
+	if not forge_quest:
+		_open_quests()
 
 
 func _show_village(shown: bool) -> void:
@@ -577,6 +593,9 @@ func _on_item_selected(item: GameConfig.ItemDef) -> void:
 ## or to a resource that it can use. Otherwise a click on a ready building collects from it, as in the
 ## original game, and a click on an item selects it.
 func _on_map_clicked(tile: Vector2i, placed: Village.PlacedItem) -> void:
+	if _forge != null and _forge.is_island(placed):
+		_forge.open_window()
+		return
 	if placed != null and _village.quest_roles.get(placed) == Village.QuestRole.OBJECTIVE:
 		_collect_town_quest(placed)
 		return
@@ -680,6 +699,8 @@ func _on_clock() -> void:
 	_update_production()
 	_update_store()
 	_update_first_offer_icon(now)
+	if _forge != null:
+		_forge.update(now, not _tutorial.is_active())
 
 
 ## Puts the trained units of the building on the map. Returns true when a unit came out.
@@ -1112,9 +1133,13 @@ func _init_map() -> void:
 	_update_store()
 	if _village.get_level() >= Village.PUBLISH_SCORE_LEVEL:
 		_village.publish_score(_village.client_xp())
+	if _forge != null:
+		_forge.update(now, not _tutorial.is_active())
 	_view.sync_items()
 	_save()
 	_show_daily_bonus()
+	if _forge != null:
+		_forge.check_prizes()
 
 
 ## The client makes the icon panel when the map of the player opens after the
@@ -1329,6 +1354,8 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
 	_goals.watch_battle(battle.sim)
 	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position)
+	if _forge != null:
+		_forge.watch_battle(battle.sim, _village_fight.map_view(), false)
 	_village_fight.village_changed.connect(_save)
 	_village_fight.closed.connect(_on_village_fight_closed)
 	_select(null)
@@ -1356,6 +1383,8 @@ func _on_village_fight_closed() -> void:
 	if _save():
 		_hud.show_message(text + _level_up_text(old_level))
 	_check_town_quest()
+	if _forge != null:
+		_forge.check_prizes()
 
 
 ## Counts an event of the screens for the goals, and saves when a goal was
@@ -1368,6 +1397,8 @@ func _record(kind: VillageEvent.Kind, data: Dictionary) -> void:
 
 ## The events of the village that the tutorial waits for.
 func _on_village_event(kind: VillageEvent.Kind, data: Dictionary) -> void:
+	if _forge != null:
+		_forge.on_village_event(kind, data)
 	# The client tells the player to take the reward when a new unit completes a unit collection (UnitCollectionsManager).
 	if kind == VillageEvent.Kind.UNIT_ARRIVED:
 		_village.achieve_unit(data["unit"])
@@ -1800,6 +1831,8 @@ func _start_attack(start_tile: Vector2i) -> void:
 	_goals.watch_battle(battle.sim)
 	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
 	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	if _forge != null:
+		_forge.watch_battle(battle.sim, _pvp_screen.map_view(), true)
 	_pvp_screen.village_changed.connect(_save)
 	_pvp_screen.closed.connect(_on_attack_closed)
 	_close_spy()

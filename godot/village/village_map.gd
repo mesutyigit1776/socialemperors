@@ -117,6 +117,10 @@ var neighbour_ids: Array[String] = []
 ## The items of the quest in the town and their side, set by TownQuests; the
 ## save does not keep it. The player cannot move, sell or store these items.
 var quest_roles := {}  # PlacedItem -> QuestRole
+## Items that the client puts on the map without a server command, so that the
+## save does not have them: the forge island (IslandForge). They belong to no
+## side, and the player cannot move, sell or store them.
+var _unsaved := {}  # PlacedItem -> true
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
 var _map_index: int
@@ -581,7 +585,7 @@ func _read(data: Dictionary, path: String, config: GameConfig, map_index: int) -
 func can_move(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
 	return item != null and not item.is_unit() and item.category_id != CATEGORY_TERRAIN \
-			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS and not quest_roles.has(placed)
+			and not item.subcat_functional in NEUTRAL_RESOURCE_SUBCATS and not quest_roles.has(placed) and not _unsaved.has(placed)
 
 
 ## The player can sell the items that they can move, except the town hall.
@@ -661,6 +665,36 @@ func is_free(tile: Vector2i, ignored: PlacedItem = null) -> bool:
 	if ignored != null and _covered_tiles(ignored).has_point(tile):
 		others -= 1
 	return others == 0
+
+
+## The nearest corner tile of a free square of size tiles, on any land,
+## in rings of up to radius tiles around centre (encontrarZonaProximaLibre of
+## the client without its land test). The square extends up and to the left of
+## the tile, as a footprint does. Returns ANY_TILE when there is none.
+func free_zone_near(centre: Vector2i, size: int, radius: int) -> Vector2i:
+	for ring in range(0, radius + 1):
+		var best := ANY_TILE
+		var around := Rect2i(centre, Vector2i.ONE).grow(ring)
+		for y in range(around.position.y, around.end.y):
+			for x in range(around.position.x, around.end.x):
+				var tile := Vector2i(x, y)
+				var on_edge := x == around.position.x or x == around.end.x - 1 or y == around.position.y or y == around.end.y - 1
+				if on_edge and _zone_free(Rect2i(tile - Vector2i(size - 1, size - 1), Vector2i(size, size))) \
+						and (best == ANY_TILE or (tile - centre).length_squared() < (best - centre).length_squared()):
+					best = tile
+		if best != ANY_TILE:
+			return best
+	return ANY_TILE
+
+
+func _zone_free(zone: Rect2i) -> bool:
+	if not Rect2i(0, 0, IsoGrid.MAP_TILES, IsoGrid.MAP_TILES).encloses(zone):
+		return false
+	for y in range(zone.position.y, zone.end.y):
+		for x in range(zone.position.x, zone.end.x):
+			if _occupied[y * IsoGrid.MAP_TILES + x] != 0:
+				return false
+	return true
 
 
 ## The free tile nearest to the area, in rings around it, or ANY_TILE.
@@ -864,6 +898,26 @@ func _add_entry(item: GameConfig.ItemDef, tile: Vector2i, frame: int, timestamp:
 	return placed
 
 
+## Puts an item on the map that the save does not get, see _unsaved.
+func add_unsaved(item: GameConfig.ItemDef, tile: Vector2i) -> PlacedItem:
+	var placed := PlacedItem.new()
+	placed.item_id = item.id
+	placed.tile = tile
+	placed._entry = [item.id, tile.x, tile.y, 0, 0, 0, [], {}]
+	_add(placed)
+	_unsaved[placed] = true
+	return placed
+
+
+func is_unsaved(placed: PlacedItem) -> bool:
+	return _unsaved.has(placed)
+
+
+func remove_unsaved(placed: PlacedItem) -> void:
+	if _unsaved.has(placed):
+		_remove(placed)
+
+
 func _set_frame(placed: PlacedItem, frame: int) -> void:
 	placed.frame = frame
 	placed._entry[3] = frame
@@ -871,6 +925,7 @@ func _set_frame(placed: PlacedItem, frame: int) -> void:
 
 func _remove(placed: PlacedItem) -> void:
 	quest_roles.erase(placed)
+	_unsaved.erase(placed)
 	_mark_occupied(placed, -1)
 	items.erase(placed)
 	_map["items"].erase(placed._entry)

@@ -24,7 +24,8 @@ extends RefCounted
 ## - HARD, GOD: the player wins when all enemy units are dead. Each enemy that
 ##   dies can drop an item of the Bahamut collections. The god islands give
 ##   more experience.
-enum Family { TROLLS, CIVILISATION, YETI, GOLEM, WORM, DRAGON, DRAGON_2, HEROES, HARD, GOD }
+## - FORGE: the five islands of the Island Forge, see ForgeQuest.
+enum Family { TROLLS, CIVILISATION, YETI, GOLEM, WORM, DRAGON, DRAGON_2, HEROES, HARD, GOD, FORGE }
 
 ## A land area of the island with this layout value is water: no item can be
 ## on it and units cannot walk on it. Other values are frames (from 1) of the
@@ -50,12 +51,13 @@ const PRINCE_ARTHUR := 534
 
 ## The pictures of the start window: frame (from 0) of "images" and the file.
 ## The client takes the file from the list IMAGES_QUESTBEGIN by the frame.
-const PICTURES := ["COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "barco.jpg", "TESORO.jpg", "rockdriller_start.jpg", "barca.jpg", "zeppelin.jpg", "boss2_ini.jpg"]
+const PICTURES := ["COLLECT_GEMS.jpg", "pop_up_nieve.jpg", "barco.jpg", "TESORO.jpg", "rockdriller_start.jpg", "barca.jpg", "zeppelin.jpg", "boss2_ini.jpg", "hell_forge.jpg"]
 const PICTURE_GEMS := 0
 const PICTURE_SNOW := 1
 const PICTURE_TREASURE := 3
 const PICTURE_ROCKDRILLER := 4
 const PICTURE_DRAGON_2 := 7
+const PICTURE_FORGE := 8
 
 const _TROLLS_1_2_LAYOUT: Array[int] = [5, 5, 5, 5, 5, 5, 10, 6, 11, 5, 5, 12, 7, 13, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
 const _HUMANS_LAYOUT: Array[int] = [10, 6, 6, 11, 5, 8, 3, 3, 9, 5, 8, 3, 3, 9, 5, 8, 3, 3, 9, 5, 12, 7, 7, 13, 5]
@@ -105,6 +107,12 @@ const ISLANDS := {
 	"100000090": {"goal": "QUEST_GOD1_DESCRIP", "family": Family.GOD, "gold": "QUEST_GODS_1", "start": Vector2i(5, 90), "land": MINERAL, "layout": _ALL_LAND_LAYOUT, "free": {}, "team": true, "groups": ["god", "colossus"], "group_count": 1},
 	"100000091": {"goal": "QUEST_GOD2_DESCRIP", "family": Family.GOD, "gold": "QUEST_GODS_2", "start": Vector2i(5, 5), "land": MINERAL, "layout": _ALL_LAND_LAYOUT, "free": {}, "team": true, "groups": ["god", "colossus"], "group_count": 1},
 	"100000092": {"goal": "QUEST_GOD3_DESCRIP", "family": Family.GOD, "gold": "QUEST_GODS_3", "start": Vector2i(60, 95), "land": MINERAL, "layout": _ALL_LAND_LAYOUT, "free": {}, "team": true, "groups": ["god", "colossus"], "group_count": 5},
+	# The forge islands (QuestCollectable1 to 5), in the order of IslandForge.QUEST_IDS.
+	"100000055": {"title": "QUEST_MISTERIOSA", "goal": "ISLAND_FORGE_QUEST_1_DESC", "family": Family.FORGE, "gold": "", "start": Vector2i(95, 50), "land": MINERAL, "layout": [5, 1, 1, 1, 5, 5, 1, 3, 1, 1, 1, 1, 3, 3, 3, 1, 3, 3, 1, 1, 1, 1, 1, 1, 5], "free": {699: 2, 705: 4, 703: 3, 701: 5}, "picture": PICTURE_FORGE},
+	"100000054": {"title": "QUEST_MISTERIOSA", "goal": "ISLAND_FORGE_QUEST_2_DESC", "family": Family.FORGE, "gold": "", "start": Vector2i(90, 42), "land": MINERAL, "layout": [5, 5, 5, 5, 5, 5, 3, 3, 1, 1, 5, 3, 3, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], "free": {701: 4, 703: 5, 702: 2, 699: 2}, "picture": PICTURE_FORGE},
+	"100000053": {"title": "QUEST_MISTERIOSA", "goal": "ISLAND_FORGE_QUEST_3_DESC", "family": Family.FORGE, "gold": "", "start": Vector2i(50, 85), "land": MINERAL, "layout": [5, 1, 1, 1, 5, 1, 1, 3, 1, 1, 1, 3, 3, 3, 1, 1, 1, 3, 1, 1, 5, 1, 3, 1, 5], "free": {711: 2, 705: 8, 724: 1}, "picture": PICTURE_FORGE},
+	"100000052": {"title": "QUEST_MISTERIOSA", "goal": "ISLAND_FORGE_QUEST_4_DESC", "family": Family.FORGE, "gold": "", "start": Vector2i(50, 95), "land": MINERAL, "layout": [5, 1, 1, 1, 5, 5, 1, 3, 1, 5, 5, 1, 3, 1, 5, 5, 1, 3, 1, 5, 5, 1, 3, 1, 5], "free": {793: 1, 703: 9}, "picture": PICTURE_FORGE},
+	"100000051": {"title": "QUEST_MISTERIOSA", "goal": "ISLAND_FORGE_QUEST_5_DESC", "family": Family.FORGE, "gold": "", "start": Vector2i(95, 50), "land": MINERAL, "layout": [5, 5, 5, 5, 5, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 1, 3, 3, 3, 1, 1, 1, 1, 1, 1], "free": {2094: 1, 2093: 8}, "picture": PICTURE_FORGE},
 }
 
 ## The island list of the client names each island after an island item of
@@ -116,6 +124,7 @@ const NAME_ITEMS := {
 	"100000019": 295, "100000018": 298, "100000011": 284, "100000033": 435,
 	"100000041": 1384, "100000042": 1385, "100000043": 1386, "100000044": 1387, "100000045": 1388,
 	"100000046": 1489, "100000047": 1490, "100000090": 1506, "100000091": 1507, "100000092": 1511,
+	"100000055": 2262, "100000054": 2263, "100000053": 2264, "100000052": 2265, "100000051": 2266,
 }
 
 var id: String

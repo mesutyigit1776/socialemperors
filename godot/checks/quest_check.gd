@@ -53,7 +53,7 @@ func _init() -> void:
 		return
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start, _check_survival, _check_tournament]:
+	for scenario: Callable in [_check_island_list, _check_quest_limit, _check_end_quest, _check_sides, _check_stars_and_gold, _check_troll_win, _check_civilisation_win_and_loss, _check_units_back, _check_water, _check_summoned, _check_keys_and_boss, _check_golem_altar, _check_dragon_2, _check_heroes_doors, _check_team, _check_item_rewards, _check_before_start, _check_forge_islands, _check_survival, _check_tournament]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -415,6 +415,39 @@ func _check_before_start() -> bool:
 	quest.start(1)
 	quest.update()
 	_check(ended[0], "it ends after the start")
+	return true
+
+
+## The forge islands (ForgeQuest): the counter of skeletons, no gold on the
+## first island, the reward of each enemy by its price on the others, the end
+## 7 seconds after the win, and a result that opens no campaign island.
+func _check_forge_islands() -> bool:
+	var quest := _quest(IslandForge.QUEST_IDS[0], {SPEARMAN: 4}, 0)
+	_check(quest is ForgeQuest and quest.enemies_left() == 7 and quest.counter_texts()[0] == _config.text("QUEST_ESQUELETOS_VIVOS"), "the first forge island counts its 7 skeletons")
+	quest.start(1)
+	for enemy in quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY):
+		quest.sim.receive_attack(enemy, 100000, null)
+	_check(quest.is_won() and quest.gold == 0 and quest.xp == 0, "the first forge island gives no gold and no experience")
+	var ended := [false]
+	quest.ended.connect(func() -> void: ended[0] = true)
+	for i in QuestBattle.END_DELAY_FRAMES * ForgeQuest.WIN_SECONDS:
+		quest.sim.step()
+		quest.update()
+	_check(ended[0], "the quest ends 7 seconds after the win")
+	_check(quest.result()["set_unlocked_index"] == 0, "the result opens no island of the campaign")
+	var second := _quest(IslandForge.QUEST_IDS[1], {SPEARMAN: 4}, 0)
+	second.start(1)
+	var knight: BattleFighter = second.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY and item.def.id == 676).front()
+	second.sim.receive_attack(knight, 100000, null)
+	_check(second.gold == 450 and second.xp == 23, "an Infernal Knight (1800 gold) gives 450 gold and 23 experience: %d, %d" % [second.gold, second.xp])
+	var wall: BattleFighter = second.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY and item.def.id == 473).front()
+	second.sim.receive_attack(wall, 100000, null)
+	_check(second.gold == 452 and second.xp == 24, "a wall (no attack) gives 2 gold and 1 experience: %d, %d" % [second.gold, second.xp])
+	var village := _village()
+	village.start_quest(IslandForge.QUEST_IDS[0], NOW)
+	village.end_quest(_result(IslandForge.QUEST_IDS[0], 1, true))
+	_check(village.quest_rank(IslandForge.QUEST_IDS[0]) == 1 and village.unlocked_quest_index() == 0, "a forge win keeps its stars and opens no campaign island")
+	_check(not _saved(village)["maps"][0].get("questTimes", {}).has(IslandForge.QUEST_IDS[0]) and village.quest_start_times() == [NOW], "a forge island counts for the quest limit but has no start time of its own")
 	return true
 
 

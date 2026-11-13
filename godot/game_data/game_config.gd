@@ -138,6 +138,15 @@ var daily_bonus: Array[Dictionary] = []
 ## {resource code or "exp": amount}, "units": [3 unit ids]}. Empty when the
 ## viral icon "FirstOfferButton" is off or the globals have no offer.
 var first_offer: Dictionary = {}
+## The Island Forge, the collect game of the client ("collect_game" "1",
+## "collect_game_items" and "viral_offers" "2"), see IslandForge:
+## {"start", "duration": the event time that the server wrote into the
+## configuration, "building": the island, "discount": percent, "trolls_cooldown"
+## and "pvp_cooldown": seconds, "pvp_life_multiplier", "prizes": [[items
+## needed, unit id], ...] by items needed, "items": [{"id", "type", "name",
+## "action", "tooltip", "required", "cost", "last_cost", "speedup_cost",
+## "cooldown"}, ...] by id}. Empty when the configuration has no collect game.
+var collect_game: Dictionary = {}
 ## The unit collections of the unit list ("units_collections_categories"), in
 ## the order of "position": {"id", "name", "units": Array[int], "reward"}.
 ## "name" is the text of "category_lang_id". The configuration also has a cash
@@ -352,6 +361,7 @@ static func load_from_file(path: String) -> GameConfig:
 			config.daily_bonus.append({"day": to_int(entry["reward_day"]), "reward": entry["reward"], "img": str(entry.get("img", ""))})
 	config.daily_bonus.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["day"] < b["day"])
 	config.first_offer = _parse_first_offer(data.get("viral_icons"), globals)
+	config.collect_game = _parse_collect_game(data.get("collect_game"), data.get("collect_game_items"))
 	config.unit_packs.assign(data.get("unit_packs", []).filter(func(pack: Variant) -> bool:
 		return pack is Dictionary and pack.get("price") is Dictionary and pack.get("pack_num") is Dictionary and pack.get("pack_category") is Dictionary \
 				and [pack.get("id"), pack.get("store_order"), pack.get("units_given"), pack.get("max_purchable")].all(func(value: Variant) -> bool: return to_int(value) != null)))
@@ -811,6 +821,41 @@ static func _parse_first_offer(icons: Variant, globals: Dictionary) -> Dictionar
 		elif to_int(reward[key]) != null:
 			offer["reward"][key] = to_int(reward[key])
 	return offer
+
+
+static func _parse_collect_game(games: Variant, items: Variant) -> Dictionary:
+	if not games is Dictionary or not games.get("1") is Dictionary or not items is Dictionary:
+		return {}
+	var game: Dictionary = games["1"]
+	var data: Variant = game.get("game_data")
+	var values := [to_int(game.get("starts_at")), to_int(game.get("duration")), to_int(game.get("building_id")), to_int(game.get("discount_price"))]
+	if null in values or not data is Dictionary or not game.get("rewards") is Dictionary:
+		return {}
+	var timers := [to_int(data.get("trolls_cooldown")), to_int(data.get("pvp_cooldown"))]
+	var multiplier: Variant = data.get("pvp_killed_life_multiplier")
+	if null in timers or not (multiplier is int or multiplier is float):
+		return {}
+	# The client keeps the multiplier in an int, so 0.5 becomes 0.
+	var result := {"start": values[0], "duration": values[1], "building": values[2], "discount": values[3],
+			"trolls_cooldown": timers[0], "pvp_cooldown": timers[1], "pvp_life_multiplier": int(multiplier), "prizes": [], "items": []}
+	for needed: Variant in game["rewards"]:
+		var units: Variant = game["rewards"][needed]
+		if to_int(needed) == null or not units is Array or units.is_empty() or to_int(units[0]) == null:
+			return {}
+		result["prizes"].append([to_int(needed), to_int(units[0])])
+	result["prizes"].sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for key: Variant in items:
+		var entry: Variant = items[key]
+		if not entry is Dictionary:
+			return {}
+		var item := {"name": str(entry.get("name", "")), "action": str(entry.get("action", "")), "tooltip": str(entry.get("tooltip", ""))}
+		for field: String in ["id", "type", "required", "cost", "last_cost", "speedup_cost", "cooldown"]:
+			item[field] = to_int(entry.get(field, 0))
+			if item[field] == null:
+				return {}
+		result["items"].append(item)
+	result["items"].sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
+	return result
 
 
 const OFFER_NORMAL := 0

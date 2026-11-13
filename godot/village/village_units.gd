@@ -395,12 +395,13 @@ func _collect_now(placed: PlacedItem, now: int) -> Production:
 	if born != null:
 		_add_player_unit(born, tile, 1, now)
 	# The client then sends "activate" with 0, so that the mill or mine stops.
+	var work_time := int(GameConfig.to_int(placed._entry[7].get("cp")) if GameConfig.to_int(placed._entry[7].get("cp")) != null else 0)
 	placed._entry[7].erase("cp")
 	# A ranch uses one animal for each collection; the client sends "pop_unit"
 	# without a tile, and the animal goes away.
 	if item.subcat_functional == SUBCAT_RANCH and placed.item_id != NURSERY:
 		_take_unit(placed, 0)
-	happened.emit(VillageEvent.Kind.COLLECTED, {"item": placed.item_id})
+	happened.emit(VillageEvent.Kind.COLLECTED, {"item": placed.item_id, "tile": placed.tile, "minutes": WORK_MINUTES[work_time - 1] if work_time >= 1 and work_time <= WORK_MINUTES.size() else 0})
 	return Production.OK
 
 

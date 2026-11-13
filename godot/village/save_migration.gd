@@ -32,6 +32,11 @@ static func migrate(save: Dictionary, config: GameConfig, heroes: Array[int], no
 		private["collectionsCompleted"] = _completed_collections(private.get("collections"))
 	if not private.get("boughtUnits") is Array or private["boughtUnits"].is_empty():
 		private["boughtUnits"] = _bought_units(save, config)
+	# The server makes these lists again when they do not have 5 offers and 6
+	# forge items. Without them, Village uses the same empty values.
+	for pair: Array in [["viralOffers", Village.VIRAL_OFFERS], ["collectGame", Village.FORGE_ITEMS]]:
+		if private.has(pair[0]) and (not private[pair[0]] is Dictionary or private[pair[0]].size() != pair[1]):
+			private.erase(pair[0])
 	if very_old:
 		_add_level_mana(save, config)
 		private["monsterNestActive"] = 1

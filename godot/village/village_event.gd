@@ -14,7 +14,7 @@ enum Kind {
 	TRAINED,  ## building, unit: a building trained a unit, or the stables mounted one.
 	PUSHED,  ## building, unit: a unit went into a building.
 	PULLED,  ## building, unit: a unit came out of a building.
-	COLLECTED,  ## item: the player collected from a building or harvested a resource.
+	COLLECTED,  ## item: the player collected from a building or harvested a resource. A collect from a building also has tile and minutes, the work time of a mill or mine or 0.
 	TIME_SELECTED,  ## building, amount: the work time of a mill or mine in minutes.
 	CAPTURED,  ## unit: a wild animal.
 	KILLED,  ## unit: an enemy unit died in the village.

@@ -20,7 +20,7 @@ Done. See [Group 1: fixes](#group-1-fixes) for what changed.
 
 ### Group 2: parts of the original game that this server supports
 
-All of them work offline. No decision of the owner is necessary, except for the Island Forge.
+All of them work offline. For the Island Forge the owner chose the event time and the rule for the horns (decision 6).
 
 | Item | Work |
 |---|---|
@@ -32,7 +32,7 @@ All of them work offline. No decision of the owner is necessary, except for the 
 | [Achievement publish](#achievement-publish) | Done |
 | [Female host](#female-host) | Done |
 | [Units in buildings in battles](#units-in-buildings-in-battles) | Done |
-| [Island Forge](#island-forge-collect-game) | Large; needs a decision |
+| [Island Forge](#island-forge-collect-game) | Done |
 
 Do the save migration before the unit list, because the unit list reads `boughtUnits`.
 
@@ -58,7 +58,7 @@ Do the HUD before the builds, because it changes the window settings and the opt
 ### Order
 
 1. Group 1 (done).
-2. Group 2 without the Island Forge (the save migration, the first purchase offer, the unit list, the news window and the spy screen are done).
+2. Group 2 (done).
 3. The player save and the start screen.
 4. The HUD, then the blend modes and the other graphics.
 5. The launcher and the builds (step 6.2).
@@ -72,7 +72,7 @@ Group 2 is about two to three weeks of work (*estimate*). With group 3 and the p
 3. **The text of tutorial steps 15 to 31.** The client shows only the arrow; the port also shows its own short text. See [Tutorial](#tutorial).
 4. **HUD on wide screens.** Only a UI scale, or also a new layout. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
-6. **Island Forge.** Add it with a new event date, or leave it out. See [Island Forge](#island-forge-collect-game).
+6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
 7. **Server bugs.** Fix them in the server or leave them. The port already uses the correct rule of `fix_bought_units` in its save migration. See [Server bugs](#server-bugs).
 8. **Cash without payment.** The port has no cash shop. See [Facebook and payment parts](#facebook-and-payment-parts).
 
@@ -230,13 +230,40 @@ Differences that are left:
 
 ### Island Forge (collect game)
 
-`CollectGameManager` and `PopupIslandForge` are a timed event on the forge island (building 1530). The player collects six forge items from quests, troll kills, PvP and invites, can buy or speed up items for cash, and gets rewards at item counts.
+`CollectGameManager` and `PopupIslandForge` are a timed event of the client. While the event runs and a prize is left, the forge island (building 1530) stands in the village, and an icon in the icon panel opens its window. The player collects six forge items and gets a dragon at 90 items (Demon Dragon, 2272) and at 110 items (Forge Dragon, 2269).
 
-- Server: the five `collect_game_*` commands (`op.py` `cmd_hellforge_*`), the save field `collectGame`, and the event `HELL_FORGE_ISLAND` in `server_config.json`. The event has a fixed date, 20 October 2025, for 7 days, so it is not active now unless the owner changes the date (decision 6).
-- Port: none. `godot/game_data/collections.gd` says that the collect game is not in the port.
-- The roadmap called these "the collection islands" (quest maps `100000051` to `100000055`). In the code the forge island is the only island of the collect game.
+Decision 6: the port has the event. The event time is the date that the server writes into the configuration from `server_config.json` (`HELL_FORGE_ISLAND`, 20 October 2025 for 7 days). The settings `island_forge_date` ("YYYY-MM-DD", UTC) and `island_forge_days` (default 7) in the section `[events]` of `user://settings.cfg` replace it, so that a player can start the event without a new import. The horns come only from purchases for 10 cash each, as on the server, because the port cannot invite friends.
 
-Work: large. The window, the six items, the timers and prices, the rewards, and the places where items drop.
+The rules (`godot/forge/island_forge.gd`) follow the client and the server:
+
+- Copper: a win on one of the five forge islands with more stars than before. The start of a forge island starts a wait of 20 hours, and the forge window hides the button during the wait.
+- Fang: by chance when an enemy unit dies in the own village, at most one each 300 seconds. Skull: the same in an attack on another player. The bonus of the client for the life of the killed unit is 0, because the client keeps the multiplier 0.5 in an integer.
+- Iron: by chance when the player collects a mill or mine. The chance grows with the work time.
+- Horn: bought only. The number is the number of friends of the viral offer 2.
+- Hammer: the Forge button, then a wait of 25 hours.
+- The chance is `3 ^ (missing / 7)` times the chance of the source, against a roll from 0 to 100. The player finds no items before level 2.
+- The player can buy each item except the hammer, and end the wait of an item, for cash. "Buy All" uses the formula of the client and the server, with a discount for the part that is missing.
+- The forge islands (`ForgeQuest`, quest maps `100000051` to `100000055`): the player wins when all skeletons are dead. The first island gives no gold and no experience; the others give gold and experience for each enemy by its price. The win opens no island of the campaign. The server keeps no start time for these islands, but their starts count for the quest limit.
+- The window opens by itself in the village when a prize is ready. After the last prize the event ends for the player: the island and the icon go away.
+- The island is not in the save, as in the client. It stands in a free square of 10 × 10 tiles near tile (10, 10). In a village fight it belongs to no side.
+- The save uses the lists of the server: `collectGame` (6 items), `collectGameGivenPrizes` and `viralOffers` (5 offers). The save migration drops these lists when they have another size, because the server makes them again.
+
+Checks: `village_check.gd` has 31 checks for the event time, the chances, the sources, the waits, the prices (506 and 72 cash, the values of the server's `hellforge_buy_all_price` for the same saves), the prizes, the end of the event and the save. `quest_check.gd` has 9 checks for the forge islands.
+
+Comparison with the original game in Ruffle, with the server event set to start on the day of the test: the island stands at the top corner of the map in both. The forge icon is under the icon of the first purchase offer in both. The forge window, the dragon card, the wait of the hammer with its speed-up button, the Buy All price (439 cash at 20 of 110 items), the island list and the start window of a forge island have the same layout and texts. Ruffle showed four differences, which the port now follows:
+
+- The client fills the places of the window with the items in the order 4, 5, 6, 1, 2, 3 (in Ruffle), and the picture of each place comes from the number of the place. So the copper picture is above the name Skull, and so on. The order in Flash Player is not known.
+- The island list shows the name ribbons and the stars, not the level lock.
+- The client writes a red "NEW!" with a font that it does not have under that name, so Ruffle shows no text.
+- The arrows of the island list do not look disabled.
+
+Differences that are left:
+
+- The port draws the dragon of a prize card larger than Ruffle. The port fits the walking frame of the dragon into 400 × 300 pixels, as the client does; the cause of the difference was not found.
+- The client gives a complete item a white glow; the port does not.
+- The picture of a found item (`ForgeToken`) shows on the map of the village, of a village fight and of a PvP attack, but not on the map of a forge island, because the port gives the copper at the end of the quest. In the client the picture stays until the player clicks it; in the port the picture of a fight goes away with the fight screen.
+- The Invite button shows a message of the port. Without enough cash, the port shows the text of the client and says that it has no cash shop.
+- Not compared in Ruffle: the hammer animation, the prizes, Buy All, the pictures of found items, and a fight on a forge island.
 
 ## Group 3: the look
 

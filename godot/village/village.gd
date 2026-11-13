@@ -694,11 +694,13 @@ func quest_army() -> Dictionary:
 
 
 ## Records the start of a quest, as the client commands "start_quest" and
-## "start_quest_new" do on the server.
+## "start_quest_new" do on the server. The server keeps no start time for the
+## forge islands, but they count for the quest limit.
 func start_quest(quest_id: String, now: int) -> void:
-	if not _map.get("questTimes") is Dictionary:
-		_map["questTimes"] = {}
-	_map["questTimes"][quest_id] = now
+	if not quest_id in IslandForge.QUEST_IDS:
+		if not _map.get("questTimes") is Dictionary:
+			_map["questTimes"] = {}
+		_map["questTimes"][quest_id] = now
 	if not _map.get("lastQuestTimes") is Array:
 		_map["lastQuestTimes"] = []
 	_map["lastQuestTimes"].append(now)
@@ -1907,3 +1909,135 @@ func _add_first_town_resource(code: String, amount: int) -> void:
 		return
 	var first: Dictionary = _document["maps"][0]
 	first[RESOURCE_KEYS[code][1]] = int(first.get(RESOURCE_KEYS[code][1], 0)) + amount
+
+
+## The Island Forge in the save, as the server commands "collect_game_*",
+## "buy_viral_offer_friend" and "reward_viral_offer" change it. IslandForge
+## has the rules and the prices. privateState "collectGame" has a counter and
+## a time for each forge item, "collectGameGivenPrizes" the units that the
+## player took, and "viralOffers" "2" the bought friends (the horns) and
+## whether the event gave all its prizes.
+const FORGE_OFFER := "2"
+const FORGE_ITEMS := 6
+const VIRAL_OFFERS := 5
+
+
+## {"counter", "timestamp"} of a forge item.
+func forge_item(item_id: int) -> Dictionary:
+	var items: Variant = _document["privateState"].get("collectGame")
+	var entry: Variant = items.get(str(item_id)) if items is Dictionary else null
+	if not entry is Dictionary:
+		return {"counter": 0, "timestamp": 0}
+	return {"counter": int(GameConfig.to_int(entry.get("counter")) if GameConfig.to_int(entry.get("counter")) != null else 0),
+			"timestamp": int(GameConfig.to_int(entry.get("timestamp")) if GameConfig.to_int(entry.get("timestamp")) != null else 0)}
+
+
+func forge_friends() -> int:
+	var friends: Variant = _forge_offer().get("friends")
+	return friends.size() if friends is Array else 0
+
+
+func forge_prizes_given() -> Array[int]:
+	var given: Array[int] = []
+	var listed: Variant = _document["privateState"].get("collectGameGivenPrizes")
+	for id: Variant in listed if listed is Array else []:
+		if GameConfig.to_int(id) != null:
+			given.append(GameConfig.to_int(id))
+	return given
+
+
+func forge_rewarded() -> bool:
+	return GameConfig.to_int(_forge_offer().get("rewarded")) == 1
+
+
+## "collect_game_add_item": one more of the item. Bought with cash > 0, the
+## wait of the item ends; found (cash 0), the wait starts now.
+func add_forge_item(item_id: int, cash: int, now: int) -> Placement:
+	if get_resource("c") < cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cash)
+	var entry := _forge_entry(item_id)
+	entry["counter"] = int(entry["counter"]) + 1
+	entry["timestamp"] = 0 if cash > 0 else now
+	return Placement.OK
+
+
+## "collect_game_update_timestamp": the wait of the item starts now.
+func start_forge_wait(item_id: int, now: int) -> void:
+	_forge_entry(item_id)["timestamp"] = now
+
+
+## "collect_game_speed_up": the wait of the item ends for cash.
+func end_forge_wait(item_id: int, cash: int) -> Placement:
+	if get_resource("c") < cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cash)
+	_forge_entry(item_id)["timestamp"] = 0
+	return Placement.OK
+
+
+## "buy_viral_offer_friend" for the forge: one more friend, which costs
+## nothing because the client sends it with the horn that it bought.
+func add_forge_friend() -> void:
+	var offer := _forge_offer(true)
+	if not offer.get("friends") is Array:
+		offer["friends"] = []
+	offer["friends"].append("0")
+
+
+## "collect_game_buy_all": every item has the number that it needs
+## (required: item id -> number), and the friends fill to the horns needed.
+func complete_forge(required: Dictionary, horn_id: int, cash: int) -> Placement:
+	if get_resource("c") < cash:
+		return Placement.NOT_ENOUGH_RESOURCES
+	_add_resource("c", -cash)
+	for item_id: int in required:
+		_forge_entry(item_id)["counter"] = required[item_id]
+	while forge_friends() < int(required.get(horn_id, 0)):
+		add_forge_friend()
+	return Placement.OK
+
+
+## "collect_game_reward_given", then "store_add_items" with the unit.
+func give_forge_prize(unit_id: int) -> Placement:
+	if unit_id in forge_prizes_given():
+		return Placement.NOT_ALLOWED
+	if not _document["privateState"].get("collectGameGivenPrizes") is Array:
+		_document["privateState"]["collectGameGivenPrizes"] = []
+	_document["privateState"]["collectGameGivenPrizes"].append(unit_id)
+	_add_stored(unit_id)
+	_register_unit(unit_id)
+	return Placement.OK
+
+
+## "reward_viral_offer" for the forge, after the last prize.
+func end_forge_offer() -> void:
+	_forge_offer(true)["rewarded"] = 1
+
+
+func _forge_entry(item_id: int) -> Dictionary:
+	var private: Dictionary = _document["privateState"]
+	# The lists of the server's migration: SaveMigration makes them again
+	# when they do not have FORGE_ITEMS items and VIRAL_OFFERS offers.
+	if not private.get("collectGame") is Dictionary:
+		private["collectGame"] = {}
+		for id in range(1, FORGE_ITEMS + 1):
+			private["collectGame"][str(id)] = {"id": id, "counter": 0, "timestamp": 0}
+	if not private["collectGame"].get(str(item_id)) is Dictionary:
+		private["collectGame"][str(item_id)] = {"id": item_id, "counter": 0, "timestamp": 0}
+	return private["collectGame"][str(item_id)]
+
+
+func _forge_offer(create := false) -> Dictionary:
+	var private: Dictionary = _document["privateState"]
+	var offers: Variant = private.get("viralOffers")
+	if offers is Dictionary and offers.get(FORGE_OFFER) is Dictionary:
+		return offers[FORGE_OFFER]
+	if not create:
+		return {}
+	if not offers is Dictionary:
+		private["viralOffers"] = {}
+		for id in range(1, VIRAL_OFFERS + 1):
+			private["viralOffers"][str(id)] = {"id": id, "friends": [], "rewarded": 0}
+	private["viralOffers"][FORGE_OFFER] = {"id": int(FORGE_OFFER), "friends": [], "rewarded": 0}
+	return private["viralOffers"][FORGE_OFFER]

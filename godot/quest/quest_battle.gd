@@ -110,6 +110,8 @@ static func create(quest_island: QuestIsland, map: Village, army: Dictionary, co
 			quest = Dragon2Quest.new()
 		QuestIsland.Family.HEROES:
 			quest = HeroesQuest.new()
+		QuestIsland.Family.FORGE:
+			quest = ForgeQuest.new()
 		_:
 			quest = HardQuest.new()
 	quest.island = quest_island

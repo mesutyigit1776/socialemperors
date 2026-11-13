@@ -90,6 +90,11 @@ func camera_position() -> Vector2:
 	return _camera.position
 
 
+## The map of the fight, on which other screens can show things.
+func map_view() -> BattleView:
+	return _view
+
+
 func _process(delta: float) -> void:
 	for fighter: BattleFighter in _lines.keys():
 		var entry: Array = _lines[fighter]

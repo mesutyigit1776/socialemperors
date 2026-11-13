@@ -208,7 +208,7 @@ The gift of the client at level 15, and a played quest:
 
 ## The islands of the campaign
 
-All 28 islands of the island list are in the port. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; see "Single-player modes". The collection islands (`100000051` to `100000055`) are not in the list either: they belong to the collect game of the client (`CollectGameManager`), the Island Forge event, which is not in the port (`docs/PORT_GAPS.md`).
+All 28 islands of the island list are in the port. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; see "Single-player modes". The forge islands (`100000051` to `100000055`) are not in the list either: they belong to the Island Forge event (`CollectGameManager`), which opens them from its own window (`ForgeQuest`, see `docs/PORT_GAPS.md`).
 
 | File | Contents |
 |---|---|

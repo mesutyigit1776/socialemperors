@@ -171,7 +171,7 @@ def needed_items(config, villages, shop, export_all):
 	By default these are the land, the store buildings, all items of the store
 	rotation, the units that these buildings train, the trees and deposits, the
 	wild animals, the mounted units of the training stables, the items that the
-	special buildings and the collections give, the items in the villages
+	special buildings and the collections give, the forge island, the items in the villages
 	and on the quest maps, the items of the quests in the town, all units (bosses and abilities call units that are
 	on no map) and the buildings that battles make (BATTLE_BUILDING_IDS).
 	"""
@@ -190,6 +190,8 @@ def needed_items(config, villages, shop, export_all):
 		for dragon_id, dragon in cfg_globals["DRAGONS"].items():
 			ids.update((int(dragon_id), int(dragon["tamedId"])))
 		ids.update(int(item_id) for item_id in cfg_globals["COLLECTION_REWARDS"])
+		# The island of the Island Forge (collect_game); its prizes are units.
+		ids.update(int(game["building_id"]) for game in (config.get("collect_game") or {}).values())
 		ids.update(item_id for item_id, item in items.items() if int(item.get("breeding_order") or 0) > 0)
 		for group in shop["factions"].values():
 			ids.update(int(item_id) for item_id in group)

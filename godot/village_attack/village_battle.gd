@@ -84,6 +84,8 @@ func _team_of(placed: Village.PlacedItem, def: GameConfig.ItemDef) -> BattleFigh
 		if _village.is_own_unit(placed):
 			return BattleFighter.Team.PLAYER
 		return BattleFighter.Team.NEUTRAL if _village.is_wild_animal(placed) else BattleFighter.Team.ENEMY
+	if _village.is_unsaved(placed):
+		return BattleFighter.Team.NEUTRAL
 	match _village.quest_roles.get(placed):
 		Village.QuestRole.ENEMY:
 			return BattleFighter.Team.ENEMY
@@ -274,7 +276,7 @@ static func _any_within(tiles: Array[Vector2i], centre: Vector2i, reach: int) ->
 
 
 static func _is_player_item(village: Village, placed: Village.PlacedItem, def: GameConfig.ItemDef) -> bool:
-	return village.is_own_unit(placed) if def.is_unit() else def.race != "n" and not village.quest_roles.has(placed)
+	return village.is_own_unit(placed) if def.is_unit() else def.race != "n" and not village.quest_roles.has(placed) and not village.is_unsaved(placed)
 
 
 ## The part of the client's target score for the kind of item, or -1 for an

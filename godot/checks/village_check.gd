@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs, _check_island_forge]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1560,6 +1560,73 @@ func _check_unit_collections() -> bool:
 	_check(collections.claim(groups[0]) == Village.Placement.OK and village.get_resource("c") == 21 and village.unit_collections_claimed() == [1], "the reward gives 1 cash and goes into unitCollectionsCompleted")
 	_check(collections.claim(groups[0]) == Village.Placement.NOT_ALLOWED and village.get_resource("c") == 21, "the player takes the reward once")
 	_check(village.save_to_file(path) == OK and UnitCollections.new(_config, Village.load_from_file(path, _config)).is_claimed(groups[0]), "the save keeps the reward")
+	return true
+
+
+## The Island Forge (IslandForge): the event time from the configuration or
+## the settings file, the chances, the item sources, the prices of the server
+## (event_system.py hellforge_buy_all_price gives 506 and 72 for the two
+## states below), the prizes, the end of the event and the save.
+func _check_island_forge() -> bool:
+	var game := _config.collect_game
+	_check(game.get("prizes") == [[90, 2272], [110, 2269]] and game.get("building") == 1530 and game.get("pvp_life_multiplier") == 0 and game.get("items", []).size() == 6, "the forge of the mega patch: %s" % [game.get("prizes")])
+	var settings := "user://checks/forge_settings.cfg"
+	DirAccess.remove_absolute(settings)
+	_check(IslandForge.event_time(game, settings) == Vector2i(game["start"], game["start"] + game["duration"]), "without a setting the event time comes from the configuration")
+	var file := ConfigFile.new()
+	file.set_value(IslandForge.SETTING_SECTION, IslandForge.SETTING_DATE, "2026-11-13")
+	file.save(settings)
+	_check(IslandForge.event_time(game, settings) == Vector2i(1794528000, 1794528000 + 7 * 86400), "the date of the settings file starts the event at midnight UTC for 7 days")
+	var path := _write_fixture("island_forge", 10, _config.levels[9].exp_required, 1000)
+	_patch_private(path, {"collectGame": {"1": {"id": 1, "counter": 4, "timestamp": 0}}}, 1000)
+	var village := Village.load_from_file(path, _config)
+	var forge := IslandForge.new(game, village, NOW - 100, NOW + 86400)
+	_check(forge.progress() == 0 and forge.total() == 110, "the save migration drops a forge list without 6 items, as the server makes it again")
+	_check(forge.island_shown(NOW) and not forge.island_shown(NOW - 100) and not forge.island_shown(NOW + 86400), "the island shows after the start and before the end")
+	_check(forge.pack_price() == 506, "all items cost 506 cash, as on the server")
+	var rng := RandomNumberGenerator.new()
+	_check(forge.roll(IslandForge.TROLLS, NOW, rng, 100.0) and not forge.roll(IslandForge.TROLLS, NOW, rng, 0.0), "a chance of 100 always finds an item and a chance of 0 never does")
+	_check(not forge.roll(IslandForge.TROLLS, NOW + 86400, rng, 100.0), "no items after the event")
+	_check(not forge.enemy_killed(_config.get_item(TOWN_HALL), false, NOW, rng), "a building that dies gives no item")
+	var kills := 0
+	for i in 200:
+		if forge.enemy_killed(_config.get_item(KNIGHT), false, NOW + i * 301, rng):
+			kills += 1
+	_check(kills > 0 and kills < 60 and forge.amount(IslandForge.TROLLS) == kills, "enemy units give trolls items by chance: %d of 200" % kills)
+	var last: int = village.forge_item(IslandForge.TROLLS)["timestamp"]
+	_check(not range(30).any(func(i: int) -> bool: return forge.enemy_killed(_config.get_item(KNIGHT), false, last + 300, rng)), "no troll item in the 300 seconds after the last one")
+	var short_finds := range(40).filter(func(_i: int) -> bool: return forge.collected(5, NOW, rng)).size()
+	_check(short_finds < 5, "a work time of 5 minutes almost never gives an item: %d of 40" % short_finds)
+	# The chance falls as fewer items are missing: about 580 collects fill the 25.
+	for i in 3000:
+		forge.collected(480, NOW, rng)
+	_check(forge.complete(IslandForge.COLLECT) and forge.amount(IslandForge.COLLECT) == 25 and not forge.collected(480, NOW, rng), "a work time of 8 hours gives items up to the 25 needed, then none")
+	_check(not forge.collected(0, NOW, rng), "a building without a work time gives no item")
+	_check(forge.quest_open(IslandForge.QUEST_IDS[0], NOW) and not forge.quest_open(IslandForge.QUEST_IDS[1], NOW), "the first forge island is open, the second needs a win on the first")
+	forge.quest_started(NOW)
+	_check(forge.wait_left(IslandForge.QUEST, NOW + 100) == 72000 - 100, "a forge island starts the wait of the quest item")
+	_check(forge.quest_won(IslandForge.QUEST_IDS[0], 2, 0, NOW) and not forge.quest_won(IslandForge.QUEST_IDS[0], 2, 2, NOW), "a win gives an item only with more stars than before")
+	_check(not forge.quest_won("100000001", 3, 0, NOW), "other islands give no item")
+	_check(forge.hammer(NOW) and not forge.hammer(NOW + 1) and forge.wait_left(IslandForge.DAILY, NOW + 1) == 90000 - 1, "the hammer gives an item, then waits 25 hours")
+	_check(forge.speed_up(IslandForge.DAILY, NOW + 1) == Village.Placement.OK and village.get_resource("c") == 997 and forge.hammer(NOW + 2), "3 cash end the wait of the hammer")
+	_check(forge.buy(IslandForge.DAILY, NOW) == Village.Placement.NOT_ALLOWED, "the hammer cannot be bought")
+	_check(forge.buy(IslandForge.INVITE, NOW) == Village.Placement.OK and village.get_resource("c") == 987 and forge.amount(IslandForge.INVITE) == 1 and village.forge_friends() == 1, "a horn costs 10 cash and adds a friend")
+	var collect_game: Dictionary = village._document["privateState"]["collectGame"]
+	for id: int in [1, 2, 3, 4]:
+		collect_game[str(id)]["counter"] = forge.item(id)["required"]
+	collect_game["6"]["counter"] = 2
+	village.add_forge_friend()
+	village.add_forge_friend()
+	_check(forge.progress() == 90 and forge.pack_price() == 72, "at 90 items the rest costs 72 cash, as on the server")
+	_check(forge.prize_ready() and forge.take_prize(2269) == Village.Placement.NOT_ALLOWED, "the second dragon needs 110 items")
+	_check(forge.take_prize(2272) == Village.Placement.OK and forge.take_prize(2272) == Village.Placement.NOT_ALLOWED and village.stored_items().get(2272) == 1, "the first dragon goes to the item store once")
+	_check(forge.island_shown(NOW) and not village.forge_rewarded(), "the island stays while a prize is left")
+	_check(forge.buy_all() == [2269] and village.get_resource("c") == 987 - 72 and forge.progress() == 110 and village.forge_friends() == 5, "buying all completes the items and gives the last dragon")
+	_check(village.forge_rewarded() and not forge.island_shown(NOW) and forge.buy_all().is_empty(), "after the last prize the event ends for the player")
+	_check(village.save_to_file(path) == OK, "the village with the forge saves")
+	var saved := Village.load_from_file(path, _config)
+	var private: Dictionary = saved._document["privateState"]
+	_check(private["collectGame"].size() == 6 and private["viralOffers"].size() == 5 and saved.forge_prizes_given() == [2272, 2269] and saved.forge_rewarded(), "the save keeps the forge in the lists of the server")
 	return true
 
 

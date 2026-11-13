@@ -80,6 +80,11 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	_update_bar()
 
 
+## The map of the attack, on which other screens can show things.
+func map_view() -> BattleView:
+	return _view
+
+
 func _ready() -> void:
 	if battle.is_won():
 		# A village without a town hall is won at once (PopupNoTownhall).

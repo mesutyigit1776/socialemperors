@@ -65,6 +65,8 @@ const ZOOM_FROM_BOTTOM := 200.0
 ## mouse over an icon makes it ICON_HOVER_SCALE times larger in 0.2 seconds.
 const ICON_PANEL_Y := -360.0 + BAR_HEIGHT - 75.0
 const ICON_OFFSET := Vector2(-10, -45)
+## The icons are this far apart (75 pixels and 10 between them).
+const ICON_SPACING := 85.0
 const ICON_HOVER_SCALE := 1.1
 const ICON_FADE_SECONDS := 0.5
 ## The client shows the shield from level 6 (StateNormal.enter).
@@ -121,6 +123,7 @@ var _zoom_dragging := false
 var _panel_tween: Tween
 var _options: OptionsPanel
 var _offer_icon: UiClip
+var _icons: Array[UiClip] = []  ## The icons of the icon panel, from the top.
 
 
 func _init(ui: UiLibrary, config: GameConfig) -> void:
@@ -272,8 +275,8 @@ func _layout() -> void:
 	place_gui(_gui, _top_y, size)
 	_options.place(size)
 	_zoom.position = Vector2(size.x - ZOOM_FROM_RIGHT, size.y - ZOOM_FROM_BOTTOM) - _gui.position
-	if _offer_icon != null:
-		_offer_icon.position = Vector2(size.x - _gui.position.x, ICON_PANEL_Y) + ICON_OFFSET
+	for i in _icons.size():
+		_icons[i].position = Vector2(size.x - _gui.position.x, ICON_PANEL_Y) + ICON_OFFSET + Vector2(0, ICON_SPACING * i)
 	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
 	_message.size = Vector2(CLIENT_WIDTH - 120, 60)
 	if _tutorial_host != null:
@@ -289,12 +292,18 @@ func show_first_offer(icon: UiClip) -> void:
 	var timer := icon.part("timer")
 	if timer != null:
 		timer.add_theme_font_override("font", _ui.named_font(ClientTheme.BODY_FONT))
+	add_icon(icon, first_offer_requested.emit)
+
+
+## Adds an icon at the end of the icon panel (IconPanel.addIcon).
+func add_icon(icon: UiClip, action: Callable) -> void:
+	_icons.append(icon)
 	_gui.add_child(icon)
 	_gui.move_child(icon, 0)
 	icon.make_button()
 	icon.pressed.connect(func() -> void:
 		if not _locked:
-			first_offer_requested.emit())
+			action.call())
 	for pair: Array in [["mouse_entered", ICON_HOVER_SCALE], ["mouse_exited", 1.0]]:
 		var target: float = pair[1]
 		icon.connect(pair[0], func() -> void: create_tween().tween_property(icon, "scale", Vector2(target, target), 0.2))
@@ -309,12 +318,19 @@ func set_first_offer_text(text: String) -> void:
 
 ## The client fades the icon out after the purchase (IconPanel.removeIcon).
 func remove_first_offer() -> void:
-	if _offer_icon == null:
+	if _offer_icon != null:
+		remove_icon(_offer_icon)
+		_offer_icon = null
+
+
+## Fades the icon out; the icons under it move up (IconPanel.removeIcon).
+func remove_icon(icon: UiClip) -> void:
+	if not icon in _icons:
 		return
-	var icon := _offer_icon
-	_offer_icon = null
+	_icons.erase(icon)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	create_tween().tween_property(icon, "modulate:a", 0.0, ICON_FADE_SECONDS).finished.connect(icon.queue_free)
+	_layout()
 
 
 func _clip_button(path: String, action: Callable) -> void:
