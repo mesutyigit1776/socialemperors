@@ -77,7 +77,6 @@ var _above_layer := Node2D.new()  # Spell particles over the items.
 var _sizes := {}  # BattleFighter (unit) -> its size now, 1 or more.
 var _stuns := {}  # BattleFighter (unit) -> seconds since its stun.
 var _marked: Array[BattleFighter] = []
-var _tints := {}  # Colour -> ShaderMaterial that adds the colour.
 var _pushes := {}  # BattleFighter (unit) -> [from, to, seconds since the push, seconds of the flight].
 var _opened: Array[BattleFighter] = []  # Doors that show open.
 
@@ -299,19 +298,11 @@ func _update_tint(fighter: BattleFighter) -> void:
 		colour = POISONED_COLOR
 	if fighter in _marked:
 		colour = Color(minf(colour.r + MARKED_COLOR.r, 1), minf(colour.g + MARKED_COLOR.g, 1), minf(colour.b + MARKED_COLOR.b, 1))
-	_nodes[fighter].material = null if colour == Color.BLACK else _tint(colour)
-
-
-## A material that adds colour to the graphic, as the colour filters of the client do.
-func _tint(colour: Color) -> ShaderMaterial:
-	if not _tints.has(colour):
-		var shader := Shader.new()
-		shader.code = "shader_type canvas_item;\nuniform vec4 added : source_color;\nvoid fragment() {\n\tvec4 c = texture(TEXTURE, UV) * COLOR;\n\tCOLOR = vec4(min(c.rgb + added.rgb * c.a, vec3(1.0)), c.a);\n}\n"
-		var material := ShaderMaterial.new()
-		material.shader = shader
-		material.set_shader_parameter("added", colour)
-		_tints[colour] = material
-	return _tints[colour]
+	var node: Sprite2D = _nodes[fighter]
+	if node is ClipSprite:
+		node.tint = colour
+	else:
+		FrameMaterial.show(node, node.texture, colour)
 
 
 func _add_particle(graphic: String, tile: Vector2i, look: Dictionary) -> void:

@@ -76,6 +76,27 @@ impl Samples {
         })
     }
 
+    /// Mixes an image with the pixels of the samples by a blend function of
+    /// one color channel (backdrop, source, both from 0 to 1). Only where the
+    /// samples have pixels, and with their alpha: the image does not add
+    /// pixels (as "source atop").
+    pub fn blend_atop(&mut self, image: &Pixmap, blend: impl Fn(f32, f32) -> f32) {
+        for plane in &mut self.planes {
+            for (b, s) in plane.pixels_mut().iter_mut().zip(image.pixels()) {
+                let (back_alpha, source_alpha) = (b.alpha() as f32 / 255.0, s.alpha() as f32 / 255.0);
+                if back_alpha == 0.0 || source_alpha == 0.0 {
+                    continue;
+                }
+                let channel = |pb: u8, ps: u8| {
+                    let (cb, cs) = ((pb as f32 / 255.0 / back_alpha).min(1.0), (ps as f32 / 255.0 / source_alpha).min(1.0));
+                    let mixed = (1.0 - source_alpha) * cb + source_alpha * blend(cb, cs);
+                    (mixed * back_alpha * 255.0).round().clamp(0.0, b.alpha() as f32) as u8
+                };
+                *b = tiny_skia::PremultipliedColorU8::from_rgba(channel(b.red(), s.red()), channel(b.green(), s.green()), channel(b.blue(), s.blue()), b.alpha()).unwrap();
+            }
+        }
+    }
+
     /// The image with the average of the samples of each pixel.
     pub fn resolve(&self) -> Pixmap {
         let mut out = self.planes[0].clone();

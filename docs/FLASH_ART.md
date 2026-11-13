@@ -12,6 +12,7 @@ The measurements come from the default import of this repository (1516 graphics)
   - `layout <file.swf> <symbol> ...` prints the bounds, shot points and clips of the frames as JSON.
   - `stage <file.swf> <symbol or id> <out.swf> <background RRGGBB> [frames]` writes a SWF file that shows the symbol on a stage of the size of its canvas, so that another player draws the same frames as `render`.
   - `compare <ours dir> <black dir> <white dir> [diff dir]` compares the frames of `render` with the frames that another player drew of two `stage` files, one on black and one on white. It prints, for each frame, the percent of the drawn pixels in which a premultiplied channel differs by more than 24 of 255, and the mean difference. The diff images show our frame, the other frame and the difference (red: more than 24).
+  - `ground_compare <file.swf> <symbol or id> <other dir> <ground RRGGBB> [old]` mixes the map frames of the symbol with a ground of one colour, as the shader of the game does (3.11), and compares them with the frames that another player drew of a `stage` file of that colour, numbered from 1. With `old` it uses the frame of `render`, which mixes the blend modes only with the graphic.
 - The Ruffle exporter draws the frames of a SWF file without a browser. Build it from the Ruffle source at the commit above: `cargo build --release -p exporter`. It needs a Vulkan driver; on a machine without a GPU, the Mesa software driver works (`mesa-vulkan-drivers`, then `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
 - One comparison:
   1. `stage art.swf sym b.swf 000000` and `stage art.swf sym w.swf ffffff`
@@ -79,17 +80,36 @@ These rules were already the same as in Ruffle: the sizes of filters are in pixe
 
 | Difference | Where | Cause |
 |---|---|---|
-| 3.8 Blend modes over the empty canvas | Overlay and multiply in `p.fireballBahamut` (44 %), `p.catapultFireball`, `p.largeFireball`, `p.hugeFire`, `2341_thunderForgeDragonRider` | Ruffle mixes these parts with the stage behind the graphic, here black or white, so the comparison cannot measure them. In the game they must mix with the map; see 3.11. Where the part is over the graphic itself, the two agree. |
+| 3.8 Blend modes over the empty canvas | Overlay and multiply in `p.fireballBahamut` (44 %), `p.catapultFireball`, `p.largeFireball`, `p.hugeFire`, `2341_thunderForgeDragonRider` | Ruffle mixes these parts with the stage behind the graphic, here black or white, so the comparison of `render` cannot measure them. In the game they mix with the map (3.11), and a comparison on a stage of the colour of the ground measures them. |
 | 3.9 Blend mode "layer" with alpha | The shadow of `2367_devilAncientDraggy` (7.6 %) | Ruffle applies the alpha of the object to each of its parts; two overlapping parts become darker. The documentation of Flash says that "layer" makes a transparency group, so the alpha applies to the group. The artist used exactly this: two overlapping fills with "layer" and alpha 0.3. The extension keeps the rule of Flash. |
 | 3.10 Thin lines | Small shots, for example `p.ulisesArrow` (5.6 % of 305 pixels) | Single pixels along lines of about one pixel differ. Ruffle tessellates lines; the extension strokes them. |
 
-To do (also in the work list of `docs/PORT_GAPS.md`):
-
-- 3.11 Blend modes with the map: draw the parts with a blend mode as separate nodes in Godot, with a shader that reads the map behind them, or draw the graphic with the map behind it. This changes the structure of `ClipSprite`, because a frame is no longer one image. Blend modes are in 441 files: overlay in 11486 placements, multiply in 4031, hard light in 885, screen in 48, lighten in 30, darken in 4.
-
 Fixed:
 
+- 3.11 Blend modes with the map. A part with the blend mode multiply, screen, lighten, darken, difference, add, overlay or hard light mixes with everything below it, in the game also with the map, unless a parent of the part is drawn as one image (with filters or a blend mode). Before, these parts mixed only with the graphic. A scan of the imported graphics found such parts that reach the map in 192 graphics (182 items, mostly dragons and colossi, and 10 shots and effects).
+
+  `Art::render_layers()` draws a frame of the map as a normal image and one layer for each such blend mode. Where the graphic is below a part, the part mixes with the graphic in the normal image (as "source atop": it adds no pixels). The part also goes to the layer of its mode. In Godot the shader `sprites/blend_layers.gdshader` mixes the layers with the screen behind the node, then draws the normal image over them; `FrameMaterial` puts the shader and a `BackBufferCopy` of the screen on the node. The normal image covers the layers by its alpha, so a part mixes with the map only where the map shows through the graphic. `FlashArt.render()` gives such a frame as one image with the layers one below the other, the normal image first; a node without the shader shows only the normal image.
+
+  This is exact where the graphic covers a pixel fully or not at all, and for the modes that are linear in the backdrop (multiply, screen). Where the graphic is half transparent below an overlay or hard light part, the part mixes with the graphic and with the map each by itself, by the alpha of the graphic, not with the mix of the two. Parts of one mode that overlap over the map are one layer; parts of different modes mix with the map in the order of their modes, not of their depths. The first form of this change, with a layer for each run of parts, had up to 38 layers in a frame and 5 times the memory; this form has at most one layer for each mode (at most 4 layers in the scanned graphics) and up to 2.8 times the memory of the frame (`2209_redHotEpicDraggy`, 2.8 layers on average).
+
+  Comparison with Ruffle on a stage of the colour of the ground (`stage ... 608c3c` for grass, `d2be8c` for sand), pixels that differ by more than 24, the new frames against the frames before the change:
+
+  | Graphic | Grass | Sand |
+  |---|---|---|
+  | `p.fireballBahamut` | 0.0 % (before 24.2 %) | 17.4 % (before 14.2 %) |
+  | `p.hugeFire` | 0.0 % (before 0.0 %) | |
+  | `p.catapultFireball` | 0.1 % (before 0.1 %) | 1.4 % (before 1.3 %) |
+  | attack clip of `2272_demonDragon` (sprite 198) | 0.1 % (before 0.3 %) | 0.1 % (before 0.1 %) |
+  | attack clip of `2209_redHotEpicDraggy` (sprite 339) | 0.0 % (before 0.0 %) | 0.0 % (before 0.0 %) |
+  | `833_dragon_jinete`, `875_bahamut`, `2209_redHotEpicDraggy` | 0.0 to 1.2 %, the same as before | 0.0 to 1.3 %, the same as before |
+
+  On sand the fireball is worse than before: its glow is half transparent, and below it overlay is not linear. The largest difference is 44 levels, against 34 before. On grass the old frames were wrong in a large area (the cream parts were drawn as plain colour).
+
+  The same fireball in Godot (OpenGL 3, llvmpipe), on the screen over a ground of one colour, against Ruffle: 1.3 % of the pixels differ by more than 24 on grass and 7.4 % on sand.
+
 - 3.12 Dark edges where Godot filters a frame. On troll island 1 a gray line crossed the sand between two land pieces. The client in Ruffle also shows a line there, but a light one: the edge of the land piece in the art is lighter than the sand. In the port the line was about 30 levels darker than the sand. The cause: the images of the frames had black in their transparent pixels. Godot filters a frame where it draws it between pixels (the land pieces are at x.35 and y.5) or at another size, and mixed this black into the edge pixels. Now a transparent pixel next to a visible one gets the color of that neighbour (`bleed_edges` in `src/godot_api.rs`, as the "fix alpha border" of Godot's import of image files). This changes the edges of all graphics a little; in a screenshot of a village at 1280 × 800, 897 pixels changed by more than 10 levels. The pass takes about 7 ms for a land frame of 2205 × 1095 pixels at scale 1.
+
+- 3.13 Filters of clips. The game draws the clip of a frame (`FrameClip`, for example the walk of a unit or the flight of a shot) by itself and scales it by the matrix of the frame. The sizes of filters are in pixels of the stage, so a clip that its frame shows at half size has filters of half the size in its own pixels. Before, the extension drew the clip with the filters at the size of its own pixels, so for example the blur of `p.fireballBahamut` (shown at 0.5) was half as wide as in Ruffle. Now `SpriteLibrary` tells the extension the scale of each clip (`FlashArt.set_parent_scale`).
 
 The pictures of JPEXS, the tool of the earlier imports, are no longer a reference. JPEXS adds empty space around some symbols; the old import did not know about it, so the old port showed `1209_portal`, `2023_frostfire_bahamut` and `2093_elemental_heaven_god` 5 to 27 pixels too far to the right and down. Old screenshots differ for this reason.
 

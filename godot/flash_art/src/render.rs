@@ -1,5 +1,6 @@
 //! Draws a frame of a character: its shapes, nested sprites, masks, filters and blend modes.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -69,14 +70,34 @@ impl Art {
 
     /// Draws frame (from 0) of a character on a new image of one area of the canvas, see frame_area().
     pub fn render_area(&self, id: CharacterId, frame: usize, canvas: Canvas, area: (u32, u32, u32, u32), scale: f32) -> Option<Pixmap> {
-        let width = ((area.2 as f32 * scale).ceil() as u32).max(1);
-        let height = ((area.3 as f32 * scale).ceil() as u32).max(1);
-        let mut samples = Samples::new(width, height)?;
-        let (x, y) = (canvas.x + area.0 as f32, canvas.y + area.1 as f32);
-        let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -x * scale, -y * scale);
-        let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
-        Renderer { art: self, scale }.draw(&mut samples, id, frame, 0, transform, &flash, &ColorTransform::IDENTITY, None);
+        let (mut samples, transform, flash) = area_target(canvas, area, scale)?;
+        Renderer { art: self, scale, filter_scale: scale, layers: None }.draw(&mut samples, id, frame, 0, transform, &flash, &ColorTransform::IDENTITY, None);
         Some(samples.resolve())
+    }
+
+    /// Draws frame (from 0) of a character on images of one area of the
+    /// canvas, as render_area(), for a graphic on the map. The parts with a
+    /// blend mode that mixes with the map (see mixes_with_background) mix with
+    /// the graphic where it is below them; where the map is below them, they
+    /// go to a layer of their blend mode, one for each mode. The game first
+    /// mixes these layers with the map, in their order, and then draws the
+    /// last layer, the normal image, over them. A frame without such parts is
+    /// only the normal image.
+    ///
+    /// Where the graphic covers the map in part (alpha between 0 and 1), a
+    /// part mixes with the graphic and with the map each by itself, by the
+    /// alpha of the graphic, not with the mix of the two; this is exact for
+    /// the blend modes that are linear in the backdrop (multiply, screen).
+    /// Parts of the same mode that overlap over the map are one layer, drawn
+    /// as normal one over the other; parts of different modes mix with the map
+    /// in the order of their modes, not of their depths.
+    pub fn render_layers(&self, id: CharacterId, frame: usize, canvas: Canvas, area: (u32, u32, u32, u32), scale: f32, parent_scale: f32) -> Option<Vec<Layer>> {
+        let (mut samples, transform, flash) = area_target(canvas, area, scale)?;
+        let layers = RefCell::new(Vec::new());
+        Renderer { art: self, scale, filter_scale: scale / parent_scale, layers: Some(&layers) }.draw(&mut samples, id, frame, 0, transform, &flash, &ColorTransform::IDENTITY, None);
+        let mut layers: Vec<Layer> = layers.into_inner().into_iter().filter(|l| l.pixels.pixels().iter().any(|p| p.alpha() != 0)).collect();
+        layers.push(Layer { blend: BlendMode::Normal, pixels: samples.resolve() });
+        Some(layers)
     }
 }
 
@@ -91,18 +112,76 @@ impl Art {
         let mut samples = Samples::new(width, height)?;
         let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -canvas.x * scale, -canvas.y * scale);
         let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
-        Renderer { art: self, scale }.draw_list(&mut samples, states.get(state)?, 0, 1, transform, &flash, &ColorTransform::IDENTITY, None);
+        Renderer { art: self, scale, filter_scale: scale, layers: None }.draw_list(&mut samples, states.get(state)?, 0, 1, transform, &flash, &ColorTransform::IDENTITY, None);
         Some(samples.resolve())
     }
 }
 
+/// One image of a frame on the map, see Art::render_layers().
+pub struct Layer {
+    pub blend: BlendMode,
+    /// The pixels of the whole area, premultiplied.
+    pub pixels: Pixmap,
+}
+
+/// True for the blend modes of a part that mix it with everything below it:
+/// in the game also with the map, unless a parent of the part is drawn as one
+/// image (with filters or a blend mode), which then mixes only with that image.
+fn mixes_with_background(mode: BlendMode) -> bool {
+    matches!(
+        mode,
+        BlendMode::Multiply | BlendMode::Screen | BlendMode::Lighten | BlendMode::Darken | BlendMode::Difference | BlendMode::Add | BlendMode::Overlay | BlendMode::HardLight
+    )
+}
+
+/// One color channel (0 to 1) of a blend mode of Flash: backdrop b, source s.
+fn blend_channel(mode: BlendMode, b: f32, s: f32) -> f32 {
+    match mode {
+        BlendMode::Multiply => b * s,
+        BlendMode::Screen => b + s - b * s,
+        BlendMode::Lighten => b.max(s),
+        BlendMode::Darken => b.min(s),
+        BlendMode::Difference => (b - s).abs(),
+        BlendMode::Add => (b + s).min(1.0),
+        BlendMode::Overlay => blend_channel(BlendMode::HardLight, s, b),
+        BlendMode::HardLight if s <= 0.5 => 2.0 * s * b,
+        BlendMode::HardLight => 1.0 - 2.0 * (1.0 - s) * (1.0 - b),
+        _ => s,
+    }
+}
+
+/// The samples of an area of the canvas at a scale, the transform from the
+/// twips of the character to their pixels, and the place of Flash for filters.
+fn area_target(canvas: Canvas, area: (u32, u32, u32, u32), scale: f32) -> Option<(Samples, Transform, snap::Matrix)> {
+    let width = ((area.2 as f32 * scale).ceil() as u32).max(1);
+    let height = ((area.3 as f32 * scale).ceil() as u32).max(1);
+    let samples = Samples::new(width, height)?;
+    let (x, y) = (canvas.x + area.0 as f32, canvas.y + area.1 as f32);
+    let transform = Transform::from_row(scale / TWIPS, 0.0, 0.0, scale / TWIPS, -x * scale, -y * scale);
+    let flash = snap::Matrix::translate((-canvas.x * TWIPS).round() as i32, (-canvas.y * TWIPS).round() as i32);
+    Some((samples, transform, flash))
+}
+
+#[derive(Clone, Copy)]
 struct Renderer<'a> {
     art: &'a Art,
-    /// Pixels of the image for each pixel of Flash. Filters are in pixels of Flash.
+    /// Pixels of the image for each pixel of Flash.
     scale: f32,
+    /// Pixels of the image for each pixel of the stage, in which the sizes of
+    /// the filters are: scale, or more for a clip that its parent makes smaller.
+    filter_scale: f32,
+    /// For a frame on the map: the layers of render_layers() for the parts
+    /// over the map. Then the target of draw() is the normal image of the
+    /// frame. None in a part that is drawn as one image, and for the windows.
+    layers: Option<&'a RefCell<Vec<Layer>>>,
 }
 
 impl Renderer<'_> {
+    /// The renderer for the parts of an object that is drawn as one image: their blend modes mix only with that image.
+    fn isolated(&self) -> Self {
+        Renderer { layers: None, ..*self }
+    }
+
     /// age: the frames that the character played since it was placed; a
     /// sprite shows frame age modulo its frame count. transform: from twips
     /// of the character to pixels of the target. flash: the same place as
@@ -152,6 +231,31 @@ impl Renderer<'_> {
         if !placed.visible {
             return;
         }
+        if let Some(layers) = self.layers
+            && mixes_with_background(placed.blend)
+        {
+            // The part is drawn as normal on an image of its own. It mixes
+            // with the target where the target has pixels, and goes to the
+            // layer of its blend mode, which mixes with the map. The normal
+            // image covers that layer by its alpha, so that the part mixes
+            // with the map only where the map shows through the target.
+            let Some(mut own) = Samples::new(target.width(), target.height()) else { return };
+            let normal = Placed { blend: BlendMode::Normal, ..placed.clone() };
+            self.isolated().draw_placed(&mut own, &normal, age, transform, flash, color, mask);
+            let own = own.resolve();
+            target.blend_atop(&own, |b, s| blend_channel(placed.blend, b, s));
+            let mut layers = layers.borrow_mut();
+            let at = match layers.iter().position(|l| l.blend == placed.blend) {
+                Some(at) => at,
+                None => {
+                    let Some(pixels) = Pixmap::new(target.width(), target.height()) else { return };
+                    layers.push(Layer { blend: placed.blend, pixels });
+                    layers.len() - 1
+                }
+            };
+            layers[at].pixels.draw_pixmap(0, 0, own.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            return;
+        }
         let mut transform = transform.pre_concat(placed.matrix);
         let color = color.then_child(&placed.color);
         let frame = age;
@@ -175,7 +279,7 @@ impl Renderer<'_> {
         let Some(bounds) = self.art.visual_bounds(placed.id).and_then(|b| transform_rect(b, transform)) else { return };
         let (mut margin_x, mut margin_y) = (1.0f32, 1.0f32);
         for filter in &active {
-            let (x, y) = filters::margin(filter, self.scale);
+            let (x, y) = filters::margin(filter, self.filter_scale);
             margin_x += x;
             margin_y += y;
         }
@@ -188,11 +292,11 @@ impl Renderer<'_> {
         }
         let Some(mut samples) = Samples::new((right - left) as u32, (bottom - top) as u32) else { return };
         let layer_transform = transform.post_translate(-left as f32, -top as f32);
-        self.draw(&mut samples, placed.id, frame, placed.ratio, layer_transform, &flash, &ColorTransform::IDENTITY, None);
+        self.isolated().draw(&mut samples, placed.id, frame, placed.ratio, layer_transform, &flash, &ColorTransform::IDENTITY, None);
         // Ruffle averages the samples of the image of the object before its filters.
         let mut layer = samples.resolve();
         for filter in active {
-            filters::apply(&mut layer, filter, self.scale);
+            filters::apply(&mut layer, filter, self.filter_scale);
         }
         let mut opacity = 1.0;
         if color.is_alpha_only() {
@@ -208,7 +312,7 @@ impl Renderer<'_> {
     /// A mask covers each sample fully or not at all, as the stencil of Ruffle.
     fn mask(&self, target: &Samples, placed: &Placed, age: usize, transform: Transform, flash: &snap::Matrix, outer: Option<&Masks>) -> Option<Masks> {
         let mut samples = Samples::new(target.width(), target.height())?;
-        self.draw(&mut samples, placed.id, age, placed.ratio, transform.pre_concat(placed.matrix), &flash.then(&placed.matrix), &MASK_COLOR, None);
+        self.isolated().draw(&mut samples, placed.id, age, placed.ratio, transform.pre_concat(placed.matrix), &flash.then(&placed.matrix), &MASK_COLOR, None);
         Some(samples.masks(outer))
     }
 

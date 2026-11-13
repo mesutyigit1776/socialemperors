@@ -121,7 +121,7 @@ The windows of the client come from the same extension: it draws their sprites, 
 
 `docs/FLASH_ART.md` records the import failures, the differences from other renderers and the open items of the extension.
 
-The frames are drawn at the size of Flash. The reference for the pictures is Ruffle (the version in `templates/js/ruffle/`): in a comparison of 428 graphics, 0.34 % of the pixels differ by more than 24 of 255. As in Ruffle, shapes are drawn with 4 samples in each pixel, and an object with filters is put on whole pixels. Blend modes such as overlay and multiply still mix only with the graphic itself, not with the map behind it.
+The frames are drawn at the size of Flash. The reference for the pictures is Ruffle (the version in `templates/js/ruffle/`): in a comparison of 428 graphics, 0.34 % of the pixels differ by more than 24 of 255. As in Ruffle, shapes are drawn with 4 samples in each pixel, and an object with filters is put on whole pixels. On the map, the parts with blend modes such as overlay and multiply mix with the map behind the graphic: the frame is a normal image and a layer for each blend mode, and a shader mixes the layers with the screen (`sprites/frame_material.gd`, `docs/FLASH_ART.md` 3.11).
 
 ## Run
 

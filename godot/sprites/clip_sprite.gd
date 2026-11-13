@@ -10,6 +10,12 @@ signal clip_frame_shown(frame: int, clip_frame: int)
 
 const FRAME_SECONDS := 1.0 / 30.0
 
+## A colour added to the graphic, as the colour filters of the client do. Black for none.
+var tint := Color.BLACK:
+	set(value):
+		tint = value
+		FrameMaterial.show(self, texture, tint)
+		FrameMaterial.show(_clip_node, _clip_node.texture, tint)
 var _sprite: SpriteLibrary.ItemSprite
 var _frame := -1
 var _clip: SpriteLibrary.Clip
@@ -24,8 +30,6 @@ func _init(sprite: SpriteLibrary.ItemSprite) -> void:
 	centered = false
 	offset = sprite.origin
 	_clip_node.centered = false
-	# A tint of the graphic, see BattleView, also covers its clip.
-	_clip_node.use_parent_material = true
 	add_child(_clip_node)
 
 
@@ -53,15 +57,15 @@ func play(frame: int, loop: bool) -> void:
 	set_process(_clip != null)
 	_clip_node.visible = _clip != null
 	if _clip == null:
-		texture = _sprite.get_frame(frame)
+		FrameMaterial.show(self, _sprite.get_frame(frame), tint)
 		return
-	texture = null
+	FrameMaterial.show(self, null, tint)
 	_clip_node.transform = frame_clip.transform
 	_clip_node.offset = _clip.origin
 	_clip_frame = 0
 	_time = 0.0
 	_clip.draw_ahead()
-	_clip_node.texture = _clip.get_frame(0)
+	FrameMaterial.show(_clip_node, _clip.get_frame(0), tint)
 	clip_frame_shown.emit(_frame, 0)
 
 
@@ -78,4 +82,4 @@ func _process(delta: float) -> void:
 			finished.emit()
 			return
 		clip_frame_shown.emit(_frame, _clip_frame)
-	_clip_node.texture = _clip.get_frame(_clip_frame)
+	FrameMaterial.show(_clip_node, _clip.get_frame(_clip_frame), tint)

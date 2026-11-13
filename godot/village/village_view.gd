@@ -147,8 +147,8 @@ func update_placed(placed: Village.PlacedItem) -> void:
 		return
 	var sprite := _sprites.get_sprite(item.img_name)
 	node.position = IsoGrid.tile_to_map(placed.tile)
-	node.texture = sprite.get_frame(placed.frame)
 	node.offset = building_offset(sprite, placed.frame)
+	FrameMaterial.show(node, sprite.get_frame(placed.frame))
 	_show_style(node, item, placed.frame)
 	if _ready_marks.has(placed):
 		_ready_marks[placed].position = _mark_position(node)
@@ -369,7 +369,6 @@ func _begin(item: GameConfig.ItemDef, frame: int, moving: Village.PlacedItem) ->
 	_moving = moving
 	_placing_frame = frame
 	_ghost = _make_sprite(sprite, frame, Vector2i.ZERO)
-	_ghost.offset = building_offset(sprite, frame)
 	_placement_layer.add_child(_ghost)
 	_placement_layer.visible = true
 	_update_placement(IsoGrid.map_to_tile(get_local_mouse_position()))
@@ -417,8 +416,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_placing_frame = (_placing_frame + 1) % _placing_item.max_frame
 		var sprite := _sprites.get_sprite(_placing_item.img_name)
-		_ghost.texture = sprite.get_frame(_placing_frame)
 		_ghost.offset = building_offset(sprite, _placing_frame)
+		FrameMaterial.show(_ghost, sprite.get_frame(_placing_frame))
 	elif event.is_action_pressed("ui_cancel") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
 		get_viewport().set_input_as_handled()
 		end_placement()
@@ -472,7 +471,6 @@ static func place_sprite(layer: Node2D, sprites: SpriteLibrary, item: GameConfig
 	if sprite == null:
 		return null
 	var node := _make_sprite(sprite, frame, tile)
-	node.offset = building_offset(sprite, frame)
 	layer.add_child(node)
 	return node
 
@@ -545,7 +543,8 @@ func _show_style(node: Sprite2D, item: GameConfig.ItemDef, frame: int) -> void:
 
 static func _make_sprite(sprite: SpriteLibrary.ItemSprite, frame: int, tile: Vector2i) -> Sprite2D:
 	var node := Sprite2D.new()
-	node.texture = sprite.get_frame(frame)
 	node.centered = false
 	node.position = IsoGrid.tile_to_map(tile)
+	node.offset = building_offset(sprite, frame)
+	FrameMaterial.show(node, sprite.get_frame(frame))
 	return node

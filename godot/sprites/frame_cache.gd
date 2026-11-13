@@ -114,10 +114,14 @@ func draw(art: FlashArt, id: int, frame: int, on_map: bool, canvas_size: Vector2
 	entry.bytes = image.get_data_size()
 	var pixels := ImageTexture.create_from_image(image)
 	# The image has the size of the area times the scale; the nodes use the size at scale 1.
-	pixels.set_size_override(area.size)
+	# A frame of layers has them one below the other; the texture shows the first.
+	var modes: PackedByteArray = image.get_meta(&"blend_modes", PackedByteArray())
+	pixels.set_size_override(area.size * Vector2i(1, maxi(modes.size(), 1)))
 	entry.texture = AtlasTexture.new()
 	entry.texture.atlas = pixels
 	entry.texture.region = Rect2(Vector2.ZERO, area.size)
+	if not modes.is_empty():
+		entry.texture.set_meta(&"blend_modes", modes)
 	# The image covers only the part of the canvas that the frame draws on;
 	# the margin keeps the size of the canvas.
 	entry.texture.margin = Rect2(area.position, canvas_size - Vector2(area.size))

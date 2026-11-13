@@ -41,7 +41,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | Item | Work |
 |---|---|
 | [HUD on modern screens](#the-hud-on-modern-screens) | Done |
-| [Blend modes with the map](#blend-modes-with-the-map) | Medium to large |
+| [Blend modes with the map](#blend-modes-with-the-map) | Done |
 | [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Small to medium |
 | [PvP attack screen art](#pvp-attack-screen-art) | Medium |
 
@@ -289,7 +289,23 @@ Limits:
 
 ### Blend modes with the map
 
-Parts of the art with the blend modes overlay, multiply, hard light, screen, lighten and darken mix only with the graphic itself, not with the map behind it (`docs/FLASH_ART.md`, 3.11). They are in 441 files, among them fire and glow effects of shots and dragons. Work: draw these parts as separate nodes with a shader that reads the map behind them, or draw the graphic with the map behind it. This changes the structure of `ClipSprite`, because a frame is no longer one image.
+Done. The parts of the art with the blend modes multiply, screen, lighten, darken, difference, add, overlay and hard light mixed only with the graphic itself, not with the map behind it. Such parts reach the map in 192 graphics: 182 items, mostly dragons and colossi, and 10 shots and effects (a scan of the imported graphics).
+
+What the port does now (`docs/FLASH_ART.md`, 3.11):
+
+- `FlashArt.open_map()` loads the graphics of the map. A frame with such parts is a normal image and one layer for each blend mode. Where the graphic is below a part, the part mixes with the graphic in the normal image; the layer holds the part for the map.
+- `FrameMaterial` (`godot/sprites/frame_material.gd`) shows a frame on a node. For a frame of layers it sets the shader `sprites/blend_layers.gdshader`, which mixes the layers with the screen behind the node and draws the normal image over them, and a `BackBufferCopy` before the node. `ClipSprite` (units, shots, effects) and the buildings of `VillageView` use it.
+- The colour that the battle adds to frozen, poisoned and marked units (`ClipSprite.tint`) is now in the same shaders. The old tint shader multiplied the texture twice, because in Godot 4 `COLOR` in `fragment()` already holds the texture; frozen and poisoned units were too dark.
+- The filters of a clip that its frame shows at another size now have the size of the stage (`docs/FLASH_ART.md`, 3.13). Before, for example, the blur of the large fireball was half as wide as in the client.
+
+Checks: comparisons with Ruffle on a stage of the colour of grass and of sand (`ground_compare`, `docs/FLASH_ART.md`), for the large fireball, two other shots, the attack clips of two dragons and three other dragons; and the large fireball drawn by Godot on the screen against Ruffle: 1.3 % of the pixels differ by more than 24 on grass, 7.4 % on sand. A scene with four dragons, three fireballs and a frozen dragon on grass and sand. The village, battle, quest and spell checks pass with the same counts as before.
+
+Limits:
+
+- Where the graphic is half transparent below an overlay or hard light part, the part mixes with the graphic and with the map each by itself, not with their mix. This is why the large fireball on sand differs more than before (17.4 % against 14.2 % of its pixels in the comparison of the frames; largest difference 44 levels against 34). Parts of different blend modes over the map mix in the order of their modes, not of their depths.
+- Memory: a frame of layers needs up to 2.8 times the memory of a normal frame (`2209_redHotEpicDraggy`).
+- Each node that shows a frame of layers copies the whole screen before it is drawn. With `COPY_MODE_RECT` the OpenGL renderer of Godot 4.7 gave a black copy when the rectangle started above the node. The cost was not measured.
+- The windows still mix such parts only with the graphic; the scan was for the map.
 
 ### Graphics that the port does not draw
 

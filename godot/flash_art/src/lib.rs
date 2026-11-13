@@ -18,4 +18,4 @@ mod godot_api;
 
 pub use art::Art;
 pub use layout::FrameClip;
-pub use render::Canvas;
+pub use render::{Canvas, Layer};

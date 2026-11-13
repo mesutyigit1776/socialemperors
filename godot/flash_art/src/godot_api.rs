@@ -27,12 +27,31 @@ const AHEAD_LIMIT: usize = 128 << 20;
 /// Character id, frame, and the bits of the scale (f32::to_bits).
 type Key = (u16, usize, u32);
 
-/// A frame that was drawn ahead: the pixels (see draw), the size, and its number in the order of all frames drawn ahead.
+/// A frame that was drawn ahead: the pixels (see draw), the size, the blend
+/// modes of its layers, and its number in the order of all frames drawn ahead.
 struct Drawn {
     pixels: Vec<u8>,
     width: u32,
     height: u32,
+    blends: Vec<u8>,
     number: u64,
+}
+
+/// The codes of the blend modes of the layers of a map frame, as
+/// sprites/blend_layers.gdshader reads them.
+fn blend_code(mode: swf::BlendMode) -> u8 {
+    use swf::BlendMode as B;
+    match mode {
+        B::Multiply => 1,
+        B::Screen => 2,
+        B::Lighten => 3,
+        B::Darken => 4,
+        B::Difference => 5,
+        B::Add => 6,
+        B::Overlay => 7,
+        B::HardLight => 8,
+        _ => 0,
+    }
 }
 
 /// Frames that wait to be drawn ahead, and the frames that are ready.
@@ -57,6 +76,10 @@ static NUMBER: AtomicU64 = AtomicU64::new(0);
 
 struct Shared {
     art: Art,
+    /// The frames are for the map: see Art::render_layers().
+    on_map: bool,
+    /// Character id -> the scale at which its parent shows it (set_parent_scale).
+    parent_scales: Mutex<HashMap<u16, f32>>,
     ahead: Mutex<Ahead>,
     wake: Condvar,
 }
@@ -72,9 +95,20 @@ pub struct FlashArt {
 
 #[godot_api]
 impl FlashArt {
-    /// Loads a SWF file. Returns null and reports an error when the file cannot be read.
+    /// Loads a SWF file for the windows. Returns null and reports an error when the file cannot be read.
     #[func]
     fn open(path: GString) -> Option<Gd<FlashArt>> {
+        Self::load(path, false)
+    }
+
+    /// Loads a SWF file for graphics on the map. A frame whose parts mix with
+    /// the map behind the graphic is an image of layers: see render().
+    #[func]
+    fn open_map(path: GString) -> Option<Gd<FlashArt>> {
+        Self::load(path, true)
+    }
+
+    fn load(path: GString, on_map: bool) -> Option<Gd<FlashArt>> {
         let global = ProjectSettings::singleton().globalize_path(&path).to_string();
         let art = match std::fs::read(&global).map_err(|e| e.to_string()).and_then(|data| Art::load(&data)) {
             Ok(art) => art,
@@ -83,7 +117,7 @@ impl FlashArt {
                 return None;
             }
         };
-        let shared = Arc::new(Shared { art, ahead: Mutex::new(Ahead::default()), wake: Condvar::new() });
+        let shared = Arc::new(Shared { art, on_map, parent_scales: Mutex::new(HashMap::new()), ahead: Mutex::new(Ahead::default()), wake: Condvar::new() });
         Some(Gd::from_init_fn(|base| FlashArt { shared, workers: false, base }))
     }
 
@@ -160,12 +194,18 @@ impl FlashArt {
     /// part of its canvas that the frame covers (see frame_area), or returns
     /// the image that the threads drew ahead. The image has the size of the
     /// area times the scale, rounded up. Null when the frame draws nothing.
+    ///
+    /// For the map (open_map), a frame with parts that mix with the map has
+    /// more than one layer (Art::render_layers). Then the image has the layers
+    /// one below the other, all of the same size: first the normal image, then
+    /// the layers that mix with the map. Its meta "blend_modes" is a
+    /// PackedByteArray with the blend mode of each layer (see blend_code).
     #[func]
     fn render(&self, id: i64, frame: i64, scale: f32) -> Option<Gd<Image>> {
         let key = key(id, frame, scale);
         let drawn = match take(&self.shared, key) {
             Some(drawn) => drawn,
-            None => draw(&self.shared.art, key)?,
+            None => draw(&self.shared, key)?,
         };
         image(drawn)
     }
@@ -195,6 +235,17 @@ impl FlashArt {
         let pixmap = art.render_button(id as u16, state.clamp(0, 2) as usize, canvas, scale)?;
         let (width, height) = (pixmap.width(), pixmap.height());
         Image::create_from_data(width as i32, height as i32, false, Format::RGBA8, &PackedByteArray::from(straight(pixmap.take(), width as usize)))
+    }
+
+    /// Sets the scale at which the parent of a character shows it, for a clip
+    /// that the game draws by itself: the filters of the clip then have the
+    /// size of the stage, as in the parent (Art::render_layers). Call it before
+    /// the first frame of the character is drawn.
+    #[func]
+    fn set_parent_scale(&self, id: i64, scale: f32) {
+        if scale > 0.0 {
+            self.shared.parent_scales.lock().unwrap().insert(id as u16, scale);
+        }
     }
 
     /// A font of the file as the bytes of a TrueType file, for FontFile.data.
@@ -259,7 +310,11 @@ fn take(shared: &Shared, key: Key) -> Option<Drawn> {
 }
 
 fn image(drawn: Drawn) -> Option<Gd<Image>> {
-    Image::create_from_data(drawn.width as i32, drawn.height as i32, false, Format::RGBA8, &PackedByteArray::from(drawn.pixels))
+    let mut image = Image::create_from_data(drawn.width as i32, drawn.height as i32, false, Format::RGBA8, &PackedByteArray::from(drawn.pixels))?;
+    if drawn.blends != [0] {
+        image.set_meta("blend_modes", &PackedByteArray::from(drawn.blends).to_variant());
+    }
+    Some(image)
 }
 
 /// Adds a frame that a thread drew ahead, and removes the frames drawn first
@@ -313,7 +368,7 @@ fn work(shared: Arc<Shared>) {
                 ahead = shared.wake.wait(ahead).unwrap();
             }
         };
-        match draw(&shared.art, key) {
+        match draw(&shared, key) {
             Some(drawn) => keep(&shared, key, drawn),
             None => {
                 shared.ahead.lock().unwrap().queued.remove(&key);
@@ -324,12 +379,28 @@ fn work(shared: Arc<Shared>) {
 
 /// The pixels of the area of a frame at the scale, not premultiplied, as
 /// Godot images keep them.
-fn draw(art: &Art, (id, frame, scale): Key) -> Option<Drawn> {
+fn draw(shared: &Shared, (id, frame, scale): Key) -> Option<Drawn> {
+    let art = &shared.art;
     let canvas = art.canvas(id)?;
     let area = art.frame_area(id, frame, canvas)?;
-    let pixmap = art.render_area(id, frame, canvas, area, f32::from_bits(scale))?;
-    let (width, height) = (pixmap.width(), pixmap.height());
-    Some(Drawn { width, height, pixels: straight(pixmap.take(), width as usize), number: 0 })
+    let scale = f32::from_bits(scale);
+    if !shared.on_map {
+        let pixmap = art.render_area(id, frame, canvas, area, scale)?;
+        let (width, height) = (pixmap.width(), pixmap.height());
+        return Some(Drawn { width, height, pixels: straight(pixmap.take(), width as usize), blends: vec![0], number: 0 });
+    }
+    let parent_scale = shared.parent_scales.lock().unwrap().get(&id).copied().unwrap_or(1.0);
+    let mut layers = art.render_layers(id, frame, canvas, area, scale, parent_scale)?;
+    // The normal image first: a node without the shader of the layers shows only it.
+    layers.rotate_right(1);
+    let (width, height) = (layers[0].pixels.width(), layers[0].pixels.height());
+    let blends: Vec<u8> = layers.iter().map(|l| blend_code(l.blend)).collect();
+    let count = blends.len() as u32;
+    let mut pixels = Vec::with_capacity((width * height * 4 * count) as usize);
+    for layer in layers {
+        pixels.extend(straight(layer.pixels.take(), width as usize));
+    }
+    Some(Drawn { width, height: height * count, pixels, blends, number: 0 })
 }
 
 /// Premultiplied pixels made straight, as Godot images keep them.

@@ -90,7 +90,7 @@ class ItemSprite:
 				var frame_clip: FrameClip = null
 				if entry != null:
 					frame_clip = FrameClip.new()
-					frame_clip.clip = Clip.new(Frames.new(_art, entry[0], _art.frame_count(entry[0]), _cache, true))
+					frame_clip.clip = SpriteLibrary.make_clip(_art, entry[0], entry[1], _cache)
 					frame_clip.transform = entry[1]
 				_still_clips.append(frame_clip)
 		frame = _index(frame)
@@ -152,6 +152,14 @@ class FrameClip:
 
 var _sprites_dir: String
 var _frames: FrameCache
+
+
+## The clip clip_id that a frame shows with transform. The game draws a clip
+## by itself and scales it by transform; its filters keep the size that they
+## have in the frame (FlashArt.set_parent_scale).
+static func make_clip(art: FlashArt, clip_id: int, transform: Transform2D, cache: FrameCache) -> Clip:
+	art.set_parent_scale(clip_id, sqrt(absf(transform.determinant())))
+	return Clip.new(Frames.new(art, clip_id, art.frame_count(clip_id), cache, true))
 var _cache: Dictionary = {}  # img_name -> ItemSprite, or null when the graphic is missing
 
 
@@ -174,7 +182,7 @@ func _load(img_name: String) -> ItemSprite:
 	if not (meta is Dictionary and meta.get("animated") is bool):
 		push_warning("Graphic '%s' is not imported, or is from an older import. Import the files again." % img_name)
 		return null
-	var art := FlashArt.open(dir.path_join(GRAPHIC_FILE))
+	var art := FlashArt.open_map(dir.path_join(GRAPHIC_FILE))
 	var id := art.symbol(img_name) if art != null else -1
 	if id < 0 or art.frame_count(id) == 0:
 		push_warning("Graphic '%s' has no symbol in its SWF file. Import the files again." % img_name)
@@ -197,7 +205,7 @@ func _load(img_name: String) -> ItemSprite:
 				continue
 			var clip_id: int = entry[0]
 			if not clips.has(clip_id):
-				clips[clip_id] = Clip.new(Frames.new(art, clip_id, art.frame_count(clip_id), _frames, true))
+				clips[clip_id] = make_clip(art, clip_id, entry[1], _frames)
 			var frame_clip := FrameClip.new()
 			frame_clip.clip = clips[clip_id]
 			frame_clip.transform = entry[1]
