@@ -56,10 +56,6 @@ const HIDDEN := ["barraAttackArriba", "questProgressButton", "panelCollection", 
 const PANEL_SHOWN_Y := -9.5
 const PANEL_HIDDEN_Y := 123.0
 const PANEL_SLIDE_SECONDS := 0.2
-## The zoom slider is 24 pixels from the right edge of the screen and 200
-## pixels above the bottom of the 600-pixel stage of the client (ZoomSlider).
-const ZOOM_FROM_RIGHT := 24.0
-const ZOOM_FROM_BOTTOM := 200.0
 ## The icon panel at the right edge (IconPanel of GuiManager.createViralButtons):
 ## 360 pixels above the HUD of the client, which is BAR_HEIGHT - 75 pixels
 ## lower than the HUD of the port. Its first icon is at ICON_OFFSET, and the
@@ -118,9 +114,7 @@ var _rename_edit := LineEdit.new()
 var _windows := Control.new()  # The windows of the HUD, see WINDOW_LAYER.
 var _menus: Array[String] = ["bgBar/iconMenuWorld", "bgBar/iconMenuGift", "bgBar/iconMenuGames"]
 var _locked := false
-var _zoom: UiClip
-var _zoom_level := 1.0
-var _zoom_dragging := false
+var _zoom: ZoomSlider
 var _panel_tween: Tween
 var _options: OptionsPanel
 var _offer_icon: UiClip
@@ -175,18 +169,10 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_options = OptionsPanel.new(ui, _gui, _gui.clip("options_panel"))
 	add_child(_options)
 	# The client puts the zoom slider under the bottom bar.
-	_zoom = ui.make("ZoomSliderMC")
+	_zoom = ZoomSlider.new(ui)
 	_gui.add_child(_zoom)
 	_gui.move_child(_zoom, _gui.part("bgBar").get_index())
-	for pair: Array in [["zoomIn", MapCamera.ZOOM_STEP], ["zoomOut", 1.0 / MapCamera.ZOOM_STEP]]:
-		var step: float = pair[1]
-		var button := _zoom.clip(pair[0])
-		button.make_button()
-		button.pressed.connect(func() -> void:
-			if not _locked:
-				zoom_requested.emit(_zoom_level * step))
-	_zoom.clip("slider").make_button()
-	_zoom.clip("slider").gui_input.connect(_on_zoom_drag)
+	_zoom.zoom_requested.connect(zoom_requested.emit)
 	selection = SelectionPanel.new(ui, config, _windows)
 	_gui.clip("bgBar/recuadroInfo").add_child(selection)
 	_gui.clip("bgBar/recuadroInfo").position.y = PANEL_HIDDEN_Y
@@ -275,7 +261,7 @@ func _layout() -> void:
 	var size := get_viewport().get_visible_rect().size
 	place_gui(_gui, _top_y, size)
 	_options.place(size)
-	_zoom.position = Vector2(size.x - ZOOM_FROM_RIGHT, size.y - ZOOM_FROM_BOTTOM) - _gui.position
+	_zoom.place(size)
 	for i in _icons.size():
 		_icons[i].position = Vector2(size.x - _gui.position.x, ICON_PANEL_Y) + ICON_OFFSET + Vector2(0, ICON_SPACING * i)
 	_message.position = Vector2(_gui.position.x + 60, size.y - BAR_HEIGHT - 70)
@@ -448,21 +434,9 @@ func show_panel(shown: bool) -> void:
 	_panel_tween.tween_property(panel, "position:y", target, PANEL_SLIDE_SECONDS)
 
 
-## Moves the knob of the zoom slider to the zoom of the camera, from the
-## top for ZOOM_MAX to the bottom for ZOOM_MIN.
+## Moves the knob of the zoom slider to the zoom of the camera.
 func show_zoom(level: float) -> void:
-	_zoom_level = level
-	var height := _zoom.clip("slideBar").bounds().size.y
-	_zoom.clip("slider").position.y = height * (1.0 - inverse_lerp(MapCamera.ZOOM_MIN, MapCamera.ZOOM_MAX, level))
-
-
-func _on_zoom_drag(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		_zoom_dragging = event.pressed and not _locked
-	elif event is InputEventMouseMotion and _zoom_dragging:
-		var height := _zoom.clip("slideBar").bounds().size.y
-		var place := clampf(_zoom.get_local_mouse_position().y, 0.0, height)
-		zoom_requested.emit(lerpf(MapCamera.ZOOM_MAX, MapCamera.ZOOM_MIN, place / height))
+	_zoom.show_zoom(level)
 
 
 ## Opens the store at the page of the item, as the client does for a goal.
@@ -473,6 +447,7 @@ func show_build_item(item: GameConfig.ItemDef) -> void:
 ## During the tutorial, the client blocks the menus and the tools of the selected item.
 func set_locked(locked: bool) -> void:
 	_locked = locked
+	_zoom.locked = locked
 	selection.set_locked(locked)
 	_options.pause_allowed = not locked
 	_goal_box.marks_allowed = not locked

@@ -46,8 +46,9 @@ var _spells := {}  # Spell id -> BattleSpell of this battle.
 
 ## village: the village of the player, for the stars, the honour and the spells.
 ## cast_ui and spell_graphics: the banner of a cast and how the spell graphics
-## play, see SpellBook and BattleSpell.read_graphics().
-func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary) -> void:
+## play, see SpellBook and BattleSpell.read_graphics(). neighbours: the
+## neighbour bar of the bottom bar, see BattleBar.
+func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
 	quest = quest_battle
 	_village = village
 	_ui = ui
@@ -75,6 +76,11 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	add_child(_windows)
 	# The options panel of the client (music, sounds, full screen, pause).
 	_windows.add_child(OptionsPanel.for_battle(_ui))
+	var bar := BattleBar.new(ui, config, neighbours, _screen, _camera)
+	_windows.add_child(bar)
+	bar.show_withdraw().pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		_on_withdraw_requested())
 	var rank := village.quest_rank(island.id)
 	var start_window := QuestStartWindow.new(ui, config, island, rank, QuestBook.new(village, config).max_stars(island.id))
 	start_window.started.connect(_on_started.bind(start_window))
@@ -96,7 +102,6 @@ func _on_started(stars: int, start_window: QuestStartWindow) -> void:
 	quest.start(stars)
 	started.emit(stars)
 	_hud = QuestHud.new(_ui, _config, quest)
-	_hud.withdraw_requested.connect(_on_withdraw_requested)
 	_windows.add_child(_hud)
 	var buttons := UnitButtonPanel.new(quest.sim, _ui, _config)
 	_screen.selection_changed.connect(buttons.show_selection)

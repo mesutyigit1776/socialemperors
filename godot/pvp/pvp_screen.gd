@@ -45,7 +45,8 @@ var _result_shown := false
 var _enemy_level := 0
 
 
-func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2i, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary) -> void:
+## neighbours: the neighbour bar of the bottom bar, see BattleBar.
+func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2i, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
 	battle = pvp
 	_village = village
 	_config = config
@@ -68,6 +69,7 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	add_child(_windows)
 	# The options panel of the client (music, sounds, full screen, pause).
 	_windows.add_child(OptionsPanel.for_battle(ui))
+	_windows.add_child(BattleBar.new(ui, config, neighbours, _screen, _camera))
 	_ui = ui
 	_bar = ui.make("GuiMC/barraAttackArriba")
 	_bar.show_frame(BAR_FRAME)

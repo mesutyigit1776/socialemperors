@@ -20,6 +20,9 @@ const BUTTON_STEP := 88.0
 const HOVER_SCALE := 1.1
 const HOVER_SHIFT := Vector2(-4, -5.4)
 
+## False in battles: the client opens no menu for a click on a neighbour
+## outside the village (FriendButton).
+var visits := true
 var _ui: UiLibrary
 var _config: GameConfig
 var _host: Host
@@ -126,6 +129,8 @@ func _set_arrows(shift: String, one: String, enabled: bool) -> void:
 ## PopOverVisit at the mouse, with the Visit button; it closes when the mouse leaves it.
 func _open_popover(index: int) -> void:
 	_close_popover()
+	if not visits:
+		return
 	var entry := _entries[_start + index]
 	_popover = _ui.make("PopOverVisitMC")
 	_popover.position = get_global_mouse_position()

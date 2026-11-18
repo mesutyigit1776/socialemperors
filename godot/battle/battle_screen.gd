@@ -13,11 +13,16 @@ extends Node2D
 ##
 ## The item under the mouse is the unit whose graphic is under it, else the
 ## building on the tile under it. The client tests the pixels of the graphics.
+##
+## The bottom bar (BattleBar) has the same tools: select_all(),
+## select_specials() and start_selection_tool().
 
 const FRAME_SECONDS := 1.0 / 30.0
 const DOUBLE_CLICK_MSEC := 1000
 const SAME_KIND_RADIUS := 10  ## Tiles.
 const SAME_KIND_MAX_UNITS := 50
+## Select Specials also takes the units with more life than this.
+const SPECIALS_MIN_LIFE := 1000
 
 ## Kinds of units for the double click, in the order in which the client tests
 ## them. A unit belongs to the first kind that fits it.
@@ -153,6 +158,48 @@ func _click(point: Vector2) -> void:
 		# item, selects it, so that its health shows.
 		_select([item])
 		item_clicked.emit(item)
+
+
+## Select All of the bottom bar (IsoEngine.selectAllUnits): the living units
+## of the player, with the most life first.
+func select_all() -> void:
+	if paused or not takes_orders:
+		return
+	var units := _own_units()
+	units.sort_custom(func(a: BattleFighter, b: BattleFighter) -> bool: return a.max_life() > b.max_life())
+	_select(units)
+
+
+## Select Specials of the bottom bar (IsoEngine.selectSpecialUnits): the
+## special units of the player and its units with more than
+## SPECIALS_MIN_LIFE life, with the highest attack first. Without such units
+## nothing stays selected.
+func select_specials() -> void:
+	if paused or not takes_orders:
+		return
+	var units := _own_units().filter(func(unit: BattleFighter) -> bool:
+		return SpecialUnitTable.has(unit.def.id) or unit.max_life() > SPECIALS_MIN_LIFE)
+	units.sort_custom(func(a: BattleFighter, b: BattleFighter) -> bool: return a.attack > b.attack)
+	_select(units)
+
+
+## The square tool of the bottom bar: the next drag selects the units in a
+## box, as after the space bar.
+func start_selection_tool() -> void:
+	if not paused and takes_orders:
+		_selection_tool = true
+
+
+## The pointer of the bottom bar ends the square tool (GuiManager.openMouseMenu).
+func stop_selection_tool() -> void:
+	_selection_tool = false
+
+
+func _own_units() -> Array[BattleFighter]:
+	var units: Array[BattleFighter] = []
+	units.assign(sim.fighters.filter(func(fighter: BattleFighter) -> bool:
+		return fighter.is_unit() and not fighter.dead and _is_own_unit(fighter)))
+	return units
 
 
 ## The living item under point, or null.

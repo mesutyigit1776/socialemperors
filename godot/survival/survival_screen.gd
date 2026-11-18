@@ -43,7 +43,8 @@ var _spell_graphics: Dictionary
 var _spells := {}
 
 
-func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary) -> void:
+## neighbours: the neighbour bar of the bottom bar, see BattleBar.
+func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
 	battle = survival
 	_village = village
 	_ui = ui
@@ -69,6 +70,7 @@ func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: U
 	add_child(_windows)
 	# The options panel of the client (music, sounds, full screen, pause).
 	_windows.add_child(OptionsPanel.for_battle(_ui))
+	_windows.add_child(BattleBar.new(ui, config, neighbours, _screen, _camera))
 
 
 func _ready() -> void:

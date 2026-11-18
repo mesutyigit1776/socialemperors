@@ -18,8 +18,6 @@ signal village_changed  ## A spell changed the mana or the spells; the owner sav
 const BAR_FRAME := 5
 const STAGE_WIDTH := 760.0
 const BAR_POSITION := Vector2(295.9, 50.1)
-const EXIT_FROM_BOTTOM_RIGHT := Vector2(83.5, 98.0)
-const EXIT_SCALE := Vector2(0.73, 0.75)
 const PLAYER_BAR_COLOR := Color(1, 0, 0)
 const BOT_BAR_COLOR := Color(0, 0, 1)
 const BOT_PICTURE_SCALE := 1.58
@@ -44,7 +42,8 @@ var _spells := {}
 
 
 ## map: the tournament map, for its land. bot: an entry of GameConfig.tournament_bots.
-func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, village: Village, player_name: String, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary) -> void:
+## neighbours: the neighbour bar of the bottom bar, see BattleBar.
+func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, village: Village, player_name: String, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
 	battle = match_battle
 	_village = village
 	_ui = ui
@@ -72,6 +71,11 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	add_child(_windows)
 	# The options panel of the client (music, sounds, full screen, pause).
 	_windows.add_child(OptionsPanel.for_battle(_ui))
+	var bar := BattleBar.new(ui, config, neighbours, _screen, _camera)
+	_windows.add_child(bar)
+	bar.show_withdraw().pressed.connect(func() -> void:
+		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
+		_windows.add_child(TournamentAlert.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER"), _screen_size() / 2, battle.withdraw)))
 
 
 func _ready() -> void:
@@ -109,15 +113,6 @@ func _start() -> void:
 			bar.set_colour(pair[1])
 			_bar_widths[pair[0]] = bar.scale.x
 	_windows.add_child(_bar)
-	var exit := _ui.make("GuiMC/bgBar/btnExit")
-	exit.scale = EXIT_SCALE
-	exit.keep_at(Vector2.ONE, -EXIT_FROM_BOTTOM_RIGHT)
-	exit.set_text("lbl", _config.text("AUX_WITHDRAW"))
-	exit.make_button(true)
-	exit.pressed.connect(func() -> void:
-		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
-		_windows.add_child(TournamentAlert.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER"), _screen_size() / 2, battle.withdraw)))
-	_windows.add_child(exit)
 	var buttons := UnitButtonPanel.new(battle.sim, _ui, _config)
 	_screen.selection_changed.connect(buttons.show_selection)
 	_windows.add_child(buttons)

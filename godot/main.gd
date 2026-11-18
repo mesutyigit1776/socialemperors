@@ -415,7 +415,7 @@ func _start_survival(map_id: String) -> void:
 	var survival := SurvivalBattle.create(SurvivalMap.find(map_id), map, army, _config, _sprites, _rng, _village.get_level())
 	# The client plays the music of the quests in survival; it never plays its survival music.
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
-	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
 	_goals.watch_battle(survival.sim)
 	_survival_screen.village_changed.connect(_save)
 	_survival_screen.started.connect(func() -> void:
@@ -487,7 +487,7 @@ func _start_tournament_match(bot_index: int) -> void:
 	var bot: Dictionary = _config.tournament_bots[bot_index]
 	var bot_places: Array[int] = bot["team"]
 	var match_battle := TournamentBattle.create(map, places, _village.tournament_formation(), bot_places, 0, _config, _sprites, _rng, _village.get_level())
-	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
 	_goals.watch_battle(match_battle.sim)
 	_tournament_screen.village_changed.connect(_save)
 	_tournament_screen.closed.connect(func(score: int, won: bool) -> void:
@@ -549,7 +549,7 @@ func _land(quest_id: String, army: Dictionary) -> void:
 		return
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
-	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
 	_goals.watch_battle(quest.sim)
 	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
@@ -1673,9 +1673,21 @@ func _speed_up_tutorial_farm(now: int) -> bool:
 
 
 func _update_neighbour_bar() -> void:
+	_neighbour_bar.show_entries(_neighbour_entries())
+
+
+## The neighbour bar of the bottom bar of a battle, see BattleBar.
+func _battle_neighbour_bar() -> NeighbourBar:
+	var bar := NeighbourBar.new(_ui, _config, _host)
+	bar.visits = false
+	bar.show_entries(_neighbour_entries())
+	return bar
+
+
+func _neighbour_entries() -> Array[Dictionary]:
 	var helped: Array[String] = []
 	helped.assign(_visited.keys())
-	_neighbour_bar.show_entries(NeighbourBar.entries(_neighbours.neighbours(_village.player_id()), _village, _config, _host, _now(), helped))
+	return NeighbourBar.entries(_neighbours.neighbours(_village.player_id()), _village, _config, _host, _now(), helped)
 
 
 ## The client visits a neighbour from the neighbour bar; not during the tutorial.
@@ -1909,7 +1921,7 @@ func _start_attack(start_tile: Vector2i) -> void:
 	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], start_tile, _config, _sprites, _rng, _village.get_level())
 	_goals.watch_battle(battle.sim)
 	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
-	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects)
+	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _pvp_screen.map_view(), true)
 	_pvp_screen.village_changed.connect(_save)
