@@ -19,6 +19,8 @@ const TEXT_GUTTER := 2.0
 const SKEW_LIMIT := 0.001
 ## The key in _parts of the shapes under a mask, after the key of the mask.
 const MASKED_SUFFIX := "#masked"
+## Godot draws no visible ring around the text below this outline_size, see glow_outline_size().
+const GLOW_OUTLINE_BASE := 7
 
 ## The buttons that play SoundEffect.ROLL_OVER when the mouse comes over them.
 const ROLL_OVER_BUTTONS: Array[String] = ["yesBtn", "okButton"]
@@ -91,10 +93,11 @@ func show_frame(new_frame: int) -> void:
 		# with the text of its frame, for example "You've lost the battle" in
 		# the second frame of the result of the attack log. The client writes
 		# its texts again after a change of frame (the labels of its buttons),
-		# so a field with a text from the code keeps it. Only text fields: the
-		# port keeps the clips and buttons that the code holds.
+		# so a field with a text from the code keeps it, also with its font
+		# size from fit_text(). Only text fields: the port keeps the clips and
+		# buttons that the code holds.
 		var shown_before := true
-		if node is Label and int(node.get_meta("start", 0)) != int(part.get("start", 0)) and node.text == node.get_meta("art_text"):
+		if node is Label and int(node.get_meta("start", 0)) != int(part.get("start", 0)) and node.text == node.get_meta("art_text") and not node.has_meta("written"):
 			shown_before = node.visible
 			_holder(node).queue_free()
 			_parts.erase(key)
@@ -243,6 +246,7 @@ func set_text(path: String, text: String) -> void:
 	var label := part(path) as Label
 	if label != null:
 		label.text = text
+		label.set_meta("written", true)
 
 
 ## The rectangle of a text field as Flash measures it, in the coordinates of
@@ -263,6 +267,7 @@ func fit_text(path: String, text: String, min_size := 8) -> void:
 	if label == null:
 		return
 	label.text = text
+	label.set_meta("written", true)
 	if not label.has_meta("font_size"):
 		label.set_meta("font_size", label.get_theme_font_size("font_size"))
 	var field: Vector2 = label.get_meta("field_size")
@@ -431,8 +436,17 @@ func _make_part(part: Dictionary) -> Control:
 	if part.has("glow"):
 		# A glow filter with a high strength draws an outline around the text.
 		label.add_theme_color_override("font_outline_color", Color.html(part["glow"][0]))
-		label.add_theme_constant_override("outline_size", int(round(float(part["glow"][1]))) + 1)
+		label.add_theme_constant_override("outline_size", UiClip.glow_outline_size(float(part["glow"][1]), float(part["glow"][2])))
 	return label
+
+
+## The outline_size of a Label for a glow filter of Flash with this blur and
+## strength. The solid part of a Flash glow grows with blur × (1 − 1 / strength);
+## the numbers come from a comparison with Ruffle: the title of the PvP window
+## (blur 5, strength 10) needs 12, and the title of the attack log (blur 7,
+## strength 16) 13 to 14.
+static func glow_outline_size(blur: float, strength: float) -> int:
+	return roundi(blur * (1.0 - 1.0 / maxf(strength, 1.0))) + GLOW_OUTLINE_BASE
 
 
 func _follow_screen(entered: bool) -> void:

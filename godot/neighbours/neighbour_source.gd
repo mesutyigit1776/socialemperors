@@ -33,6 +33,11 @@ const SEARCH_LEVEL_RANGE := 10
 ## over this time after their shield ends (resource_regeneration_hours).
 const LOOT_REGROWTH_HOURS := 48
 const LOOT_MIN_SHARE := 0.125
+## The server sends this picture for a player without one (sessions.py
+## fb_friend_info, the graph.facebook.com route). The importer copies it and
+## the avatars of templates/img/profile/ to <data>/ui/images/profile/.
+const DEFAULT_PICTURE := "/img/profile/default.jpg"
+const PICTURE_PREFIX := "/img/profile/"
 
 var _config: GameConfig
 var _entries: Dictionary = {}  # pid -> {"path", "kind", "name", "level", "xp", "world_id", "pic", "shield"}
@@ -64,6 +69,21 @@ func neighbours(own_pid: String) -> Array[Dictionary]:
 			if entry["kind"] == kind and pid != own_pid and not pid in ARTHUR_IDS:
 				result.append({"pid": pid, "name": entry["name"], "level": entry["level"], "xp": entry["xp"], "world_id": entry["world_id"], "pic": entry["pic"]})
 	return result
+
+
+## The "pic" of the player with the id, or "" for an unknown player.
+func picture(pid: String) -> String:
+	return _entries[pid]["pic"] if _entries.has(pid) else ""
+
+
+## The picture of the windows (UiLibrary.image()) for the "pic" of a player,
+## as the server serves it: an avatar of the server, else the default
+## picture. The port has no network, so a web address also gets the default.
+static func picture_image(pic: String) -> String:
+	var path := pic if pic.begins_with("/") else "/" + pic
+	if pic == "" or not path.begins_with(PICTURE_PREFIX):
+		path = DEFAULT_PICTURE
+	return "profile/" + path.trim_prefix(PICTURE_PREFIX)
 
 
 func has(pid: String) -> bool:

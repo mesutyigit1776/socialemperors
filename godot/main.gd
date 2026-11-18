@@ -1790,7 +1790,10 @@ func _open_shields() -> void:
 ## the client opens the PvP window again.
 func _open_attack_log(back: Callable) -> void:
 	_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupAttackLog"})
-	var window := AttackLogWindow.new(_ui, _config, _village.attacks_received(), _village.player_id(), _now())
+	var pictures := {}
+	for attack in _village.attacks_received():
+		pictures[str(attack.get("id", ""))] = _neighbours.picture(str(attack.get("id", "")))
+	var window := AttackLogWindow.new(_ui, _config, _village.attacks_received(), _village.player_id(), _now(), pictures)
 	window.closed.connect(back)
 	window.revenge_requested.connect(func(attack: Dictionary) -> void:
 		window.queue_free()

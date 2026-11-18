@@ -16,6 +16,7 @@ socialemperors server folder that the user supplies and writes:
   <out>/spells.json                  how the spell graphics play: img_name -> {"labels": {label: frame},
                                      "loop_from": frame where the graphic goes on after its last frame, or null}
   <out>/ui/...                       windows of the client, see ui_import.py
+  <out>/ui/images/profile/...        the player pictures of the server (templates/img/profile), see copy_profile_pictures()
   <out>/sound/...                    music and sound effects of the client, see sound_import.py
 
 
@@ -299,6 +300,20 @@ def _loop_frame(swf, labels):
 	return None if b"stop" in swf.data else 1
 
 
+def copy_profile_pictures(source, out_dir):
+	"""Copies the default player picture and the avatars of the server
+	(templates/img/profile/) to <out>/ui/images/profile/. The server sends them
+	to the client for the neighbour bar and the attack log
+	(NeighbourSource.picture_image()). Returns the number of pictures."""
+	count = 0
+	for path in glob.glob(os.path.join(source, "templates", "img", "profile", "**", "*.*"), recursive=True):
+		dest = os.path.join(out_dir, "ui", "images", "profile", os.path.relpath(path, os.path.join(source, "templates", "img", "profile")))
+		os.makedirs(os.path.dirname(dest), exist_ok=True)
+		shutil.copyfile(path, dest)
+		count += 1
+	return count
+
+
 def import_neighbours(source, out_dir, config):
 	"""Copies the neighbour villages of the server to <out>/neighbours/<kind>/,
 	and writes the mock neighbours (mock_villages.py) to <out>/neighbours/mock/.
@@ -463,6 +478,9 @@ def main():
 			write_json_last(ui_record_path, {"windows": ui_record})
 		except (SwfError, RuntimeError, OSError) as e:
 			failed.append(("windows of the client", str(e)))
+
+	# After the windows, which can remove the ui folder.
+	print(f"player pictures: {copy_profile_pictures(source, out_dir)}", flush=True)
 
 	sound_record_path = os.path.join(out_dir, "sound", "import.json")
 	sound_record = {"importer": version, "sources": [file_stamp(path) for path in sound_sources(source)]}

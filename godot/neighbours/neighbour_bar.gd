@@ -19,6 +19,8 @@ const BUTTON_STEP := 88.0
 ## FriendButton grows by 10 % under the mouse.
 const HOVER_SCALE := 1.1
 const HOVER_SHIFT := Vector2(-4, -5.4)
+## FriendButton.sizePic: the largest width and height of the picture of a neighbour.
+const PICTURE_SIZE := 50.0
 
 ## False in battles: the client opens no menu for a click on a neighbour
 ## outside the village (FriendButton).
@@ -73,11 +75,11 @@ func _init(ui: UiLibrary, config: GameConfig, host: Host) -> void:
 ## NeighbourSource.neighbours()) sorted by experience, then the host at
 ## round(1.2 × the level of the player). can_assist(pid) tells whether the
 ## player can help the neighbour now. Each entry: {"pid", "name", "level",
-## "xp", "host", "assist"}.
+## "xp", "host", "assist"}, and "pic" for a neighbour.
 static func entries(neighbours: Array[Dictionary], village: Village, config: GameConfig, host: Host, now: int, helped: Array[String]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for neighbour in neighbours:
-		result.append({"pid": neighbour["pid"], "name": neighbour["name"], "level": neighbour["level"], "xp": neighbour["xp"], "host": false,
+		result.append({"pid": neighbour["pid"], "name": neighbour["name"], "level": neighbour["level"], "xp": neighbour["xp"], "host": false, "pic": neighbour.get("pic", ""),
 				"assist": village.can_assist(neighbour["pid"], now) and not neighbour["pid"] in helped})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["xp"] < b["xp"])
 	var host_level := mini(roundi(village.get_level() * 1.2), config.levels.size() - 1)
@@ -109,10 +111,14 @@ func _refresh() -> void:
 		button.set_text("levelStar/levelText", str(entry.get("level", "")))
 		button.set_part_visible("levelStar", has_entry)
 		button.set_part_visible("mcassist", entry.get("assist", false))
-		# The client centres the picture of the host on the holder.
+		# The client centres the picture on the holder. FriendButton.sizePic
+		# makes the picture of a neighbour at most PICTURE_SIZE pixels wide and high.
 		var picture: TextureRect = button.clip("holder").get_node("picture")
-		picture.texture = _ui.image(_host.picture()) if entry.get("host", false) else null
-		picture.position = -picture.texture.get_size() / 2 if picture.texture != null else Vector2.ZERO
+		var host: bool = entry.get("host", false)
+		picture.texture = null if not has_entry else _ui.image(_host.picture() if host else NeighbourSource.picture_image(entry.get("pic", "")))
+		var size := picture.texture.get_size() if picture.texture != null else Vector2.ZERO
+		picture.scale = Vector2.ONE * (1.0 if host or size == Vector2.ZERO else minf(1.0, PICTURE_SIZE / maxf(size.x, size.y)))
+		picture.position = -size * picture.scale / 2
 		button.mouse_filter = Control.MOUSE_FILTER_STOP if has_entry else Control.MOUSE_FILTER_IGNORE
 	_set_arrows("shiftLeft", "oneLeft", _start > 0)
 	_set_arrows("shiftRight", "oneRight", _start + SHOWN < _entries.size())

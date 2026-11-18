@@ -6,8 +6,9 @@ extends Control
 ## whether the attacker won (btnWinLose), and a button to attack the attacker
 ## while the player has not answered the attack: "Take Revenge!!" after a
 ## lost defence, else "Attack". After the last attacks of the list comes the
-## end of the log (AttackLogEndItemMC). The client shows the Facebook picture
-## of the attacker; the port has none.
+## end of the log (AttackLogEndItemMC). The picture of the attacker is the
+## "pic" of its save, or the default picture, as the server sends it to the
+## client (NeighbourSource.picture_image()).
 
 signal revenge_requested(attack: Dictionary)
 signal closed
@@ -25,15 +26,20 @@ const EMPTY_FONT_SIZE := 24
 const TIME_UNITS := [[86400, "d"], [3600, "h"], [60, "m"], [1, "s"]]
 const TIME_PARTS := 2
 const RESOURCE_FIELDS := {"g": "lblGold", "w": "lblWood", "f": "lblFood", "s": "lblStone"}
+## AttackLogItem shows the picture 66 pixels square.
+const PICTURE_SIZE := 66.0
 
 var _ui: UiLibrary
 var _config: GameConfig
 var _window: UiClip
+var _pictures: Dictionary
 
 
-## now: the time of the game in seconds.
-func _init(ui: UiLibrary, config: GameConfig, attacks: Array[Dictionary], player_id: String, now: int) -> void:
+## now: the time of the game in seconds. pictures: the "pic" of each
+## attacker id; an id that is not in it gets the default picture.
+func _init(ui: UiLibrary, config: GameConfig, attacks: Array[Dictionary], player_id: String, now: int, pictures: Dictionary) -> void:
 	_ui = ui
+	_pictures = pictures
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var cover := ColorRect.new()
@@ -81,6 +87,9 @@ func _make_item(attack: Dictionary, player_id: String, now: int) -> UiClip:
 	item.set_text("lblStolenResources", _config.text("ATTACK_LOG_STOLEN_RESOURCES"))
 	item.set_text("lblTime", AttackLogWindow.time_text(now - int(attack.get("attackTime", now))) + " ago")
 	item.set_part_visible("photo/qty", false)
+	var texture := _ui.image(NeighbourSource.picture_image(str(_pictures.get(str(attack.get("id", "")), ""))))
+	if texture != null:
+		item.clip("photo").show_picture("thumb", texture, false).scale = Vector2(PICTURE_SIZE, PICTURE_SIZE) / texture.get_size()
 	var attacker_won := str(attack.get("attackWinner")) == str(attack.get("id"))
 	item.clip("btnWinLose").show_frame(1 if attacker_won else 0)
 	var revenge := item.clip("btnRevenge")

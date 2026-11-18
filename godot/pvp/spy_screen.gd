@@ -33,6 +33,7 @@ var _camera := MapCamera.new()
 var _layer := CanvasLayer.new()
 var _bar: UiClip
 var _hud: UiClip
+var _zoom: ZoomSlider
 
 
 ## loot: see PvpBattle.loot_of(). next_cost: the gold of the next search.
@@ -47,6 +48,10 @@ func _init(enemy: Village, enemy_name: String, loot: Dictionary, next_cost: int,
 	_bar = ui.make("GuiMC/barraAttackArriba")
 	_bar.show_frame(BAR_FRAME)
 	_layer.add_child(_bar)
+	# StateSpy hides the bottom bar but not the zoom slider of GuiMC.
+	_zoom = ZoomSlider.new(ui)
+	_layer.add_child(_zoom)
+	_zoom.follow(_camera)
 	_hud = _bar.clip("hudSpy")
 	_hud.set_text("enemyName", enemy_name)
 	_hud.set_text("lblDefenderLevel", str(enemy.get_level()))
@@ -85,6 +90,7 @@ func _layout() -> void:
 	_bar.position = Vector2(screen.x / 2 - STAGE_WIDTH / 2, 0) + BAR_POSITION
 	for name: String in BUTTONS:
 		_hud.part(name).position.y = screen.y - BUTTONS_FROM_BOTTOM - _bar.position.y - _hud.position.y
+	_zoom.place(screen)
 
 
 ## ButtonGenericTall.setTextSize makes the font of the label grow until the
