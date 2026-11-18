@@ -45,7 +45,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Done |
 | [PvP attack screen art](#pvp-attack-screen-art) | Done |
 | [Bottom bar in battles](#bottom-bar-in-battles) | Done |
-| [Panel of the selected units in battles](#panel-of-the-selected-units-in-battles) | Open |
+| [Panel of the selected units](#panel-of-the-selected-units) | Done |
 
 
 ### Group 4: parts of a release that are not the launcher
@@ -61,10 +61,10 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 1. Group 1 (done).
 2. Group 2 (done).
 3. The player save and the start screen (done).
-4. Group 3 (done, except the panel of the selected units in battles).
+4. Group 3 (done).
 5. The launcher and the builds (step 6.2).
 
-Groups 1 to 3 and the player save are done, except the panel of the selected units in battles. The launcher and the builds (step 6.2) remain.
+Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.2) remain.
 
 ## Decisions of the owner
 
@@ -379,11 +379,25 @@ Differences that stay:
 
 - The bar, in the village and in battles, is 3 pixels higher than in Ruffle at 760 × 600 (the tops of the neighbour cards are at y 474 against 477). This is the difference between the two layouts of the client, not a fault. In its window mode the client leaves the bar at its place in the art, (−1, −47) in `GuiMC`, which is at y 478. In full screen (`StateNormal.setFullScreen`) it puts `GuiMC` at the height of the screen − 125 and the bar at 0, which is 3 pixels higher and 1 pixel to the right. The port uses the full-screen layout (`VillageHud.place_gui()`), because its window can have any size, as the full screen of the client can.
 - The client moves its knob only when the zoom changes by the mouse wheel or the slider. When a mode sets its own zoom (the spy screen, the tournament), the knob of the client stays where it was; the knob of the port shows the zoom of the map.
-- The client shows the panel of the selected units over the neighbour bar; see the next item.
+- The panel of the selected units shows over the neighbour bar, as in the client; see the next item.
 
-### Panel of the selected units in battles
+### Panel of the selected units
 
-When the player selects units in a battle, the client slides its selection panel (`RecuadroInfoNew`) up over the neighbour bar, as in the village: a portrait with a health bar for each selected unit, up to 19 and a "more units" mark for 20 or more (`refreshRecuadroPVP`), the extended portrait of a single unit, unit or building of the enemy (`EP_EnemyUnit`, `EP_EnemyBuilding`), and the portrait buttons of the special units in it. The port shows only the portrait buttons (`UnitButtonPanel`), over the neighbour cards. The village of the port also has no portraits for a selection of several units. The client code for this is about 800 lines (`RecuadroInfoNew`, `Portrait` and the extended portraits). Found in the comparison of the bottom bar; not done.
+Done. The import adds `PortraitMC`, `PortraitMorUnitsMC` and `EP_SpecialUnitMc`; run the import again after an update.
+
+- Two or more selected units show a portrait each (`ui/selection_portraits.gd`, from `RecuadroInfoNew.refreshRecuadro` and `Portrait`): 20 places in two rows of 10, at x = 17 + 50 × column and y = 20 + 50 × row in the panel. With exactly 20 units all places have a portrait; with more, the last place shows the "more units" mark. Each portrait has the picture of the unit at 45 × 45 pixels and a health bar whose red part covers the lost life. A unit without life leaves its place empty. Under the mouse the portrait gets a white edge; a press on it selects only its unit. This is in the village (a box or a double click) and in the battles.
+- In battles (`battle/battle_selection_panel.gd`) the panel slides up when something is selected and down when nothing is. One item shows its extended portrait with the name, the picture, the life and the values; a value of 0 hides its part (`AbstractEpFightingElement.updateStats`). Units and buildings of the player and of the enemy use `EP_UnitMC`, as `EP_SelfUnit`, `EP_EnemyUnit` and `EP_EnemyBuilding` do. A unit of the player with attack buttons uses `EP_SpecialUnitMc`: the four attack buttons are in two rows of two in its `attacksMc` part, and the limit button is at the left of them (`EP_SelfSpecialUnit.drawSpecialAttacks`). Before, the buttons were a row over the neighbour cards.
+- Each special unit of the player that was selected in the battle keeps a portrait above the panel, from x = 175, while the panel shows and the unit lives (`addSpecialUnitSelectorPortrait`). A press on it selects only that unit, so that its buttons show.
+- The life bar of the extended portraits now uses the rule of the client also in the village: the red part covers the lost life. Before, the port made the whole bar shorter.
+
+Compared with the Ruffle screenshot of Select All in the quest Mysterious Island at 760 × 600: the portraits, their health bars and the "more units" mark are at the same places.
+
+Differences that stay:
+
+- The fights in the village (`VillageBattleScreen`) have no bottom bar in the port, so the attack buttons stay in a row at the bottom of the screen there.
+- In the village a special unit shows `EP_UnitMC` without its attack buttons, and the village shows no portraits of special units above the panel.
+- The client also lights the unit on the map while the mouse is on its portrait (`overItem`); the port does not.
+- The extended portraits of the client in battles were not compared with Ruffle; the port uses the same parts of the art as in the village, which were compared in step 5.1.
 
 ## Group 4: parts of a release
 

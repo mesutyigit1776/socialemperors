@@ -118,9 +118,6 @@ func _start() -> void:
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar.clip("mcImageSelected").add_child(picture)
 	_windows.add_child(_bar)
-	var buttons := UnitButtonPanel.new(battle.sim, _ui, _config)
-	_screen.selection_changed.connect(buttons.show_selection)
-	_windows.add_child(buttons)
 	if SpellBook.is_shown(_village):
 		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)
 		book.cast_on = _cast

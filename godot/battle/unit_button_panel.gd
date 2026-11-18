@@ -7,9 +7,19 @@ extends Control
 ## the limit button shows how full the limit bar is. A click uses the button
 ## (BattleSim.use_button()); the name of the attack, or the reason why it
 ## cannot be used, shows over the unit for a short time.
+##
+## The buttons are in a row at the bottom of the screen, or in the panel of a
+## special unit of the bottom bar after put_buttons_in().
 
 const BUTTON_SIZE := 52.0
 const GAP := 6.0
+## In the panel (EP_SelfSpecialUnit.drawSpecialAttacks): the four attacks in
+## two rows of two, 50 pixels apart, and the limit attack at the left of
+## them. A button is the 52-pixel picture in the image part of PortraitMC,
+## which has a scale of 0.83.
+const PANEL_BUTTON_SIZE := 43.0
+const PANEL_ROW_SPACE := 50.0
+const PANEL_LIMIT_POSITION := Vector2(-60, 4)
 const BOTTOM_MARGIN := 70.0
 const MASK_COLOR := Color(0, 0, 0, 0.6)
 const LIMIT_COLOR := Color(1.0, 0.8, 0.1)
@@ -19,7 +29,9 @@ var _sim: BattleSim
 var _ui: UiLibrary
 var _config: GameConfig
 var _unit: BattleFighter
-var _row := HBoxContainer.new()
+var _row := Control.new()
+var _in_panel := false
+var _size := BUTTON_SIZE
 var _masks := {}  # Button id -> ColorRect.
 var _bars := {}  # Button id -> ColorRect (the limit bar).
 var _message := Label.new()
@@ -32,7 +44,7 @@ func _init(sim: BattleSim, ui: UiLibrary, config: GameConfig) -> void:
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_row.add_theme_constant_override("separation", int(GAP))
+	_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_row)
 	_message.add_theme_color_override("font_outline_color", Color.BLACK)
 	_message.add_theme_constant_override("outline_size", 4)
@@ -45,6 +57,14 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_place)
 
 
+## Moves the buttons into holder, the attacksMc part of the panel of a special unit (EP_SpecialUnitMc).
+func put_buttons_in(holder: Control) -> void:
+	_in_panel = true
+	_size = PANEL_BUTTON_SIZE
+	_row.reparent(holder, false)
+	_row.position = Vector2.ZERO
+
+
 ## Shows the buttons of the only selected unit, when it is a unit of the player with buttons.
 func show_selection(selected: Array[BattleFighter]) -> void:
 	var unit: BattleFighter = selected[0] if selected.size() == 1 else null
@@ -54,6 +74,7 @@ func show_selection(selected: Array[BattleFighter]) -> void:
 		return
 	_unit = unit
 	for child in _row.get_children():
+		_row.remove_child(child)
 		child.queue_free()
 	_masks.clear()
 	_bars.clear()
@@ -61,9 +82,19 @@ func show_selection(selected: Array[BattleFighter]) -> void:
 		return
 	var ids: Array = unit.ability.buttons.keys()
 	ids.sort()
-	for id: int in ids:
-		_row.add_child(_make_button(unit.ability.buttons[id]))
+	for index in ids.size():
+		var node := _make_button(unit.ability.buttons[ids[index]])
+		node.position = _button_position(ids[index], index)
+		_row.add_child(node)
 	_place.call_deferred()
+
+
+func _button_position(id: int, index: int) -> Vector2:
+	if not _in_panel:
+		return Vector2(index * (BUTTON_SIZE + GAP), 0)
+	if id == BattleAbility.LIMIT_BUTTON:
+		return PANEL_LIMIT_POSITION
+	return Vector2((id % 2) * _size + 2, (id / 2) * PANEL_ROW_SPACE + 4)
 
 
 func _make_button(button: BattleAbility.UnitButton) -> Control:
@@ -71,14 +102,14 @@ func _make_button(button: BattleAbility.UnitButton) -> Control:
 	node.texture_normal = _ui.thumb(button.thumb) if button.thumb != "" else null
 	node.ignore_texture_size = true
 	node.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	node.custom_minimum_size = Vector2(BUTTON_SIZE, BUTTON_SIZE)
+	node.size = Vector2(_size, _size)
 	node.tooltip_text = button.name
 	node.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	node.pressed.connect(_on_pressed.bind(button.id))
 	if node.texture_normal == null:
 		var back := ColorRect.new()
 		back.color = Color(0.3, 0.2, 0.1)
-		back.size = Vector2(BUTTON_SIZE, BUTTON_SIZE)
+		back.size = Vector2(_size, _size)
 		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		node.add_child(back)
 	if button.id == BattleAbility.LIMIT_BUTTON:
@@ -96,9 +127,11 @@ func _make_button(button: BattleAbility.UnitButton) -> Control:
 
 
 func _place() -> void:
+	if _in_panel:
+		return
 	var screen := get_viewport_rect().size
-	_row.size = _row.get_combined_minimum_size()
-	_row.position = Vector2((screen.x - _row.size.x) / 2, screen.y - BOTTOM_MARGIN - BUTTON_SIZE)
+	var width := _row.get_child_count() * (BUTTON_SIZE + GAP) - GAP
+	_row.position = Vector2((screen.x - width) / 2, screen.y - BOTTOM_MARGIN - BUTTON_SIZE)
 
 
 func _on_pressed(id: int) -> void:
@@ -147,8 +180,8 @@ func _process(delta: float) -> void:
 		if id == BattleAbility.LIMIT_BUTTON:
 			part = 1.0 - float(ability.limit) / ability.limit_max
 			var bar: ColorRect = _bars[id]
-			bar.size = Vector2(BUTTON_SIZE * float(ability.limit) / ability.limit_max, 5)
-			bar.position = Vector2(0, BUTTON_SIZE - 5)
+			bar.size = Vector2(_size * float(ability.limit) / ability.limit_max, 5)
+			bar.position = Vector2(0, _size - 5)
 		var mask: ColorRect = _masks[id]
-		mask.size = Vector2(BUTTON_SIZE, BUTTON_SIZE * clampf(part, 0, 1))
-		mask.position = Vector2(0, BUTTON_SIZE - mask.size.y)
+		mask.size = Vector2(_size, _size * clampf(part, 0, 1))
+		mask.position = Vector2(0, _size - mask.size.y)

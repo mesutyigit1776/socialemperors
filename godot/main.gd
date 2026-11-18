@@ -193,6 +193,7 @@ func _ready() -> void:
 		ThemeDB.get_default_theme().merge_with(ClientTheme.make(_ui))
 		_hud = VillageHud.new(_ui, _config)
 		_hud.store.item_selected.connect(_on_item_selected)
+		_hud.portraits.portrait_pressed.connect(func(index: int) -> void: _select(_group[index]))
 		var panel := _hud.selection
 		panel.move_requested.connect(_on_move_requested)
 		panel.sell_confirmed.connect(_on_sell_confirmed)
@@ -690,6 +691,7 @@ func _select(placed: Village.PlacedItem) -> void:
 		_view.show_group(_group)
 	_panel = SpecialActions.View.BUILDING if placed != null else SpecialActions.View.NONE
 	_view.show_selection(placed)
+	_hud.portraits.show_units([])
 	var item := _config.get_item(placed.item_id) if placed != null else null
 	_hud.selection.show_selection(item, _village.health(placed) if placed != null else 0, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed), placed != null and _village.can_store(placed))
 	_hud.show_panel(placed != null)
@@ -1616,6 +1618,10 @@ func _select_group(units: Array[Village.PlacedItem]) -> void:
 		return
 	_group = units
 	_view.show_group(_group)
+	_hud.portraits.show_units(units.map(func(placed: Village.PlacedItem) -> Array:
+		var item := _config.get_item(placed.item_id)
+		return [item.img_name, float(_village.health(placed)) / maxi(item.life, 1)]))
+	_hud.show_panel(units.size() > 1)
 	if not units.is_empty():
 		_hud.show_message("%d units selected. Click a place, a building or a resource." % units.size())
 
@@ -1641,6 +1647,8 @@ func _order_group(tile: Vector2i, target: Village.PlacedItem) -> void:
 			sent += 1
 	_group.clear()
 	_view.show_group(_group)
+	_hud.portraits.show_units([])
+	_hud.show_panel(false)
 	if sent > 0:
 		SoundPlayer.play(SoundEffect.ROLL_OVER)
 	_hud.show_message("" if sent > 0 else "The units cannot go there.")

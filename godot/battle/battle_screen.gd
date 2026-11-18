@@ -183,6 +183,13 @@ func select_specials() -> void:
 	_select(units)
 
 
+## A click on a portrait of the selection panel selects only its unit
+## (Portrait.clickItem).
+func select_units(fighters: Array) -> void:
+	if not paused and takes_orders:
+		_select(fighters)
+
+
 ## The square tool of the bottom bar: the next drag selects the units in a
 ## box, as after the space bar.
 func start_selection_tool() -> void:

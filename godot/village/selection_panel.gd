@@ -278,11 +278,7 @@ func _connect_buttons() -> void:
 
 func _fill_common() -> void:
 	_clip.set_text("txNombre", _item.name)
-	var life := maxi(_item.life, 1)
-	_clip.set_text("mcVida/txVida", "%d/%d" % [_health, _item.life])
-	var bar := _clip.clip("mcVida/barVida")
-	if bar != null:
-		bar.scale.x = clampf(float(_health) / life, 0.0, 1.0)
+	show_life(_clip, _health, _item.life)
 	_clip.set_part_visible("btSell", not _locked and _can.get("sell", false))
 	_clip.set_part_visible("btTools", not _locked and (_can.get("move", false) or _can.get("rotate", false) or _can.get("store", false)))
 	for pair: Array in [["menuTools/btMove", "move"], ["menuTools/btFlip", "rotate"], ["menuTools/btPutInStorage", "store"]]:
@@ -355,6 +351,23 @@ func _fill_barracks() -> void:
 	_clip.set_part_visible("speedup", speed_up_cost > 0)
 	_clip.set_text("speedup/txtSpeedUpTitle", _config.text("BARRACKS_SPEED_UP"))
 	_clip.set_text("speedup/txSpeedupCost", str(speed_up_cost))
+
+
+## The life of an extended portrait (mcVida): the text and the bar, whose red
+## part covers the share of the life that the item lost
+## (AbstractEpFightingElement.updateLifeBar).
+static func show_life(clip: UiClip, health: int, life: int) -> void:
+	clip.set_text("mcVida/txVida", "%d/%d" % [health, life])
+	var bar := clip.clip("mcVida/barVida")
+	if bar == null:
+		return
+	var red := bar.clip("barraRoja")
+	# Measured before the first change of the red part.
+	if not bar.has_meta("widths"):
+		bar.set_meta("widths", Vector2(bar.bounds().size.x, red.bounds().size.x))
+	var widths: Vector2 = bar.get_meta("widths")
+	if widths.y > 0:
+		red.scale.x = (1 - clampf(float(health) / maxi(life, 1), 0, 1)) * widths.x / widths.y
 
 
 ## The client writes 10000 and more as thousands: "12k".

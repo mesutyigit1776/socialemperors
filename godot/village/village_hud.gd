@@ -97,6 +97,7 @@ const PLACEMENT_MESSAGES := {
 
 var store: StoreWindow
 var selection: SelectionPanel
+var portraits: SelectionPortraits  ## The portraits of a group of selected units, in the same panel.
 var _goal_box: GoalBox
 var _tutorial_host: HostSprite
 var _shield_graphics: Array = []  # [shieldEnabled, shieldDisabled], see set_shield_graphics().
@@ -177,6 +178,8 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_gui.clip("bgBar/recuadroInfo").add_child(selection)
 	_gui.clip("bgBar/recuadroInfo").position.y = PANEL_HIDDEN_Y
 	_gui.clip("bgBar/recuadroInfo").take_mouse()
+	portraits = SelectionPortraits.new(ui)
+	_gui.clip("bgBar/recuadroInfo/ri").add_child(portraits)
 	# The town quest uses the troll timer of the client (trollTimerMC), which
 	# 1.4.07 does not show; see TownQuests.
 	_town_quest.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
@@ -424,14 +427,21 @@ static func duration(seconds: float) -> String:
 
 ## Shows the panel of the selected item over the neighbours, or hides it.
 func show_panel(shown: bool) -> void:
-	var panel := _gui.clip("bgBar/recuadroInfo")
+	_panel_tween = slide_panel(_gui.clip("bgBar/recuadroInfo"), shown, _panel_tween)
+
+
+## Slides panel, the recuadroInfo part of the bottom bar, up or down
+## (GuiManager.showRecuadro and hideRecuadro). tween is the slide that is
+## running, or null; the function returns the slide that runs now.
+static func slide_panel(panel: Control, shown: bool, tween: Tween) -> Tween:
 	var target := PANEL_SHOWN_Y if shown else PANEL_HIDDEN_Y
 	if is_equal_approx(panel.position.y, target):
-		return
-	if _panel_tween != null:
-		_panel_tween.kill()
-	_panel_tween = create_tween()
-	_panel_tween.tween_property(panel, "position:y", target, PANEL_SLIDE_SECONDS)
+		return tween
+	if tween != null:
+		tween.kill()
+	tween = panel.create_tween()
+	tween.tween_property(panel, "position:y", target, PANEL_SLIDE_SECONDS)
+	return tween
 
 
 ## Moves the knob of the zoom slider to the zoom of the camera.

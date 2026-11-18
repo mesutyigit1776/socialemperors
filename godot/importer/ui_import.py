@@ -89,6 +89,11 @@ SYMBOLS = [
 	"EP_NewBarracksMC",
 	"EP_Market_MC",
 	"EP_UnitMC",
+	# The portrait of a unit in a selection of several units, the mark for more
+	# than 20 units, and the panel of a special unit with its attack buttons.
+	"PortraitMC",
+	"PortraitMorUnitsMC",
+	"EP_SpecialUnitMc",
 	"popUpMissionsMC",
 	"NewGoalMC",
 	"MenuTabFriendsMC",

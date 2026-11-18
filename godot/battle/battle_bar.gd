@@ -7,10 +7,10 @@ extends Control
 ## in the quests, survival, the tournament and the PvP attacks, also under
 ## the start windows.
 ##
-## The bar of the client also holds the panel of the selected units
-## (RecuadroInfoNew); the port does not have that panel, see
-## docs/PORT_GAPS.md. The quests and the tournament show the Withdraw button
-## of the bar (show_withdraw()); the PvP attacks have their own in the attack bar.
+## The bar also holds the panel of the selected items (BattleSelectionPanel)
+## with the attack buttons of the special units (UnitButtonPanel). The quests
+## and the tournament show the Withdraw button of the bar (show_withdraw());
+## the PvP attacks have their own in the attack bar.
 
 ## The parts of GuiMC other than the bottom bar, which the battles show in
 ## their own way or not at all.
@@ -19,7 +19,7 @@ const HIDDEN_PARTS := ["topLeft", "topRight", "experienceBar", "cash", "addCashB
 ## The parts of the bottom bar that StateAssault and StateTournament hide,
 ## and the parts that the port does not show in the village either (see VillageHud.HIDDEN).
 const HIDDEN_BAR_PARTS := ["storeButton", "achievementsButton", "giftButton", "gamesButton", "normalMouse/btnArrow", "btnExit", "returnHome",
-		"iconMenu", "iconMenuGift", "iconMenuWorld", "iconMenuGames", "bulldozer", "recolectaRapido", "mcTrolls", "giftCounter", "recuadroInfo"]
+		"iconMenu", "iconMenuGift", "iconMenuWorld", "iconMenuGames", "bulldozer", "recolectaRapido", "mcTrolls", "giftCounter"]
 ## GuiManager.btnMouseOverScale: Select All and Select Specials grow by 5 % under the mouse.
 const HOVER_SCALE := 1.05
 ## The size of the Withdraw label that the client shows in Ruffle
@@ -62,6 +62,10 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 		button.mouse_exited.connect(func() -> void: button.scale = Vector2.ONE)
 	bar.part("mcFriends").add_child(neighbours)
 	add_child(_gui)
+	var buttons := UnitButtonPanel.new(screen.sim, ui, config)
+	screen.selection_changed.connect(buttons.show_selection)
+	add_child(buttons)
+	BattleSelectionPanel.new(ui, screen, bar.clip("recuadroInfo"), buttons)
 	# The client puts the zoom slider under the bottom bar.
 	_zoom = ZoomSlider.new(ui)
 	_gui.add_child(_zoom)

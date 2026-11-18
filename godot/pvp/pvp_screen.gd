@@ -91,9 +91,6 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 			battle.retreat()
 			_show_result())
 		_windows.add_child(question))
-	var buttons := UnitButtonPanel.new(battle.sim, ui, config)
-	_screen.selection_changed.connect(buttons.show_selection)
-	_windows.add_child(buttons)
 	if SpellBook.is_shown(village):
 		var book := SpellBook.new(ui, cast_ui, config, village, _windows)
 		book.cast_on = _cast

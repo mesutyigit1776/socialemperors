@@ -103,9 +103,6 @@ func _on_started(stars: int, start_window: QuestStartWindow) -> void:
 	started.emit(stars)
 	_hud = QuestHud.new(_ui, _config, quest)
 	_windows.add_child(_hud)
-	var buttons := UnitButtonPanel.new(quest.sim, _ui, _config)
-	_screen.selection_changed.connect(buttons.show_selection)
-	_windows.add_child(buttons)
 	if SpellBook.is_shown(_village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
 		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)
