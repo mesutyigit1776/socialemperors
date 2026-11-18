@@ -1,5 +1,6 @@
 import json
 import math
+import datetime
 import logging
 
 log = logging.getLogger('__main__')
@@ -1653,7 +1654,95 @@ def cmd_store_add_items(player, cmd, args, gameversion, last_town_id):
 	for item_id in items:
 		add_store_item(_map, item_id)
 		register_bought_unit(player, item_id, town_id)
-	
+
+	return True
+
+def cmd_add_items_store(player, cmd, args, gameversion, last_town_id):
+	# items, cash price
+	# Arabic deals. The client calculates the price with a discount that
+	# changes over time, so the server can only check that it is positive.
+	items = json.loads(args[0])
+	price = int(args[1])
+	if price < 1 or not items:
+		return False
+	for item_id in items:
+		if not get_item_from_id(int(item_id)):
+			return False
+
+	if not pay_cash(player, price):
+		return False
+
+	town_id = last_town_id
+	_map = player["maps"][town_id]
+	for item_id in items:
+		add_store_item(_map, item_id)
+		register_bought_unit(player, item_id, town_id)
+
+	return True
+
+def _bonus_reward_valid(reward_type, value, units):
+	# The Monday bonus and the comeback bonus both use MONDAY_BONUS_REWARDS.
+	# The client sends the value of a resource reward, or the unit ID for a unit reward.
+	rewards = get_game_config()["globals"]["MONDAY_BONUS_REWARDS"]
+	for reward in rewards:
+		if reward["type"] != reward_type:
+			continue
+		if reward_type == "u":
+			return int(value) in units
+		return int(value) == reward["value"]
+	return False
+
+def _give_bonus_reward(player, town_id, reward_type, value):
+	_map = player["maps"][town_id]
+	if reward_type == "u":
+		add_store_item(_map, int(value))
+		register_bought_unit(player, int(value), town_id)
+	else:
+		give_resource_type(player, _map, reward_type, int(value))
+
+def cmd_weekly_reward(player, cmd, args, gameversion, last_town_id):
+	# type, value
+	reward_type = args[0]
+	value = args[1]
+	privateState = player["privateState"]
+
+	# The client checks the day with the local time of its computer. The bundled
+	# server runs on the same computer, so local time gives the same day.
+	now = datetime.datetime.fromtimestamp(timestamp_now())
+	if now.weekday() != 0:
+		return False
+	last = datetime.datetime.fromtimestamp(privateState["timeStampMondayBonus"])
+	if last.date() == now.date():
+		return False
+
+	units = get_game_config()["globals"]["MONDAY_BONUS_UNITS"]
+	if not _bonus_reward_valid(reward_type, value, units):
+		return False
+
+	_give_bonus_reward(player, last_town_id, reward_type, value)
+	privateState["timeStampMondayBonus"] = timestamp_now()
+
+	return True
+
+def cmd_comeback_reward(player, cmd, args, gameversion, last_town_id):
+	# type, value, day since registration
+	reward_type = args[0]
+	value = args[1]
+	day = int(args[2])
+	collected = player["privateState"]["comebackBonusCollected"]
+
+	# The client gives the bonus on day 1 and day 2, each one time.
+	# Day 1 gives the first unit of COMEBACK_BONUS_UNITS, day 2 the second.
+	if day not in (1, 2) or day in collected:
+		return False
+
+	units = get_game_config()["globals"]["COMEBACK_BONUS_UNITS"]
+	if not _bonus_reward_valid(reward_type, value, [units[day - 1]]):
+		return False
+
+	_give_bonus_reward(player, last_town_id, reward_type, value)
+	collected.append(day)
+
 	return True
 
 def cmd_add_collectable(player, cmd, args, gameversion, last_town_id):

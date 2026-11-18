@@ -142,6 +142,9 @@ commands = {
 	"reset_completed_missions":			cmd_reset_goals,
 	# daily bonus (old) ---------------------------------------------------------------------------------------
 	"win_bonus":						cmd_win_bonus,
+	# Monday and comeback bonus -------------------------------------------------------------------------------
+	"weekly_reward":					cmd_weekly_reward,
+	"comeback_reward":					cmd_comeback_reward,
 	# player general ------------------------------------------------------------------------------------------
 	"expand":							cmd_expand,
 	"name_map":							cmd_name_map,
@@ -183,6 +186,7 @@ commands = {
 	# unit packs ----------------------------------------------------------------------------------------------
 	"buy_unit_pack":					cmd_buy_unit_pack,
 	"store_add_items":					cmd_store_add_items,
+	"add_items_store":					cmd_add_items_store,
 	# neighbour assist ----------------------------------------------------------------------------------------
 	"assist_neighbor":					cmd_assist_neighbor,
 	"assist_neighbor_new":				cmd_assist_neighbor_new,

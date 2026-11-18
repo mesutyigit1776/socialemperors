@@ -150,7 +150,7 @@ def fix_bought_units(maps, privateState):
 		# race check
 		ignored_race = "t"
 		if race == "t":
-			ignored_race == "h"
+			ignored_race = "h"
 
 		# items:
 		for item in map["items"]:
@@ -423,6 +423,8 @@ def migrate_loaded_save(save):
 	fix_variable(privateState, "nextDayReward", 1)
 	fix_variable(privateState, "showDailyBonus", 1)
 	fix_variable(privateState, "_tsNewDailyBonus", 0)				# last login TS (not used by game)
+	fix_variable(privateState, "timeStampMondayBonus", 0)			# Monday bonus
+	fix_variable(privateState, "comebackBonusCollected", [])		# comeback bonus days
 
 	fix_variable(privateState, "firstPurchaseTimestamp", 0)			# PopupFirstBuy
 

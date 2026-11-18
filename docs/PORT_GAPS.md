@@ -74,7 +74,7 @@ Groups 1 to 3 and the player save are done, except the panel of the selected uni
 4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
-7. **Server bugs.** Fix them in the server or leave them. The port already uses the correct rule of `fix_bought_units` in its save migration. See [Server bugs](#server-bugs).
+7. **Server bugs.** Decided: fix them. Three are fixed; the fourth is not a bug. See [Server bugs](#server-bugs).
 8. **Cash without payment.** The port has no cash shop. See [Facebook and payment parts](#facebook-and-payment-parts).
 
 ## Group 1: fixes
@@ -445,8 +445,8 @@ Parts that are in the 1.4.07 client and not in the port, besides the items above
 
 | Part | Server | Notes |
 |---|---|---|
-| Monday bonus and comeback bonus (`MondayBonusPopUp`, `ComebackBonusPopUp`) | No handler for `weekly_reward` and `comeback_reward` | Off in the config, so the original game does not show them here. |
-| Arabic deals (`PopupArabicDeals`) | The client sends `add_items_store`; the server knows only `store_add_items` | Opened from a building. The server answers that the command is not implemented, so it does not save the buy. |
+| Monday bonus and comeback bonus (`MondayBonusPopUp`, `ComebackBonusPopUp`) | `weekly_reward` and `comeback_reward` (fixed, see server bugs) | Off in the config, so the original game does not show them here. |
+| Arabic deals (`PopupArabicDeals`) | `add_items_store` (fixed, see server bugs) | Opened from a building. |
 | Mystery boxes (`PopupMistery`, `PopupSuperMistery`) | No command found | Not checked if a player can reach them. |
 | Kompu offers | `kompu_offers` is empty in the mega patch | Nothing to show on this server. |
 | Ivory Challenge, Night Forge and Easter Dragon events | Off in `server_config.json` | The units of these events are in the port's battles. |
@@ -456,12 +456,12 @@ Not in the 1.4.07 client: chat and guilds. "Allies" in this game are the allies 
 
 ### Server bugs
 
-These were found by reading the code and are not fixed (decision 7).
+These were found by reading the code. Decision 7: fix them.
 
-1. `version.py` `fix_bought_units`: for a troll map the line that should set the ignored race to "h" is a comparison (`==`), so the troll units are left out and the human units are counted. `engine.py` `register_bought_unit` has the correct rule, and the port's save migration uses it.
-2. The client sends `add_items_store` for the Arabic deals; `command.py` has only `store_add_items`.
-3. `weekly_reward` and `comeback_reward` have no handler (the icons are off).
-4. `get_game_config.py` lists `unit_collections` in `patch_ignore`, but no patch has that name.
+1. Fixed. `version.py` `fix_bought_units`: for a troll map the line that should set the ignored race to "h" was a comparison (`==`), so the troll units were left out and the human units were counted. It now uses the same rule as `engine.py` `register_bought_unit`.
+2. Fixed. The client sends `add_items_store` for the Arabic deals, with the unit IDs and the cash price. `cmd_add_items_store` takes the cash, puts the units in the store and records them as bought. The client calculates the discount, so the server only checks that the price is at least 1 and that the player has the cash.
+3. Fixed. `weekly_reward` (Monday bonus) and `comeback_reward` have handlers. Both check the reward against `MONDAY_BONUS_REWARDS`, because the client uses this list for both windows. The Monday bonus is given one time on a Monday, in local time, and the unit must be in `MONDAY_BONUS_UNITS`. The comeback bonus is given one time on day 1 and day 2; the unit must be the first or the second unit of `COMEBACK_BONUS_UNITS`. The save gets the fields `timeStampMondayBonus` and `comebackBonusCollected`, which the client reads. The icons are still off, and the server always sends `daysSinceRegistration=0`, so the comeback bonus cannot open.
+4. Not a bug. `patch_ignore` in `get_game_config.py` lists the file names of old patches that commit `06c6574` merged into `1-mega_patch.json`, so that an old copy of `unit_collections.json` in `config/patch/` does not load. The entry stays.
 
 ## Limits of the research
 
