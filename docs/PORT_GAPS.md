@@ -44,7 +44,8 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | [Blend modes with the map](#blend-modes-with-the-map) | Done |
 | [Health bars, selection rings and effects that the client only draws](#graphics-that-the-port-does-not-draw) | Done |
 | [PvP attack screen art](#pvp-attack-screen-art) | Done |
-| [Bottom bar in battles](#bottom-bar-in-battles) | Open |
+| [Bottom bar in battles](#bottom-bar-in-battles) | Done |
+| [Panel of the selected units in battles](#panel-of-the-selected-units-in-battles) | Open |
 
 
 ### Group 4: parts of a release that are not the launcher
@@ -60,10 +61,10 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 1. Group 1 (done).
 2. Group 2 (done).
 3. The player save and the start screen (done).
-4. Group 3 (done, except the bottom bar in battles).
+4. Group 3 (done, except the panel of the selected units in battles).
 5. The launcher and the builds (step 6.2).
 
-Groups 1 to 3 and the player save are done, except the bottom bar in battles. The launcher and the builds (step 6.2) remain.
+Groups 1 to 3 and the player save are done, except the panel of the selected units in battles. The launcher and the builds (step 6.2) remain.
 
 ## Decisions of the owner
 
@@ -350,7 +351,7 @@ Compared with the original client in Ruffle at 760 × 600, on one save (`village
 Differences that stay:
 
 - In Ruffle the result window showed the shield without the animation of the loss. The client loads `swf/anim_lose.swf` when the window opens and uses it only from the next result on, so the first result of a session shows no animation. The port plays it each time. Its last frame in the port is the same as in the Ruffle exporter.
-- The attack screen of the client also shows the bottom bar (the neighbour bar, the select tools, the square tool) and the zoom buttons; the port does not show them in any battle. See [Bottom bar in battles](#bottom-bar-in-battles).
+- The attack screen of the client also shows the bottom bar (the neighbour bar, the select tools, the square tool) and the zoom buttons. The port now shows them; see [Bottom bar in battles](#bottom-bar-in-battles).
 - The title "ATTACK LOG" is darker in the port; the filters of the title were not traced.
 - The ranking button is hidden (a decision of the owner).
 
@@ -360,7 +361,25 @@ The quest, survival and tournament screens of the port still put the attack bar 
 
 ### Bottom bar in battles
 
-In battles the client keeps the bottom bar of the village (`GuiMC/bgBar`): the neighbour bar, the select tools (Select All, Select Specials, the square tool and the pointer) and the zoom buttons. The port shows only the Withdraw or exit button of it in the quest, survival, tournament and PvP screens. Found in the PvP comparison above; not done.
+Done. In battles the client keeps the bottom bar of the village (`GuiMC/bgBar`, `StateAssault` and `StateTournament`). The quest, survival, tournament and PvP screens of the port now show it (`battle/battle_bar.gd`), also under their start windows, as the client does:
+
+- The neighbour bar with its arrows. A click on a neighbour does nothing in a battle (`FriendButton`), so the port opens no Visit menu there.
+- The pointer (`btnNoArrow`), which ends the square tool, and the square tool, which makes the next drag a selection box, as the space bar does.
+- Select All (`IsoEngine.selectAllUnits`): the living units of the player, with the most life first. Select Specials (`selectSpecialUnits`): the special units of the player and its units with more than 1000 life, with the highest attack first; without such units, nothing stays selected. Both grow by 5 % under the mouse.
+- The zoom slider. `village/zoom_slider.gd` is now one slider for the village and the battles, with the rules of the client's `ZoomSlider`: + and − change the zoom by 0.2 (before, the port used the step of the mouse wheel, × 1.1), and the knob is at `slideBar.height × (1 − (zoom − 0.2) / 1.4)`, where `slideBar.height` includes the scale of the bar in the art (42 pixels, not 50). The old rule of the port gave nearly the same place at zoom 0.7, but up to 6 pixels more at the ends of the zoom range. At zoom 0.7 the knob is now at the same place as in Ruffle.
+- In the quests and the tournament, the Withdraw button is the button of the bar (`bgBar/btnExit`), with its place and scale in the art. Before, the port placed its own copy 98 pixels above the bottom of the screen. Survival has no Withdraw button, as in the client; the PvP attack keeps the button of its attack bar.
+
+Compared with Ruffle at 760 × 600 in a quest (Mysterious Island) and a PvP attack, on the same save. The parts are at the same places, except the offset below. The Withdraw label is as wide as in Ruffle (75 pixels) and 4 pixels higher. In this army without special units, Select All selected all units and Select Specials none, in Ruffle and in the port. Before, the Withdraw button of the quests was about 70 pixels lower than in Ruffle. Mouse clicks in the port: Select All, + and −, the square tool and the pointer work, and a click on a neighbour opens no menu and does not reach the map. Survival and the tournament were looked at only in the port.
+
+Differences that stay:
+
+- The bar, in the village and in battles, is 3 pixels higher than in Ruffle (the tops of the neighbour cards are at y 474 against 477). This comes from `VillageHud.place_gui()`, which the village uses since step 5.1; it was not changed here.
+- The client moves its knob only when the zoom changes by the mouse wheel or the slider. When a mode sets its own zoom (the spy screen, the tournament), the knob of the client stays where it was; the knob of the port shows the zoom of the map.
+- The client shows the panel of the selected units over the neighbour bar; see the next item.
+
+### Panel of the selected units in battles
+
+When the player selects units in a battle, the client slides its selection panel (`RecuadroInfoNew`) up over the neighbour bar, as in the village: a portrait with a health bar for each selected unit, up to 19 and a "more units" mark for 20 or more (`refreshRecuadroPVP`), the extended portrait of a single unit, unit or building of the enemy (`EP_EnemyUnit`, `EP_EnemyBuilding`), and the portrait buttons of the special units in it. The port shows only the portrait buttons (`UnitButtonPanel`), over the neighbour cards. The village of the port also has no portraits for a selection of several units. The client code for this is about 800 lines (`RecuadroInfoNew`, `Portrait` and the extended portraits). Found in the comparison of the bottom bar; not done.
 
 ## Group 4: parts of a release
 

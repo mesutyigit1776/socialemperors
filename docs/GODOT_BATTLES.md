@@ -126,7 +126,7 @@ Changes from the original game:
 
 Not exact:
 
-- The client builds the screen for a stage 760 pixels wide. The port keeps the battle bar at the top centre and the Withdraw button at the bottom right. The client draws the counter of the enemies in its code, and its place on the screen is not clear from the code; the port shows it at the top right.
+- The client builds the screen for a stage 760 pixels wide. The port keeps the battle bar at the top centre. The Withdraw button is the button of the bottom bar (`BattleBar`). The client draws the counter of the enemies in its code, and its place on the screen is not clear from the code; the port shows it at the top right.
 
 Registration point: the client puts the registration point of a building graphic half the width of the frame left of the position and the height of the frame above it. `BattleGraphic` follows the client, so that the shots of buildings start at the correct place. The land of a quest island keeps the place of the first frame of the land graphic for all frames, as the client does, so that the coasts meet.
 
