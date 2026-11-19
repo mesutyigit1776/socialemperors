@@ -1,8 +1,9 @@
 class_name VillageBattleScreen
 extends Node2D
 ## A fight in the village on the screen (VillageBattle): the village as a
-## battle map with the controls of the battles (BattleScreen), the portrait
-## buttons of special units and the spell book. In the client the fight is a
+## battle map with the controls of the battles (BattleScreen), the bottom bar
+## of the battles with the panel of the selected units (BattleBar) and the
+## spell book. In the client the fight is a
 ## part of the normal village; the port shows the village as a battle until
 ## the fight ends, and the player cannot build in this time.
 ##
@@ -32,7 +33,8 @@ var _spells := {}  # Spell id -> BattleSpell of this fight.
 
 
 ## camera_position: where the village camera was, in map pixels.
-func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2) -> void:
+## neighbours: the neighbour bar of the bottom bar, see BattleBar.
+func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2, neighbours: NeighbourBar) -> void:
 	battle = village_battle
 	_village = village
 	_config = config
@@ -41,7 +43,7 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	battle.sim.spell_graphics = spell_graphics
 	battle.sim.spell_uses = village.spell_uses()
 	add_child(_view)
-	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + village.skin, VillageView.village_land_frames(village.owned_land))
+	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + village.skin, VillageView.village_land_frames(village.owned_land), ui)
 	_camera.position = camera_position
 	add_child(_camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
@@ -63,9 +65,9 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	_status.add_theme_color_override("font_outline_color", Color.BLACK)
 	_status.add_theme_constant_override("outline_size", 4)
 	_windows.add_child(_status)
-	var buttons := UnitButtonPanel.new(battle.sim, ui, config)
-	_screen.selection_changed.connect(buttons.show_selection)
-	_windows.add_child(buttons)
+	var bar := BattleBar.new(ui, config, neighbours, _screen, _camera)
+	bar.hide_select_buttons()
+	_windows.add_child(bar)
 	if SpellBook.is_shown(village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
 		var book := SpellBook.new(ui, cast_ui, config, village, _windows)

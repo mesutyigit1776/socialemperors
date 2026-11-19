@@ -12,6 +12,9 @@ extends Control
 
 ## The player clicked the portrait of units[index] of show_units().
 signal portrait_pressed(index: int)
+## The mouse went over the portrait of units[index] (entered true) or left it.
+## The client then lights the unit on the map (Portrait.overItem).
+signal portrait_hovered(index: int, entered: bool)
 
 const MAX_PORTRAITS := 20  ## Config.MAX_SELECTED_OBJECTS
 const COLUMNS := MAX_PORTRAITS / 2
@@ -30,6 +33,7 @@ func _init(ui: UiLibrary) -> void:
 		portrait.position = Vector2(LEFT + (index % COLUMNS) * SPACE, TOP + (index / COLUMNS) * SPACE)
 		portrait.visible = false
 		portrait.pressed.connect(func() -> void: portrait_pressed.emit(index))
+		portrait.hovered.connect(func(entered: bool) -> void: portrait_hovered.emit(index, entered))
 		_places.append(portrait)
 		add_child(portrait)
 	_more = ui.make("PortraitMorUnitsMC")
@@ -60,6 +64,7 @@ class Portrait:
 	extends Control
 
 	signal pressed
+	signal hovered(entered: bool)
 
 	## The client draws the thumb of the unit at 45 × 45 pixels in the image part.
 	const PICTURE_SIZE := 45.0
@@ -98,8 +103,12 @@ class Portrait:
 		hit.position = rect.position
 		hit.size = rect.size
 		hit.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		hit.mouse_entered.connect(func() -> void: _edge.visible = true)
-		hit.mouse_exited.connect(func() -> void: _edge.visible = false)
+		hit.mouse_entered.connect(func() -> void:
+			_edge.visible = true
+			hovered.emit(true))
+		hit.mouse_exited.connect(func() -> void:
+			_edge.visible = false
+			hovered.emit(false))
 		hit.gui_input.connect(func(event: InputEvent) -> void:
 			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 				hit.accept_event()

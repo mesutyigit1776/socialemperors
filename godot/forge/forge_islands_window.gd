@@ -79,4 +79,4 @@ func _process(_delta: float) -> void:
 
 func _update_timer() -> void:
 	var wait := _forge.wait_left(IslandForge.QUEST, _clock.call())
-	_window.set_text("txtQuestTimer", "Play now" if wait == 0 else "NEXT QUEST IN \n" + ForgeWindow.time_text(wait))
+	_window.set_text("txtQuestTimer", "Play now" if wait == 0 else "NEXT QUEST IN \n" + VillageHud.dhms(wait))

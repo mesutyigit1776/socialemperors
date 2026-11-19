@@ -73,6 +73,13 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 	_zoom.follow(camera)
 
 
+## Hides Select All and Select Specials, which the village does not show
+## (VillageHud.HIDDEN), for a fight in the village.
+func hide_select_buttons() -> void:
+	_bar.set_part_visible("btnSelectAll", false)
+	_bar.set_part_visible("btnSelectSpecials", false)
+
+
 ## Shows the Withdraw button of the bar (bgBar/btnExit) and returns it; its
 ## pressed signal is the click.
 func show_withdraw() -> UiClip:

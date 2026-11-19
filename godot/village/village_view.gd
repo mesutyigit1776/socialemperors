@@ -43,6 +43,9 @@ const READY_MARK_BORDER_COLOR := Color(0.15, 0.1, 0.05)
 ## A press and release of the left button closer than this is a click; a longer
 ## movement pans the map (see MapCamera).
 const CLICK_MAX_DISTANCE := 6.0
+## Decorations do not light up under the mouse (SUBCATFUNC_ATREZZO, see IsoInteractiveElement.highlight).
+const SUBCAT_ATREZZO := 1011
+const INFO_Z_INDEX := 100  ## The label of the hovered item is above the items.
 
 var _land_layer := Node2D.new()
 var _item_layer := Node2D.new()
@@ -57,6 +60,12 @@ var _visitors: Array[Node2D] = []  # Units that are on the map but not in the sa
 var _ready_marks: Dictionary = {}  # Village.PlacedItem -> Polygon2D, child of the item node
 var _health_bars: Dictionary = {}  # Village.PlacedItem -> ColorRect, child of the item node, see update_damage()
 var _fires: Dictionary = {}  # Village.PlacedItem -> [FireMC frame, FireSprite], child of the item node
+var _hovered: Village.PlacedItem  # The item that glows, see show_hovered().
+var _map_hovered: Village.PlacedItem
+var _portrait_hovered: Village.PlacedItem
+var _hover_bar: HealthBar  # The health bar of _hovered, when it has no bar of damage.
+var _info: InfoPopup  # The label of _hovered.
+var _now := -1.0  # The time of the last update_production().
 ## The fire graphic of the client and the places of its flames, see FireSprite;
 ## null without the import, and then a damaged building looks burnt.
 var fire_graphic: SpriteLibrary.ItemSprite
@@ -197,6 +206,8 @@ static func unit_direction(from: Vector2i, to: Vector2i) -> int:
 ## Shows a mark above each building that is ready to collect at the time now,
 ## and above the items of also_ready (the open items of a quest in the town).
 func update_production(now: float, also_ready: Array[Village.PlacedItem] = []) -> void:
+	_now = now
+	_show_info_production()
 	for placed: Village.PlacedItem in _nodes:
 		var ready := _village.seconds_to_ready(placed, now) == 0 or placed in also_ready
 		if ready and not _ready_marks.has(placed):
@@ -268,6 +279,11 @@ func show_construction(placed: Village.PlacedItem, symbol: String, seconds: floa
 
 ## Removes the item from the map after Village.sell().
 func remove_placed(placed: Village.PlacedItem) -> void:
+	if placed == _map_hovered:
+		_map_hovered = null
+	if placed == _portrait_hovered:
+		_portrait_hovered = null
+	_show_hovered()
 	_fires.erase(placed)
 	if _nodes.has(placed):
 		_nodes[placed].queue_free()
@@ -448,11 +464,87 @@ func is_placing() -> bool:
 	return _placing_item != null
 
 
+## The unit whose portrait in the panel is under the mouse, or null. The
+## item under the mouse, here or on the map, glows and shows its health bar,
+## as in the client (IsoInteractiveElement.highlight). Decorations do not.
+func show_portrait_hovered(placed: Village.PlacedItem) -> void:
+	_portrait_hovered = placed
+	_show_hovered()
+
+
+func _show_hovered() -> void:
+	var placed := _portrait_hovered if _portrait_hovered != null else _map_hovered
+	if placed != null and (not _nodes.has(placed) or _config.get_item(placed.item_id).subcat_functional == SUBCAT_ATREZZO):
+		placed = null
+	if placed == _hovered:
+		return
+	if _hovered != null and _nodes.has(_hovered):
+		HoverGlow.set_shown(_nodes[_hovered], false)
+	if _hover_bar != null:
+		_hover_bar.queue_free()
+		_hover_bar = null
+	if _info != null:
+		_info.queue_free()
+		_info = null
+	_hovered = placed
+	if placed == null:
+		return
+	var node: Sprite2D = _nodes[placed]
+	HoverGlow.set_shown(node, true)
+	var item := _config.get_item(placed.item_id)
+	if InfoPopup.shows_for(ui, item):
+		_info = InfoPopup.new(ui, item)
+		_info.z_index = INFO_Z_INDEX
+		_info.place(node.position)
+		add_child(_info)
+		_show_info_production()
+	var life := item.life
+	var map_ui := ui.for_map() if ui != null else null
+	if life > 0 and not _health_bars.has(placed) and HealthBar.can_make(map_ui):
+		_hover_bar = HealthBar.new(map_ui, false)
+		node.add_child(_hover_bar)
+		_hover_bar.show_life(clampf(float(_village.health(placed)) / life, 0, 1))
+		_hover_bar.place(Vector2.ZERO, _graphic_height(placed, node))
+
+
+## The production of the hovered item in its label, see InfoPopup.
+func _show_info_production() -> void:
+	if _info != null and _now >= 0 and _village.is_producer(_hovered):
+		_info.show_production(_village.seconds_to_ready(_hovered, _now), _village.production_seconds(_hovered))
+
+
+func _process(_delta: float) -> void:
+	if _info != null:
+		_info.place(_nodes[_hovered].position)
+	# The mouse over the HUD or windows is not over the map.
+	if _map_hovered != null and (is_placing() or selection_tool or get_viewport().gui_get_hovered_control() != null):
+		_map_hovered = null
+		_show_hovered()
+	# An item that gets damaged shows the bar of update_damage().
+	if _hover_bar != null and _health_bars.has(_hovered):
+		_hover_bar.queue_free()
+		_hover_bar = null
+
+
+## The item whose graphic is under point (map pixels): the front unit, or the item on the tile.
+func _item_under(point: Vector2) -> Village.PlacedItem:
+	var found: Village.PlacedItem = null
+	for placed: Village.PlacedItem in _nodes:
+		var node: Sprite2D = _nodes[placed]
+		if node is UnitSprite and node.visible and (node as UnitSprite).map_rect().has_point(point) \
+				and (found == null or node.position.y > _nodes[found].position.y):
+			found = placed
+	return found if found != null else _village.item_at(IsoGrid.map_to_tile(point))
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_placing() and selection_tool:
 		_box_input(event)
 		return
 	if not is_placing():
+		if event is InputEventMouseMotion:
+			_map_hovered = _item_under(make_input_local(event).position)
+			_show_hovered()
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				_press_position = event.position

@@ -9,7 +9,8 @@ extends Control
 ##   the values (EP_EnemyUnit, EP_EnemyBuilding, EP_SelfUnit). A special unit of
 ##   the player gets EP_SpecialUnitMc with its attack buttons (EP_SelfSpecialUnit).
 ## - Two or more units: a portrait for each (SelectionPortraits). A click on
-##   a portrait selects only its unit.
+##   a portrait selects only its unit. The mouse over a portrait lights its
+##   unit on the map (BattleScreen.hover_unit()).
 ## - Each special unit of the player that was selected in the battle keeps a
 ##   portrait above the panel while the panel shows and the unit lives
 ##   (addSpecialUnitSelectorPortrait). A click on it selects only that unit.
@@ -50,6 +51,7 @@ func _init(ui: UiLibrary, screen: BattleScreen, recuadro: UiClip, buttons: UnitB
 	_special_clip.set_text("timeRemaining", "")
 	_portraits = SelectionPortraits.new(ui)
 	_portraits.portrait_pressed.connect(func(index: int) -> void: _screen.select_units([_selected[index]]))
+	_portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _screen.hover_unit(_selected[index] if entered else null))
 	ri.add_child(_portraits)
 	_specials_anchor = recuadro.part("specialUnitsAnchor")
 	screen.selection_changed.connect(_show_selection)
@@ -122,6 +124,7 @@ func _refresh_specials() -> void:
 		var portrait := SelectionPortraits.Portrait.new(_ui)
 		var index := _special_portraits.size()
 		portrait.pressed.connect(func() -> void: _screen.select_units([_specials[index]]))
+		portrait.hovered.connect(func(entered: bool) -> void: _screen.hover_unit(_specials[index] if entered else null))
 		_specials_anchor.add_child(portrait)
 		_special_portraits.append(portrait)
 	var shown := not _selected.is_empty()

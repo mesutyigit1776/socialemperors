@@ -232,7 +232,7 @@ func _update() -> void:
 	if left == 0 or not _forge.running(now):
 		_close()
 		return
-	_window.set_text("lblRemainingTimeValue", time_text(left))
+	_window.set_text("lblRemainingTimeValue", VillageHud.dhms(left))
 	var progress := _forge.progress()
 	if _bar != null:
 		_bar.show_frame(mini(progress / 10, _bar.frame_count() - 1))
@@ -269,18 +269,6 @@ func _update_item(clip: UiClip, entry: Dictionary, now: int) -> void:
 		clip.set_text("btnSpeedup/lbl", "%s: %d" % [_config.text("AUX_SPEEDUP"), entry["speedup_cost"]])
 	else:
 		clip.set_part_visible("btn", entry["action"] != "")
-
-
-## A time as the client writes it in this window (GameStatic.dhms): the two
-## largest of days, hours, minutes and seconds, for example "6 d 23 h".
-static func time_text(seconds: int) -> String:
-	var parts: Array[String] = []
-	for unit: Array in [[86400, "d"], [3600, "h"], [60, "m"], [1, "s"]]:
-		var count: int = seconds / unit[0]
-		if count > 0:
-			parts.append("%d %s" % [count, unit[1]])
-		seconds %= unit[0]
-	return " ".join(parts.slice(0, 2))
 
 
 func _close() -> void:

@@ -194,6 +194,7 @@ func _ready() -> void:
 		_hud = VillageHud.new(_ui, _config)
 		_hud.store.item_selected.connect(_on_item_selected)
 		_hud.portraits.portrait_pressed.connect(func(index: int) -> void: _select(_group[index]))
+		_hud.portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _view.show_portrait_hovered(_group[index] if entered else null))
 		var panel := _hud.selection
 		panel.move_requested.connect(_on_move_requested)
 		panel.sell_confirmed.connect(_on_sell_confirmed)
@@ -1393,7 +1394,7 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
 	_goals.watch_battle(battle.sim)
-	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position)
+	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar())
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _village_fight.map_view(), false)
 	_village_fight.village_changed.connect(_save)

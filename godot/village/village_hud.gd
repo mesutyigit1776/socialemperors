@@ -425,6 +425,19 @@ static func duration(seconds: float) -> String:
 	return "%ds" % total
 
 
+## A time as the client writes it with GameStatic.dhms: the two largest of
+## days, hours, minutes and seconds that are not zero, for example "6 d 23 h"
+## or "1 h 5 m"; empty for 0.
+static func dhms(seconds: int) -> String:
+	var parts: Array[String] = []
+	for unit: Array in [[86400, "d"], [3600, "h"], [60, "m"], [1, "s"]]:
+		var count: int = seconds / unit[0]
+		if count > 0:
+			parts.append("%d %s" % [count, unit[1]])
+		seconds %= unit[0]
+	return " ".join(parts.slice(0, 2))
+
+
 ## Shows the panel of the selected item over the neighbours, or hides it.
 func show_panel(shown: bool) -> void:
 	_panel_tween = slide_panel(_gui.clip("bgBar/recuadroInfo"), shown, _panel_tween)

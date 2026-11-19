@@ -190,6 +190,12 @@ func select_units(fighters: Array) -> void:
 		_select(fighters)
 
 
+## The mouse is over the portrait of fighter in the panel, or over no
+## portrait (null): the item lights up as under the mouse on the map.
+func hover_unit(fighter: BattleFighter) -> void:
+	_view.show_portrait_hovered(fighter)
+
+
 ## The square tool of the bottom bar: the next drag selects the units in a
 ## box, as after the space bar.
 func start_selection_tool() -> void:

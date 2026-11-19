@@ -92,7 +92,9 @@ var _shots := {}  # BattleProjectile -> _Flight
 var _blast_count := 0
 var _rng := RandomNumberGenerator.new()  # For the looks of the effects, not for the battle.
 var _selected: Array[BattleFighter] = []
-var _hovered: BattleFighter
+var _hovered: BattleFighter  # The item that glows, see show_hovered().
+var _map_hovered: BattleFighter
+var _portrait_hovered: BattleFighter
 var _box := Rect2()  # The selection box on the map, or an empty rectangle.
 var _below_layer := Node2D.new()  # Spell particles under the items.
 var _above_layer := Node2D.new()  # Spell particles over the items.
@@ -102,6 +104,8 @@ var _marked: Array[BattleFighter] = []
 var _pushes := {}  # BattleFighter (unit) -> [from, to, seconds since the push, seconds of the flight].
 var _opened: Array[BattleFighter] = []  # Doors that show open.
 var _map_ui: UiLibrary  # The marks and bars of the client, see SelectionMark and HealthBar; or null.
+var _ui: UiLibrary  # For the label of the hovered item (InfoPopup), or null.
+var _info: InfoPopup
 var _mark_nodes := {}  # BattleFighter -> UiClip: the selection marks, children of the nodes.
 var _bars := {}  # BattleFighter -> HealthBar.
 var _dome_ranges := {}  # BattleFighter (a dome) -> DomeRange.
@@ -151,6 +155,7 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 	_sim = sim
 	_config = config
 	_map_ui = ui.for_map() if ui != null else null
+	_ui = ui
 	_sprites = sprites
 	_effects = effects
 	VillageView.place_land(_land_layer, config, sprites, land_item_id, land_frames)
@@ -207,8 +212,40 @@ func show_selection(selected: Array[BattleFighter]) -> void:
 	_selected = selected
 
 
+## The item under the mouse on the map, or null. The item under the mouse,
+## here or on its portrait in the panel (show_portrait_hovered()), glows and
+## shows its health bar (IsoInteractiveElement.highlight).
 func show_hovered(fighter: BattleFighter) -> void:
+	_map_hovered = fighter
+	_show_hovered()
+
+
+## The unit whose portrait in the panel is under the mouse, or null.
+func show_portrait_hovered(fighter: BattleFighter) -> void:
+	_portrait_hovered = fighter
+	_show_hovered()
+
+
+func _show_hovered() -> void:
+	var fighter := _portrait_hovered if _portrait_hovered != null else _map_hovered
+	if fighter != null and fighter.dead:
+		fighter = null
+	if fighter == _hovered:
+		return
+	if _hovered != null and _nodes.has(_hovered):
+		HoverGlow.set_shown(_nodes[_hovered], false)
+	if _info != null:
+		_info.queue_free()
+		_info = null
 	_hovered = fighter
+	if _hovered != null and _nodes.has(_hovered):
+		HoverGlow.set_shown(_nodes[_hovered], true)
+		# The units and buildings of a battle show their name only.
+		if InfoPopup.shows_for(_ui, _hovered.def):
+			_info = InfoPopup.new(_ui, _hovered.def)
+			_info.z_index = VillageView.INFO_Z_INDEX
+			_info.place(_nodes[_hovered].position)
+			add_child(_info)
 
 
 ## The selection box that the player drags, in map pixels.
@@ -248,6 +285,12 @@ func _process(delta: float) -> void:
 			_on_shot_landed(shot)
 	_show_streams()
 	_update_marks()
+	# The mouse over the bars or windows is not over the map.
+	if _map_hovered != null and get_viewport().gui_get_hovered_control() != null:
+		_map_hovered = null
+	_show_hovered()
+	if _info != null:
+		_info.place(_nodes[_hovered].position)
 	_update_bars()
 	for fighter: BattleFighter in _flashes.keys():
 		var flash: Dictionary = _flashes[fighter][0]
@@ -414,6 +457,13 @@ func _on_removed(fighter: BattleFighter) -> void:
 	_selected.erase(fighter)
 	if _hovered == fighter:
 		_hovered = null
+		if _info != null:
+			_info.queue_free()
+			_info = null
+	if _map_hovered == fighter:
+		_map_hovered = null
+	if _portrait_hovered == fighter:
+		_portrait_hovered = null
 	_mark_nodes.erase(fighter)  # The mark and the range of a dome go with the node.
 	_dome_ranges.erase(fighter)
 	_appearing.erase(fighter)

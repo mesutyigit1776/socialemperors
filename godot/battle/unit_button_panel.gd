@@ -19,6 +19,10 @@ const GAP := 6.0
 ## which has a scale of 0.83.
 const PANEL_BUTTON_SIZE := 43.0
 const PANEL_ROW_SPACE := 50.0
+## The columns are the width of the attack portrait apart. That width
+## includes its hidden counter of attacks (a GiftCounter at x 43), so it is
+## larger than the button: 59 pixels in Ruffle.
+const PANEL_COLUMN_SPACE := 59.0
 const PANEL_LIMIT_POSITION := Vector2(-60, 4)
 const BOTTOM_MARGIN := 70.0
 const MASK_COLOR := Color(0, 0, 0, 0.6)
@@ -94,7 +98,7 @@ func _button_position(id: int, index: int) -> Vector2:
 		return Vector2(index * (BUTTON_SIZE + GAP), 0)
 	if id == BattleAbility.LIMIT_BUTTON:
 		return PANEL_LIMIT_POSITION
-	return Vector2((id % 2) * _size + 2, (id / 2) * PANEL_ROW_SPACE + 4)
+	return Vector2((id % 2) * PANEL_COLUMN_SPACE + 2, (id / 2) * PANEL_ROW_SPACE + 4)
 
 
 func _make_button(button: BattleAbility.UnitButton) -> Control:

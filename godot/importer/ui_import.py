@@ -94,6 +94,9 @@ SYMBOLS = [
 	"PortraitMC",
 	"PortraitMorUnitsMC",
 	"EP_SpecialUnitMc",
+	# The label of the item under the mouse: its name, and the time and share
+	# of the production of a building (InfoPopup).
+	"InfoPopupMC",
 	"popUpMissionsMC",
 	"NewGoalMC",
 	"MenuTabFriendsMC",

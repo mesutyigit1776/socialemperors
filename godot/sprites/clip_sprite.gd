@@ -42,10 +42,15 @@ func _ready() -> void:
 
 ## The rectangle on the map that the graphic covers now.
 func map_rect() -> Rect2:
-	var node: Sprite2D = _clip_node if _clip != null else self
+	var node := shown_node()
 	if node.texture == null:
 		return Rect2(global_position, Vector2.ZERO)
 	return node.get_global_transform() * Rect2(node.offset, node.texture.get_size())
+
+
+## The node that shows the frame now: this node, or its child that plays the clip of the frame.
+func shown_node() -> Sprite2D:
+	return _clip_node if _clip != null else self
 
 
 ## Shows frame (0-based). A new frame starts its clip from the first frame.
