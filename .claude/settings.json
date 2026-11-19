@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "mesutyigit-mods": {
+      "source": { "source": "github", "repo": "mesutyigit1776/claude-mods" }
+    }
+  },
+  "enabledPlugins": {
+    "stained-glass-theme@mesutyigit-mods": true
+  }
+}
