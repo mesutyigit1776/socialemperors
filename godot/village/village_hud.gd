@@ -98,6 +98,7 @@ const PLACEMENT_MESSAGES := {
 var store: StoreWindow
 var selection: SelectionPanel
 var portraits: SelectionPortraits  ## The portraits of a group of selected units, in the same panel.
+var special_portraits: SpecialPortraits  ## The portraits of the special units above the panel.
 var _goal_box: GoalBox
 var _tutorial_host: HostSprite
 var _shield_graphics: Array = []  # [shieldEnabled, shieldDisabled], see set_shield_graphics().
@@ -180,6 +181,8 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_gui.clip("bgBar/recuadroInfo").take_mouse()
 	portraits = SelectionPortraits.new(ui)
 	_gui.clip("bgBar/recuadroInfo/ri").add_child(portraits)
+	special_portraits = SpecialPortraits.new(ui)
+	_gui.clip("bgBar/recuadroInfo").part("specialUnitsAnchor").add_child(special_portraits)
 	# The town quest uses the troll timer of the client (trollTimerMC), which
 	# 1.4.07 does not show; see TownQuests.
 	_town_quest.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))

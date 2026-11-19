@@ -24,6 +24,7 @@ var _config: GameConfig
 var _view := BattleView.new()
 var _camera := MapCamera.new()
 var _screen: BattleScreen
+var _bar: BattleBar
 var _windows := CanvasLayer.new()
 var _status := Label.new()
 var _lines := {}  # BattleFighter -> [Label, seconds left]
@@ -65,9 +66,9 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	_status.add_theme_color_override("font_outline_color", Color.BLACK)
 	_status.add_theme_constant_override("outline_size", 4)
 	_windows.add_child(_status)
-	var bar := BattleBar.new(ui, config, neighbours, _screen, _camera)
-	bar.hide_select_buttons()
-	_windows.add_child(bar)
+	_bar = BattleBar.new(ui, config, neighbours, _screen, _camera)
+	_bar.hide_select_buttons()
+	_windows.add_child(_bar)
 	if SpellBook.is_shown(village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
 		var book := SpellBook.new(ui, cast_ui, config, village, _windows)
@@ -85,6 +86,15 @@ func order_attack(unit: Village.PlacedItem, target_tile: Vector2i) -> void:
 	if fighter != null:
 		var units: Array[BattleFighter] = [fighter]
 		battle.sim.order(units, target_tile)
+
+
+## The player clicked attack button id of the special unit in the village:
+## the unit is selected in the fight and uses the button.
+func use_button(unit: Village.PlacedItem, id: int) -> void:
+	var fighter := battle.fighter_of(unit)
+	if fighter != null:
+		_screen.select_units([fighter])
+		_bar.press_unit_button(id)
 
 
 ## Where the camera is, in map pixels; the village camera continues from there.

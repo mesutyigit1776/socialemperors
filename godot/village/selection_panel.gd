@@ -1,7 +1,9 @@
 class_name SelectionPanel
 extends Control
 ## The panel of the selected item (RecuadroInfoNew and the extended portraits
-## of the client) in the bottom bar: EP_UnitMC for a unit, EP_NewBarracksMC
+## of the client) in the bottom bar: EP_UnitMC for a unit, EP_SpecialUnitMc
+## for a unit of the player with attack buttons (EP_SelfSpecialUnit, see
+## show_special_buttons()), EP_NewBarracksMC
 ## for a building that trains, EP_Farm_MC for a building that produces and
 ## EP_House_MC for the others. Each shows the name, the picture, the health
 ## and the values of the item; the buttons sell the item, or open the tools
@@ -28,10 +30,12 @@ signal warehouse_unit_out_requested(unit_id: int)
 signal warehouse_slot_requested
 ## The player chose an action of show_actions(); id is the id that it gave.
 signal action_requested(id: String)
+## The player clicked an attack button of the special unit (BattleAbility.UnitButton.id).
+signal special_button_pressed(id: int)
 
-enum Kind { NONE, HOUSE, UNIT, FARM, BARRACKS }
+enum Kind { NONE, HOUSE, UNIT, SPECIAL, FARM, BARRACKS }
 
-const SYMBOLS := {Kind.HOUSE: "EP_House_MC", Kind.UNIT: "EP_UnitMC", Kind.FARM: "EP_Farm_MC", Kind.BARRACKS: "EP_NewBarracksMC"}
+const SYMBOLS := {Kind.HOUSE: "EP_House_MC", Kind.UNIT: "EP_UnitMC", Kind.SPECIAL: "EP_SpecialUnitMc", Kind.FARM: "EP_Farm_MC", Kind.BARRACKS: "EP_NewBarracksMC"}
 const QUEUE_PORTRAITS := 5
 const EXTRAS_WIDTH := 330
 const EXTRAS_MAX_HEIGHT := 260
@@ -47,6 +51,7 @@ var _can := {}  # "move", "sell", "rotate", "store" -> bool.
 var _locked := false
 var _production: Array = []  # The arguments of show_production(), or empty.
 var _training: Array = []  # The arguments of show_training(), or empty.
+var _ability: BattleAbility  # The attack buttons of the selected unit, see show_special_buttons().
 var _extras_box := PanelContainer.new()
 var _extras := VBoxContainer.new()
 var _work_times := HFlowContainer.new()
@@ -99,6 +104,7 @@ func show_selection(item: GameConfig.ItemDef, health: int, can_move: bool, can_s
 	_can = {"move": can_move, "sell": can_sell, "rotate": can_rotate, "store": can_store}
 	_production = []
 	_training = []
+	_ability = null
 	if item == null:
 		_show_actions_now("", [])
 		show_units([])
@@ -188,11 +194,18 @@ func _show_actions_now(text: String, actions: Array) -> void:
 	_fit_extras()
 
 
+## Shows the attack buttons of the selected unit of the player, after
+## show_selection(). A click on one emits special_button_pressed.
+func show_special_buttons(ability: BattleAbility) -> void:
+	_ability = ability if ability != null and not ability.buttons.is_empty() else null
+	_refresh()
+
+
 func _kind_now() -> Kind:
 	if _item == null:
 		return Kind.NONE
 	if _item.is_unit():
-		return Kind.UNIT
+		return Kind.SPECIAL if _ability != null and _ui.has_symbol(SYMBOLS[Kind.SPECIAL]) else Kind.UNIT
 	if not _training.is_empty():
 		return Kind.BARRACKS
 	if not _production.is_empty():
@@ -212,10 +225,12 @@ func _refresh() -> void:
 			add_child(_clip)
 			move_child(_clip, 0)
 			_connect_buttons()
+			if kind == Kind.SPECIAL:
+				_add_attack_buttons()
 	if _clip != null:
 		_fill_common()
 		match kind:
-			Kind.UNIT, Kind.HOUSE:
+			Kind.UNIT, Kind.SPECIAL, Kind.HOUSE:
 				_fill_values()
 			Kind.FARM:
 				_fill_farm()
@@ -232,6 +247,16 @@ func _refresh() -> void:
 		_production_text.text = "Choose a work time:"
 		_collect_button.visible = seconds_left == 0
 	_fit_extras()
+
+
+## The attack buttons in the attacksMc part of EP_SpecialUnitMc. They go with the clip.
+func _add_attack_buttons() -> void:
+	var buttons := UnitButtonPanel.new(null, _ui, _config)
+	_clip.add_child(buttons)
+	buttons.put_buttons_in(_clip.clip("attacksMc"))
+	buttons.show_idle(_ability)
+	buttons.idle_pressed.connect(func(id: int) -> void: special_button_pressed.emit(id))
+	_clip.set_text("timeRemaining", "")
 
 
 func _connect_buttons() -> void:

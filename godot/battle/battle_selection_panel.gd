@@ -15,11 +15,6 @@ extends Control
 ##   portrait above the panel while the panel shows and the unit lives
 ##   (addSpecialUnitSelectorPortrait). A click on it selects only that unit.
 
-## RecuadroInfoNew.redrawSpecialUnitSelectorPortraits: the first portrait at
-## x = 175, the next ones 5 pixels further apart than their width.
-const SPECIALS_LEFT := 175.0
-const SPECIALS_GAP := 5.0
-
 var _ui: UiLibrary
 var _screen: BattleScreen
 var _recuadro: UiClip
@@ -27,9 +22,8 @@ var _unit_clip: UiClip  # EP_UnitMC
 var _special_clip: UiClip  # EP_SpecialUnitMc
 var _shown_clip: UiClip
 var _portraits: SelectionPortraits
-var _specials_anchor: Control
+var _special_portraits: SpecialPortraits
 var _specials: Array[BattleFighter] = []
-var _special_portraits: Array[SelectionPortraits.Portrait] = []
 var _selected: Array[BattleFighter] = []
 var _tween: Tween
 
@@ -53,7 +47,10 @@ func _init(ui: UiLibrary, screen: BattleScreen, recuadro: UiClip, buttons: UnitB
 	_portraits.portrait_pressed.connect(func(index: int) -> void: _screen.select_units([_selected[index]]))
 	_portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _screen.hover_unit(_selected[index] if entered else null))
 	ri.add_child(_portraits)
-	_specials_anchor = recuadro.part("specialUnitsAnchor")
+	_special_portraits = SpecialPortraits.new(ui)
+	_special_portraits.portrait_pressed.connect(func(index: int) -> void: _screen.select_units([_specials[index]]))
+	_special_portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _screen.hover_unit(_specials[index] if entered else null))
+	recuadro.part("specialUnitsAnchor").add_child(_special_portraits)
 	screen.selection_changed.connect(_show_selection)
 	screen.stepped.connect(_refresh)
 
@@ -120,20 +117,5 @@ func _share(fighter: BattleFighter) -> float:
 
 func _refresh_specials() -> void:
 	_specials = _specials.filter(func(fighter: BattleFighter) -> bool: return not fighter.dead and fighter in _screen.sim.fighters)
-	while _special_portraits.size() < _specials.size():
-		var portrait := SelectionPortraits.Portrait.new(_ui)
-		var index := _special_portraits.size()
-		portrait.pressed.connect(func() -> void: _screen.select_units([_specials[index]]))
-		portrait.hovered.connect(func(entered: bool) -> void: _screen.hover_unit(_specials[index] if entered else null))
-		_specials_anchor.add_child(portrait)
-		_special_portraits.append(portrait)
-	var shown := not _selected.is_empty()
-	for index in _special_portraits.size():
-		var portrait := _special_portraits[index]
-		portrait.visible = shown and index < _specials.size()
-		if portrait.visible:
-			var fighter := _specials[index]
-			portrait.show_unit(fighter.def.img_name)
-			portrait.show_life(_share(fighter))
-			var art := portrait.art_size()
-			portrait.position = Vector2(SPECIALS_LEFT + index * art.x + (SPECIALS_GAP if index != 0 else 0.0), -art.y)
+	var shown := [] if _selected.is_empty() else _specials.map(func(fighter: BattleFighter) -> Array: return [fighter.def.img_name, _share(fighter)])
+	_special_portraits.show_units(shown)

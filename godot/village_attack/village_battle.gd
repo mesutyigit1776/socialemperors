@@ -11,8 +11,10 @@ extends RefCounted
 ## - Destroyed buildings of the player stay on the map, see
 ##   BattleSim.in_own_village.
 ## - The fight ends when it is calm (is_calm()) for CALM_FRAMES frames: no
-##   unit fights, no shot flies, no unit of an attack walks, and no step of an
-##   attack is due.
+##   unit fights, no shot flies, no unit of an attack walks, no step of an
+##   attack is due, and no special attack of the player casts or cools down.
+##   The player can start a fight without enemies with an attack button of a
+##   special unit; its summoned units are not saved and go with the fight.
 ## - apply() writes the result to the village, as the commands of the client
 ##   do: units of the player that died leave the map ("sell" with the reason
 ##   KILL), enemies that died give their reward ("kill"), and the units of the
@@ -150,6 +152,9 @@ func is_calm() -> bool:
 		if group.ai.is_step_due(sim.frame) or group.ai.is_busy():
 			return false
 	for fighter in sim.fighters:
+		if fighter.team == BattleFighter.Team.PLAYER and fighter.ability != null and not fighter.dead \
+				and fighter.ability.button_state != BattleAbility.ButtonState.IDLE:
+			return false
 		if fighter.is_unit() and not fighter.dead and fighter.target != null and not fighter.target.dead \
 				and fighter.target.team != fighter.team and fighter.target.team != BattleFighter.Team.NEUTRAL:
 			return false

@@ -31,6 +31,7 @@ var _gui: UiClip
 var _bar: UiClip
 var _top_y: Dictionary
 var _zoom: ZoomSlider
+var _buttons: UnitButtonPanel
 
 
 ## neighbours: the neighbour bar, which shows the neighbours of the village
@@ -62,10 +63,10 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 		button.mouse_exited.connect(func() -> void: button.scale = Vector2.ONE)
 	bar.part("mcFriends").add_child(neighbours)
 	add_child(_gui)
-	var buttons := UnitButtonPanel.new(screen.sim, ui, config)
-	screen.selection_changed.connect(buttons.show_selection)
-	add_child(buttons)
-	BattleSelectionPanel.new(ui, screen, bar.clip("recuadroInfo"), buttons)
+	_buttons = UnitButtonPanel.new(screen.sim, ui, config)
+	screen.selection_changed.connect(_buttons.show_selection)
+	add_child(_buttons)
+	BattleSelectionPanel.new(ui, screen, bar.clip("recuadroInfo"), _buttons)
 	# The client puts the zoom slider under the bottom bar.
 	_zoom = ZoomSlider.new(ui)
 	_gui.add_child(_zoom)
@@ -78,6 +79,11 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 func hide_select_buttons() -> void:
 	_bar.set_part_visible("btnSelectAll", false)
 	_bar.set_part_visible("btnSelectSpecials", false)
+
+
+## Uses attack button id of the selected special unit, as a click on it does.
+func press_unit_button(id: int) -> void:
+	_buttons.press(id)
 
 
 ## Shows the Withdraw button of the bar (bgBar/btnExit) and returns it; its

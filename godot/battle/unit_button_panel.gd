@@ -10,6 +10,14 @@ extends Control
 ##
 ## The buttons are in a row at the bottom of the screen, or in the panel of a
 ## special unit of the bottom bar after put_buttons_in().
+##
+## In the village outside a fight there is no battle: show_idle() shows the
+## buttons of a unit without their state, and a click emits idle_pressed. The
+## owner then starts a fight in which the unit uses the button, as the client
+## also uses the buttons in the village.
+
+## A button of show_idle() was clicked.
+signal idle_pressed(id: int)
 
 const BUTTON_SIZE := 52.0
 const GAP := 6.0
@@ -33,6 +41,7 @@ var _sim: BattleSim
 var _ui: UiLibrary
 var _config: GameConfig
 var _unit: BattleFighter
+var _idle: BattleAbility  # The ability of show_idle(), or null.
 var _row := Control.new()
 var _in_panel := false
 var _size := BUTTON_SIZE
@@ -74,20 +83,34 @@ func show_selection(selected: Array[BattleFighter]) -> void:
 	var unit: BattleFighter = selected[0] if selected.size() == 1 else null
 	if unit != null and (unit.ability == null or unit.ability.buttons.is_empty() or unit.team != BattleFighter.Team.PLAYER):
 		unit = null
-	if unit == _unit:
+	if unit == _unit and _idle == null:
 		return
 	_unit = unit
+	_idle = null
+	_show_buttons(unit.ability if unit != null else null)
+
+
+## Shows the buttons of ability, of a unit that is not in a battle, or none for null.
+func show_idle(ability: BattleAbility) -> void:
+	if ability == _idle and _unit == null:
+		return
+	_unit = null
+	_idle = ability
+	_show_buttons(ability)
+
+
+func _show_buttons(ability: BattleAbility) -> void:
 	for child in _row.get_children():
 		_row.remove_child(child)
 		child.queue_free()
 	_masks.clear()
 	_bars.clear()
-	if unit == null:
+	if ability == null:
 		return
-	var ids: Array = unit.ability.buttons.keys()
+	var ids: Array = ability.buttons.keys()
 	ids.sort()
 	for index in ids.size():
-		var node := _make_button(unit.ability.buttons[ids[index]])
+		var node := _make_button(ability.buttons[ids[index]])
 		node.position = _button_position(ids[index], index)
 		_row.add_child(node)
 	_place.call_deferred()
@@ -138,8 +161,15 @@ func _place() -> void:
 	_row.position = Vector2((screen.x - width) / 2, screen.y - BOTTOM_MARGIN - BUTTON_SIZE)
 
 
+## Uses button id of the shown unit, as a click on it does.
+func press(id: int) -> void:
+	_on_pressed(id)
+
+
 func _on_pressed(id: int) -> void:
 	if _unit == null:
+		if _idle != null:
+			idle_pressed.emit(id)
 		return
 	var button: BattleAbility.UnitButton = _unit.ability.buttons[id]
 	if _sim.use_button(_unit, id):

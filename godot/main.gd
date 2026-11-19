@@ -60,6 +60,9 @@ var _tournament_screen: TournamentScreen
 var _tournament_scores := {}  # Bot index -> [score, won] of the last match in this session.
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
+## The special units of the player that the player selected since the map
+## loaded; they keep a portrait above the panel (addSpecialUnitSelectorPortrait).
+var _special_units: Array[Village.PlacedItem] = []
 var _town_quests: TownQuests  # The quest in the town, see TownQuestBook.
 var _daily_bonus: Dictionary = {}  # Village.start_daily_bonus() until the window shows.
 var _unit_collections: UnitCollections  # The count of the unit list, from the load of the town.
@@ -195,6 +198,9 @@ func _ready() -> void:
 		_hud.store.item_selected.connect(_on_item_selected)
 		_hud.portraits.portrait_pressed.connect(func(index: int) -> void: _select(_group[index]))
 		_hud.portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _view.show_portrait_hovered(_group[index] if entered else null))
+		_hud.special_portraits.portrait_pressed.connect(func(index: int) -> void: _select(_special_units[index]))
+		_hud.special_portraits.portrait_hovered.connect(func(index: int, entered: bool) -> void: _view.show_portrait_hovered(_special_units[index] if entered else null))
+		_hud.selection.special_button_pressed.connect(_use_special_button)
 		var panel := _hud.selection
 		panel.move_requested.connect(_on_move_requested)
 		panel.sell_confirmed.connect(_on_sell_confirmed)
@@ -587,6 +593,10 @@ func _on_quest_closed(result: Dictionary) -> void:
 
 
 func _show_village(shown: bool) -> void:
+	# The client clears the special portraits when it loads another map; a
+	# fight in the village is no other map.
+	if not shown and _village_fight == null:
+		_special_units.clear()
 	for node: Node in [_view, _orders, _hud, _camera, _enemies] + ([_spell_book] if _spell_book != null else []):
 		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 	_view.visible = shown
@@ -695,6 +705,11 @@ func _select(placed: Village.PlacedItem) -> void:
 	_hud.portraits.show_units([])
 	var item := _config.get_item(placed.item_id) if placed != null else null
 	_hud.selection.show_selection(item, _village.health(placed) if placed != null else 0, placed != null and _village.can_move(placed), placed != null and _village.can_sell(placed), placed != null and _village.can_rotate(placed), placed != null and _village.can_store(placed))
+	var ability := _special_ability(placed)
+	_hud.selection.show_special_buttons(ability)
+	if ability != null and not placed in _special_units:
+		_special_units.append(placed)
+	_show_special_portraits(placed != null)
 	_hud.show_panel(placed != null)
 	var names: Array[String] = []
 	if placed != null:
@@ -715,6 +730,38 @@ func _select(placed: Village.PlacedItem) -> void:
 	else:
 		_hud.selection.show_warehouse(null, 0, 0, 0)
 	_update_production()
+
+
+## The attacks of a special unit of the player, or null for another item.
+## The buttons of a unit are made when it enters a battle (BattleSim.add_item()),
+## so the unit goes alone into a battle that only gives its buttons.
+func _special_ability(placed: Village.PlacedItem) -> BattleAbility:
+	if placed == null or not _village.is_own_unit(placed) or AbilityTable.create(placed.item_id) == null:
+		return null
+	var sim := BattleSim.new(RandomNumberGenerator.new())
+	sim.config = _config
+	var fighter := sim.add_item(_config.get_item(placed.item_id), placed.tile, BattleFighter.Team.PLAYER)
+	return fighter.ability if not fighter.ability.buttons.is_empty() else null
+
+
+## The portraits of the special units above the panel, while the panel shows.
+func _show_special_portraits(shown: bool) -> void:
+	_special_units = _special_units.filter(func(placed: Village.PlacedItem) -> bool: return placed in _village.items)
+	_hud.special_portraits.show_units([] if not shown else _special_units.map(func(placed: Village.PlacedItem) -> Array:
+		return [_config.get_item(placed.item_id).img_name, float(_village.health(placed)) / maxi(_config.get_item(placed.item_id).life, 1)]))
+
+
+## The player clicked an attack button of the selected special unit outside a
+## fight. The client also uses the buttons in the village; the port has the
+## attacks only in a battle, so it starts a fight in the village in which the
+## unit uses the button (see VillageBattle.is_calm()).
+func _use_special_button(id: int) -> void:
+	var unit := _selected
+	if unit == null or _special_ability(unit) == null:
+		return
+	_start_village_fight()
+	if _village_fight != null:
+		_village_fight.use_button(unit, id)
 
 
 func _on_clock() -> void:
@@ -1622,6 +1669,10 @@ func _select_group(units: Array[Village.PlacedItem]) -> void:
 	_hud.portraits.show_units(units.map(func(placed: Village.PlacedItem) -> Array:
 		var item := _config.get_item(placed.item_id)
 		return [item.img_name, float(_village.health(placed)) / maxi(item.life, 1)]))
+	for placed in units:
+		if _special_ability(placed) != null and not placed in _special_units:
+			_special_units.append(placed)
+	_show_special_portraits(units.size() > 1)
 	_hud.show_panel(units.size() > 1)
 	if not units.is_empty():
 		_hud.show_message("%d units selected. Click a place, a building or a resource." % units.size())
@@ -1649,6 +1700,7 @@ func _order_group(tile: Vector2i, target: Village.PlacedItem) -> void:
 	_group.clear()
 	_view.show_group(_group)
 	_hud.portraits.show_units([])
+	_show_special_portraits(false)
 	_hud.show_panel(false)
 	if sent > 0:
 		SoundPlayer.play(SoundEffect.ROLL_OVER)

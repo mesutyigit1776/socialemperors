@@ -116,7 +116,7 @@ func _init() -> void:
 
 	# A script error stops only the function in which it occurs, so a scenario
 	# that does not return true has stopped before its end.
-	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs, _check_island_forge, _check_new_empire]:
+	for scenario: Callable in [_check_placement_and_save, _check_several_levels, _check_mana_reward, _check_highest_level, _check_construction_limits, _check_move_and_sell, _check_rotation, _check_production, _check_hurry, _check_store, _check_units, _check_training, _check_cash_training, _check_crowded_units, _check_animals, _check_unit_buildings, _check_collections, _check_nests, _check_riders, _check_graveyards, _check_soul_mixer, _check_time_machine, _check_weather_machine, _check_temple, _check_village_enemies, _check_map_start, _check_daily_bonus, _check_goals, _check_village_actions, _check_tutorial, _check_neighbours, _check_allies_buildings, _check_pvp, _check_second_town, _check_town_quests, _check_save_migration, _check_first_offer, _check_unit_collections, _check_achieved_units, _check_offer_packs, _check_island_forge, _check_new_empire, _check_special_attack_in_village]:
 		_check(scenario.call() == true, "%s runs to its end" % scenario.get_method())
 	print("%d failed" % _failures if _failures > 0 else "all passed")
 	quit(_failures)
@@ -1750,6 +1750,41 @@ func _check_town_quests() -> bool:
 		if placed.item_id == 679:
 			village.kill_enemy(_config.get_item(placed.item_id), placed)
 	_check(quests.update(NOW + 1) and count.call(680) == 4 and village.town_quest_vars()["wave"] == 2, "the next wave comes when the last one is dead")
+	return true
+
+
+## The attack buttons of a special unit work in the village without enemies,
+## as in the client: the fight stays while the attack casts and cools down,
+## and the summoned units are not saved.
+func _check_special_attack_in_village() -> bool:
+	var path := _write_fixture("special_attack", 20, _config.levels[19].exp_required, 1000)
+	var village := Village.load_from_file(path, _config)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var tile: Variant = BattleFormation.nearest_free_tile(Vector2i(50, 56), CollectiveAI.WHOLE_MAP, func(candidate: Vector2i) -> bool: return village.item_at(candidate) == null)
+	var dragon := village.place_quest_item(_config.get_item(2272), tile, NOW)  # Demon Dragon.
+	var items := village.items.size()
+	var battle := VillageBattle.new(village, [], _config, null, rng, func(_placed: Village.PlacedItem) -> bool: return false)
+	var fighter := battle.fighter_of(dragon)
+	var summon := -1
+	for id: int in fighter.ability.buttons:
+		if fighter.ability.buttons[id].name == "Demon Minion":
+			summon = id
+	_check(fighter.team == BattleFighter.Team.PLAYER and summon >= 0 and battle.sim.use_button(fighter, summon), "the dragon uses its summon in a village without enemies")
+	var summoned := 0
+	var ended := [false]  # An array, because a lambda gets a copy of a plain local variable.
+	battle.ended.connect(func() -> void: ended[0] = true)
+	var ended_busy := false  # The fight ended while the buttons were not ready.
+	var frames := 0
+	while not ended[0] and frames < 120 * BattleSim.FRAMES_PER_SECOND:
+		battle.sim.step()
+		battle.update()
+		frames += 1
+		summoned = maxi(summoned, battle.sim.fighters.filter(func(unit: BattleFighter) -> bool: return unit.summoned and not unit.dead).size())
+		ended_busy = ended_busy or (ended[0] and fighter.ability.button_state != BattleAbility.ButtonState.IDLE)
+	_check(summoned > 0 and ended[0] and not ended_busy, "minions come, and the fight ends when the buttons are ready again")
+	battle.apply()
+	_check(village.items.size() == items, "the summoned units are not saved")
 	return true
 
 
