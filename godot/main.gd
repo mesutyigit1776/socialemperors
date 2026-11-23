@@ -1746,11 +1746,15 @@ func _group_tile(tile: Vector2i, taken: Array[Vector2i], unit: Village.PlacedIte
 func _speed_up_tutorial_farm(now: int) -> bool:
 	for placed in _village.items:
 		var item := _config.get_item(placed.item_id)
-		if item.subcat_functional == Tutorial.SUBCAT_FARM and _village.seconds_to_ready(placed, now) > 0:
+		if item.subcat_functional != Tutorial.SUBCAT_FARM or _village.seconds_to_ready(placed, now) < 0:
+			continue
+		# The real time can also end the production between two ticks, so the
+		# test is on the farm, not on the result of the speed-up.
+		if _village.seconds_to_ready(placed, now) > 0:
 			_village.advance_production(placed, Tutorial.FARM_SPEED - 1)
-			if _village.seconds_to_ready(placed, now) == 0:
-				_tutorial.handle(Tutorial.Action.FARM_READY)
-			return true
+		if _village.seconds_to_ready(placed, now) == 0:
+			_tutorial.handle(Tutorial.Action.FARM_READY)
+		return true
 	return false
 
 
