@@ -69,7 +69,7 @@ Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.
 ## Decisions of the owner
 
 1. **Mini-game of the Dragon Riding and the Rider Academy.** Decided: the port plays the mini-game of the client, and the Rider Academy keeps Fast train. See [Dragon Riding and Rider Academy mini-game](#dragon-riding-and-rider-academy-mini-game).
-2. **Darts.** Players cannot open it in 1.4.07. Adding it is a change from 1.4.07. See [Darts](#darts).
+2. **Darts.** Decided: the port leaves it out, as 1.4.07 does. See [Darts](#darts).
 3. **The text of tutorial steps 15 to 31.** The client shows only the arrow; the port also shows its own short text. See [Tutorial](#tutorial).
 4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
@@ -442,12 +442,10 @@ Differences:
 
 `PopupDarts` is a game of 25 balloons. A hit shows an item; when all items are found, the player gets the main prize. One free throw each day; more throws cost cash (`DART_COST_CASH`). A new board starts each week from the dates of `darts_items`.
 
-In 1.4.07 players cannot open it: the games menu is always hidden (`GuiManager`), the function of the darts button has no caller, and only the admin panel opens the window. The SuperCheats guide ([link](https://www.supercheats.com/guides/social-empires/darts)) describes a darts icon, so older versions of the client had it.
+In 1.4.07 players cannot open it: the games menu is always hidden (`GuiManager`), and the function of the darts button has no caller. The admin panel has a darts function too, but no button calls it, and no code opens the admin panel. The SuperCheats guide ([link](https://www.supercheats.com/guides/social-empires/darts)) describes a darts icon, so older versions of the client had it.
 
 - Server: `darts_reset`, `darts_new_free` and `darts_shoot_balloon` (`op.py`), and `darts.py` makes the weekly dates.
-- Port: none; the games menu is hidden as in the client.
-
-Work: medium.
+- Port: none; the games menu is hidden as in the client. Decided: the port does not add darts.
 
 ### Ship and zeppelin explorations
 
