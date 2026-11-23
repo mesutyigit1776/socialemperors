@@ -26,6 +26,10 @@ var land_area := 0
 var _village: Village
 var _config: GameConfig
 var _rng: RandomNumberGenerator
+## After the player paid cash to end a wait of the Rider Academy, the client
+## offers "Fast train", a training step without the mini-game, until the game
+## starts again (playerBuysAnfetamines of PopupDragonRiderTraining).
+var _paid_rider_wait := false
 
 
 func _init(village: Village, config: GameConfig, rng: RandomNumberGenerator) -> void:
@@ -92,12 +96,13 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.select_rider(argument)
 			if result == Village.Placement.OK:
 				outcome.text = "%s starts the training." % _config.get_item(Village.RIDER_UNITS[argument - 1]).name
-		"rider_train":
+		"rider_train", "rider_fast":
 			result = _village.train_rider(now)
 			if result == Village.Placement.OK:
 				outcome.text = "The rider finished a training step."
 		"rider_wait":
 			result = _village.end_rider_wait(now)
+			_paid_rider_wait = _paid_rider_wait or result == Village.Placement.OK
 			if result == Village.Placement.OK:
 				outcome.text = "The wait is over."
 		"rider_take":
@@ -265,6 +270,8 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 				actions.append(["rider_take", "Take %s" % rider.name, true])
 			else:
 				actions.append(["rider_train", "Train (step %d)" % (_village.rider_steps_done(now) + 1), true])
+				if _paid_rider_wait:
+					actions.append(["rider_fast", "Fast train", true])
 			return [text, actions]
 		Village.DRAGON_RIDING:
 			var inside := _village.units_in(building)

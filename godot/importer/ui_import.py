@@ -51,6 +51,8 @@ SYMBOLS = [
 	"GuiMC/bgBar/btnExit",
 	"PopupAlertMC",
 	"PopUpAlertaMC",
+	# The window around the mini-game of the Dragon Riding and the Rider Academy.
+	"WindowMiniGameDragonRiderMC",
 	"PortraitAssaultMC",
 	# The spell book, its window, the window that sells mana, and the marker of the area of a spell.
 	"PopupMagicMC",
@@ -233,11 +235,11 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	"prev_<img_name>.jpg") and of the goals. Returns the number of imported
 	sprites."""
 	ui_dir = os.path.join(out_dir, "ui")
-	count = _import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
-	count += _import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
-	count += _import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
+	count = import_windows(os.path.join(source, CLIENT_SWF), SYMBOLS, ui_dir)
+	count += import_windows(os.path.join(source, CAST_SWF), CAST_SYMBOLS, os.path.join(ui_dir, "cast"))
+	count += import_windows(os.path.join(source, VIRAL_SWF), VIRAL_SYMBOLS, os.path.join(ui_dir, "viral"))
 	for swf_path, symbols, folder in FORGE_SWFS + EXTRA_SWFS:
-		count += _import_windows(os.path.join(source, swf_path), symbols, os.path.join(ui_dir, folder))
+		count += import_windows(os.path.join(source, swf_path), symbols, os.path.join(ui_dir, folder))
 	os.makedirs(os.path.join(ui_dir, "images"), exist_ok=True)
 	for image in IMAGES + more_images:
 		target = os.path.join(ui_dir, "images", image)
@@ -255,7 +257,7 @@ def import_ui(source, out_dir, unit_thumbs, more_images):
 	return count
 
 
-def _import_windows(swf_path, symbol_names, ui_dir):
+def import_windows(swf_path, symbol_names, ui_dir):
 	"Writes windows.swf and layout.json of the symbols of one SWF file to ui_dir."
 	swf = SwfFile(swf_path)
 	symbols = {name: _resolve(swf, name) for name in symbol_names}

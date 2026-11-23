@@ -1016,7 +1016,31 @@ func _on_action_requested(id: String) -> void:
 		else:
 			_hud.show_message("The spell window needs the windows of the client. Import the game files again; see godot/README.md.")
 		return
-	var outcome := _specials.run(id, _selected, _now())
+	if id == "rider_train" or id == "tame":
+		_play_rider_game(id)
+		return
+	_run_action(id, _selected)
+
+
+## The Rider Academy and the Dragon Riding play the mini-game first, as the
+## client does: the next training step of the rider, or level 8 (the dragon)
+## for taming. A win does the action; a loss changes nothing.
+func _play_rider_game(id: String) -> void:
+	var building := _selected
+	var level := RiderGame.DRAGON_LEVEL if id == "tame" else _village.rider_steps_done(_now()) + 1
+	# The client shows the picture of the rider in the academy, also for taming.
+	var window := RiderGameWindow.open(_data_dir, _ui, _frames, level, maxi(_village.rider_type(), 1))
+	if window == null:
+		_hud.show_message("The mini-game needs the files of the client. Import the game files again; see godot/README.md.")
+		return
+	window.finished.connect(func(won: bool) -> void:
+		if won:
+			_run_action(id, building))
+	_windows.add_child(window)
+
+
+func _run_action(id: String, building: Village.PlacedItem) -> void:
+	var outcome := _specials.run(id, building, _now())
 	if outcome.sound >= 0:
 		SoundPlayer.play(outcome.sound)
 	if outcome.place != null:

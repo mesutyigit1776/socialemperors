@@ -68,7 +68,7 @@ Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.
 
 ## Decisions of the owner
 
-1. **Mini-games of the nests and the Rider Academy.** Keep the rule of the port (each game counts as won), or write a new flying game. See [Nest and Rider Academy mini-games](#nest-and-rider-academy-mini-games).
+1. **Mini-game of the Dragon Riding and the Rider Academy.** Decided: the port plays the mini-game of the client, and the Rider Academy keeps Fast train. See [Dragon Riding and Rider Academy mini-game](#dragon-riding-and-rider-academy-mini-game).
 2. **Darts.** Players cannot open it in 1.4.07. Adding it is a change from 1.4.07. See [Darts](#darts).
 3. **The text of tutorial steps 15 to 31.** The client shows only the arrow; the port also shows its own short text. See [Tutorial](#tutorial).
 4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
@@ -422,11 +422,18 @@ The import is a Python tool (`godot/importer/import_assets.py`) that needs Pytho
 
 ## Decisions and parts that are not possible offline
 
-### Nest and Rider Academy mini-games
+### Dragon Riding and Rider Academy mini-game
 
-Taming a dragon in a nest (`PopupDragonTaming`, level 8) and each training step of the Rider Academy (`PopupDragonRiderTraining`, the level of the step) start a flying game from `swf/minigames/SagaOTDC.swf` (`WindowMiniGameDragonRider`). A win sends the step to the server; a loss changes nothing. The server accepts the result of the client.
+Taming in Dragon Riding (`PopupDragonTaming`) and each training step of the Rider Academy (`PopupDragonRiderTraining`) start the game `swf/minigames/SagaOTDC.swf` in the window `WindowMiniGameDragonRider`. It is not a flying game: it is a fighting game on foot from another game ("Raiders Game", the Cossack Bohun). The hero runs to the right through a level, jumps over pits and fights warriors, archers, shamans and skeletons with a sabre and spells. The academy plays the level of the next step (1 to 7), and the taming plays level 8, a dragon. A win does the step or the taming; a loss changes nothing. After the player paid cash to end a wait, the academy also shows Fast train, which does a step without the game. The taming has no such button.
 
-Port: `village.gd` (`train_rider`, `tame`) counts each step as won. A new game in Godot is large work.
+Port: `godot/rider_game/` plays the game with the art, the sounds and the rules of the file (see `godot/README.md`, "Mini-game"). `checks/rider_game_check.gd` checks the levels, the damage of the sabre, the skills, the results and Fast train. Level 1 at the start was compared with the file in Ruffle: the screens agree, and the hero stands at the same height.
+
+Differences:
+
+- The client tests the pixels of the hero and of the enemies against the terrain. The port reads the top of the terrain once and tests the bottom of the bounds of the hero and of the enemies against it.
+- In the client, flying spears and arrows also move with the hero while the screen does not follow him (at the start and at the end of a level). In the port they do not.
+- The village does not stop while the game is open; the client stops it.
+- Only the start of level 1 was compared with Ruffle. The other levels, the window of the client around the game and the result screens were not compared.
 
 ### Darts
 

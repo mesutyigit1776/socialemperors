@@ -127,6 +127,58 @@ impl FlashArt {
         self.shared.art.symbol(&name.to_string()).map_or(-1, i64::from)
     }
 
+    /// The frame labels of a sprite: label -> frame (from 0). Empty for another character.
+    #[func]
+    fn frame_labels(&self, id: i64) -> VarDictionary {
+        let mut labels = VarDictionary::new();
+        if let Some(crate::art::Character::Sprite(sprite)) = self.shared.art.characters.get(&(id as u16)) {
+            for (label, frame) in &sprite.labels {
+                labels.set(label.as_str(), *frame as i64);
+            }
+        }
+        labels
+    }
+
+    /// The display list of a frame (from 0) of a sprite, in the order of the
+    /// depths, for a game that plays the nested sprites itself. Each part is a
+    /// dictionary: "id" (character), "depth", "name" (instance name or ""),
+    /// "start" (the frame that placed the instance), "transform" (Transform2D
+    /// in pixels), "multiply" (Color: the multiplier of its color transform),
+    /// "add" (Color: the added part, 0 to 1) and "clip_depth" (a mask hides
+    /// the parts above it up to this depth outside its shapes; 0: not a
+    /// mask). Empty for another character.
+    #[func]
+    fn frame_parts(&self, id: i64, frame: i64) -> VarArray {
+        let mut parts = VarArray::new();
+        let Some(crate::art::Character::Sprite(sprite)) = self.shared.art.characters.get(&(id as u16)) else { return parts };
+        if sprite.frames.is_empty() {
+            return parts;
+        }
+        for placed in &sprite.frames[frame.max(0) as usize % sprite.frames.len()] {
+            let m = placed.matrix;
+            let mut part = VarDictionary::new();
+            part.set("id", placed.id as i64);
+            part.set("depth", placed.depth as i64);
+            part.set("name", placed.name.clone().unwrap_or_default().as_str());
+            part.set("start", placed.start as i64);
+            part.set("transform", Transform2D::from_cols(Vector2::new(m.sx, m.ky), Vector2::new(m.kx, m.sy), Vector2::new(m.tx, m.ty) / 20.0));
+            let c = &placed.color;
+            part.set("multiply", Color::from_rgba(c.mult[0], c.mult[1], c.mult[2], c.mult[3]));
+            part.set("add", Color::from_rgba(c.add[0] / 255.0, c.add[1] / 255.0, c.add[2] / 255.0, c.add[3] / 255.0));
+            part.set("clip_depth", placed.clip_depth as i64);
+            parts.push(&part.to_variant());
+        }
+        parts
+    }
+
+    /// The bounds of a character over all its frames in pixels, relative to
+    /// its registration point, as Flash measures them (without filters). Empty
+    /// when it draws nothing.
+    #[func]
+    fn bounds(&self, id: i64) -> Rect2 {
+        self.shared.art.bounds(id as u16).map_or(Rect2::default(), |r| Rect2::new(Vector2::new(r.left(), r.top()) / 20.0, Vector2::new(r.width(), r.height()) / 20.0))
+    }
+
     /// The number of frames of a sprite; 1 for a shape, 0 for an unknown id.
     #[func]
     fn frame_count(&self, id: i64) -> i64 {

@@ -18,6 +18,7 @@ socialemperors server folder that the user supplies and writes:
   <out>/ui/...                       windows of the client, see ui_import.py
   <out>/ui/images/profile/...        the player pictures of the server (templates/img/profile), see copy_profile_pictures()
   <out>/sound/...                    music and sound effects of the client, see sound_import.py
+  <out>/rider_game/...               the mini-game of the Dragon Riding and the Rider Academy, see rider_game_import.py
 
 
 The import continues after a stop: run it again with the same --out folder.
@@ -39,6 +40,7 @@ import shutil
 import sys
 
 from mock_villages import make_mock_villages
+from rider_game_import import GAME_SWF, import_rider_game
 from sound_import import import_sounds, sound_sources
 from swf_bounds import SwfError, SwfFile
 from ui_import import CAST_SWF, CLIENT_SWF, import_ui
@@ -54,7 +56,7 @@ SPECIAL_BUILDING_ITEM_IDS = {638, 649, 651, 684, 698, 695, 717, 713, 742, 653, 8
 # The Huge Egg that the second dragon island lays during the battle; see quest/kinds/dragon_2_quest.gd.
 BATTLE_BUILDING_IDS = {434}
 # The code that decides the content of the output. A graphic from other code is imported again.
-IMPORTER_FILES = ("import_assets.py", "swf_bounds.py", "ui_import.py", "sound_import.py")
+IMPORTER_FILES = ("import_assets.py", "swf_bounds.py", "ui_import.py", "sound_import.py", "rider_game_import.py")
 # The kinds of neighbours, as the server loads them (sessions.py), and the mock
 # neighbours of the port: neighbour folder -> folders of the server.
 NEIGHBOUR_FOLDERS = {
@@ -494,6 +496,18 @@ def main():
 			write_json_last(sound_record_path, {"sounds": sound_record})
 		except (SwfError, OSError, KeyError) as e:
 			failed.append(("sounds of the client", str(e)))
+
+	game_record_path = os.path.join(out_dir, "rider_game", "import.json")
+	game_record = {"importer": version, "sources": [file_stamp(os.path.join(source, GAME_SWF))]}
+	if is_done(game_record_path, "rider_game", game_record):
+		print("mini-game: done before", flush=True)
+	else:
+		shutil.rmtree(os.path.join(out_dir, "rider_game"), ignore_errors=True)
+		try:
+			print(f"mini-game: {import_rider_game(source, out_dir)} sounds", flush=True)
+			write_json_last(game_record_path, {"rider_game": game_record})
+		except (SwfError, OSError, KeyError) as e:
+			failed.append(("mini-game of the Rider Academy", str(e)))
 
 	for name, reason in failed:
 		print(f"not imported: {name}: {reason}", file=sys.stderr)

@@ -32,6 +32,8 @@ pub enum Character {
 pub struct Sprite {
     /// The display list of each frame, in the order of the depths.
     pub frames: Vec<Vec<Placed>>,
+    /// The frame labels: label -> frame (from 0).
+    pub labels: HashMap<String, usize>,
 }
 
 /// A character on the display list of a sprite.
@@ -213,9 +215,13 @@ fn button_states(button: &swf::Button) -> [Vec<Placed>; 3] {
 fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
     let mut list: BTreeMap<Depth, Placed> = BTreeMap::new();
     let mut frames = Vec::new();
+    let mut labels = HashMap::new();
     for tag in tags {
         match tag {
             Tag::ShowFrame => frames.push(list.values().cloned().collect()),
+            Tag::FrameLabel(label) => {
+                labels.insert(label.label.to_string_lossy(swf::UTF_8), frames.len());
+            }
             Tag::RemoveObject(r) => {
                 list.remove(&r.depth);
             }
@@ -273,7 +279,7 @@ fn read_sprite(tags: &[Tag], frame_count: usize) -> Sprite {
     for placed in frames.iter_mut().flatten().filter(|p| p.start == 0) {
         placed.stays = last.contains(&(placed.depth, placed.id));
     }
-    Sprite { frames }
+    Sprite { frames, labels }
 }
 
 impl Placed {

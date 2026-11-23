@@ -460,8 +460,7 @@ func select_rider(new_type: int) -> Placement:
 
 
 ## One training step of the rider, as the server command "rider_next_step"
-## does. In the client the player must win a mini-game first; the port does
-## not have the mini-game.
+## does. The player wins the mini-game first (see RiderGame), or uses Fast train.
 func train_rider(now: int) -> Placement:
 	if rider_type() == 0 or rider_wait_seconds(now) > 0 or _private_int(RIDER_KEYS[1]) >= _config.dragon_riders[rider_type() - 1]["steps"]:
 		return Placement.NOT_ALLOWED
@@ -498,8 +497,8 @@ func take_rider(academy: PlacedItem, now: int) -> Placement:
 
 ## The rider and the dragon in Dragon Riding become the tamed dragon next to the
 ## building, as the client does with "pop_unit" without a tile for both and
-## "buy" without cost. The dragon must be of the rider's type. In the client the
-## player must win a mini-game first; the port does not have the mini-game.
+## "buy" without cost. The dragon must be of the rider's type. The player wins
+## level 8 of the mini-game first (see RiderGame).
 func tame(building: PlacedItem, now: int) -> Placement:
 	var inside := units_in(building)
 	if building.item_id != DRAGON_RIDING or inside.size() != 2:
