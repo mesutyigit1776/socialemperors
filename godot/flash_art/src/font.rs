@@ -111,7 +111,10 @@ impl FontData {
 
         // The line height comes from the extent of the glyphs, as in the
         // fonts of JPEXS; the typographic values come from the font layout.
-        let (top, bottom) = (y_max as i16, y_min as i16);
+        // Flash puts the first line at the ascent of the layout. A font with
+        // only a few glyphs (only those of the texts of the file) has no glyph
+        // as high as that, so the top is at least the ascent of the layout.
+        let (top, bottom) = (y_max.max(self.ascent) as i16, y_min as i16);
         let mut hhea = Vec::new();
         put32(&mut hhea, 0x0001_0000);
         for v in [top, bottom, LINE_GAP] {

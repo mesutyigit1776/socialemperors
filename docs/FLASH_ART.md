@@ -73,6 +73,7 @@ Each change made our frames equal to the frames of Ruffle. The numbers are the p
 | 3.5 Morph shapes: when only one of the two shapes moves its pen, the other shape keeps its pen. Before, it took the pen of the first shape, which moved the edges. Colors, ratios and matrices are interpolated with the rounding of Ruffle. | `t.blueEnergy` 25.6 % to 0.1 % |
 | 3.6 After its parent loops, a nested sprite of the first frame plays on only if the last frame of the parent also has it. Else it starts again (see section 5). | `2006_elf_archer` after the loop: 1.1 % to 0.0 % |
 | 3.7 The canvas starts on a whole twip, so that a SWF file can place a frame exactly on its grid. The change in position is less than 0.05 pixels. | |
+| 3.8 The top of a line of a converted font is at least the ascent of the font layout, where Flash puts the first line. A font with only the glyphs of a few texts had its top at its highest glyph, so Godot drew the text too high. Only the fonts with no glyph that reaches the ascent change: in the fonts of the imported client windows, 0 to 5 of 1024 units (less than a pixel); in the mini-game, Palatino Linotype by 334 units. | The result screens of the mini-game: 7 pixels to 1 |
 
 These rules were already the same as in Ruffle: the sizes of filters are in pixels of the stage and do not change with the scale of the object; the matrix of a replaced character stays (section 2); the bevel, gradient glow and color matrix filters of the cerberus and devil dragons and of `2117_priest_glad` and `2131_hell_rider` (0.0 %).
 

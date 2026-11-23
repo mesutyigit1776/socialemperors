@@ -193,7 +193,7 @@ func hit_hero_with(path: PackedStringArray, damage: float, random_max := 5) -> v
 
 
 func _show_text(text: String) -> void:
-	_text.text = text
+	_text.text = RiderHud.drawable(_text, text)
 	_text.modulate.a = 1.0
 	_text_y = text_top
 	_text.position.y = _text_y

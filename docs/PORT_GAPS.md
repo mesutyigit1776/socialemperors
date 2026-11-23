@@ -426,14 +426,17 @@ The import is a Python tool (`godot/importer/import_assets.py`) that needs Pytho
 
 Taming in Dragon Riding (`PopupDragonTaming`) and each training step of the Rider Academy (`PopupDragonRiderTraining`) start the game `swf/minigames/SagaOTDC.swf` in the window `WindowMiniGameDragonRider`. It is not a flying game: it is a fighting game on foot from another game ("Raiders Game", the Cossack Bohun). The hero runs to the right through a level, jumps over pits and fights warriors, archers, shamans and skeletons with a sabre and spells. The academy plays the level of the next step (1 to 7), and the taming plays level 8, a dragon. A win does the step or the taming; a loss changes nothing. After the player paid cash to end a wait, the academy also shows Fast train, which does a step without the game. The taming has no such button.
 
-Port: `godot/rider_game/` plays the game with the art, the sounds and the rules of the file (see `godot/README.md`, "Mini-game"). `checks/rider_game_check.gd` checks the levels, the damage of the sabre, the skills, the results and Fast train. Level 1 at the start was compared with the file in Ruffle: the screens agree, and the hero stands at the same height.
+Port: `godot/rider_game/` plays the game with the art, the sounds and the rules of the file (see `godot/README.md`, "Mini-game"). `checks/rider_game_check.gd` checks the levels, the damage of the sabre, the skills, the results and Fast train.
+
+Comparison with the file in Ruffle (standalone, 650 x 500): the start of each of the 8 levels differs in 1.5 to 2.0 % of the pixels by more than 24 of 255, and the hero stands at the same height. The three result screens (level 4 lost, level 1 won, the dragon of level 8 defeated) agree; their texts are within 2 pixels. To reach them, test copies of the file had enemies with 1 health. The comparison found two differences, which are fixed: the file embeds only the glyphs of its own texts, and Flash leaves out the others ("Level  failed" for level 4, the damage of the hero without "-", and no numbers above the enemies, whose font has no glyphs); and the converted fonts with few glyphs put the text 7 pixels too high (see `docs/FLASH_ART.md`). In the standalone file the picture of the rider at the health bar changes, because the file has no academy to ask; in the client it shows the rider of the academy, as in the port.
 
 Differences:
 
 - The client tests the pixels of the hero and of the enemies against the terrain. The port reads the top of the terrain once and tests the bottom of the bounds of the hero and of the enemies against it.
 - In the client, flying spears and arrows also move with the hero while the screen does not follow him (at the start and at the end of a level). In the port they do not.
 - The village does not stop while the game is open; the client stops it.
-- Only the start of level 1 was compared with Ruffle. The other levels, the window of the client around the game and the result screens were not compared.
+- The fights themselves were not compared frame by frame: Ruffle in headless Chromium runs slower than real time, so the same keys do not give the same fight.
+- The window of the client around the game was not compared with Ruffle.
 
 ### Darts
 
