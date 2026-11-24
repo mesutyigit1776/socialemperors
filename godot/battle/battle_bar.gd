@@ -3,7 +3,8 @@ extends Control
 ## The bottom bar of the client in battles (StateAssault and
 ## StateTournament): the bar of the village with the neighbour bar, the
 ## pointer, the square tool, Select All and Select Specials, and the zoom
-## slider. The store, World and Gift buttons are hidden. The client shows it
+## slider. The store, World and Gift buttons are hidden, except in a fight in
+## the village (show_village_buttons()). The client shows it
 ## in the quests, survival, the tournament and the PvP attacks, also under
 ## the start windows.
 ##
@@ -32,6 +33,7 @@ var _bar: UiClip
 var _top_y: Dictionary
 var _zoom: ZoomSlider
 var _buttons: UnitButtonPanel
+var _screen: BattleScreen
 
 
 ## neighbours: the neighbour bar, which shows the neighbours of the village
@@ -52,9 +54,8 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 	bar.take_mouse()
 	bar.set_text("herramientaCuadrado/cuadradoText", config.text("ICON_SQUARE_TOOL"))
 	bar.set_part_visible("herramientaCuadrado/spaceKeyText", false)
-	_button(bar, "normalMouse/btnNoArrow", func() -> void:
-		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # GuiManager.returnMouse
-		screen.stop_selection_tool())
+	_screen = screen
+	_button(bar, "normalMouse/btnNoArrow", _stop_tool)
 	_button(bar, "herramientaCuadrado", screen.start_selection_tool)
 	for pair: Array in [["btnSelectAll", screen.select_all], ["btnSelectSpecials", screen.select_specials]]:
 		var button := bar.part(pair[0])
@@ -74,11 +75,19 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 	_zoom.follow(camera)
 
 
-## Hides Select All and Select Specials, which the village does not show
-## (VillageHud.HIDDEN), for a fight in the village.
-func hide_select_buttons() -> void:
-	_bar.set_part_visible("btnSelectAll", false)
-	_bar.set_part_visible("btnSelectSpecials", false)
+## The bar of a fight in the village shows the bottom bar of the village, as
+## the client keeps it in these fights: the store, World, Gift and the town
+## selector, as hud shows them, and the pointer of the village, without
+## Select All and Select Specials (VillageHud.HIDDEN). The buttons that
+## change or leave the village show VillageHud.FIGHT_MESSAGE.
+func show_village_buttons(hud: VillageHud) -> void:
+	for path: String in ["btnSelectAll", "btnSelectSpecials", "normalMouse/btnNoArrow"]:
+		_bar.set_part_visible(path, false)
+	hud.show_bar_parts_in(_bar)
+	for path: String in ["storeButton", "achievementsButton", "giftButton", "gamesButton"]:
+		_button(_bar, path, hud.show_fight_message)
+	_bar.set_part_visible("normalMouse/btnArrow", true)
+	_button(_bar, "normalMouse/btnArrow", _stop_tool)
 
 
 ## Uses attack button id of the selected special unit, as a click on it does.
@@ -106,6 +115,11 @@ func _layout() -> void:
 	var size := get_viewport_rect().size
 	VillageHud.place_gui(_gui, _top_y, size)
 	_zoom.place(size)
+
+
+func _stop_tool() -> void:
+	SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # GuiManager.returnMouse
+	_screen.stop_selection_tool()
 
 
 func _button(bar: UiClip, path: String, action: Callable) -> void:

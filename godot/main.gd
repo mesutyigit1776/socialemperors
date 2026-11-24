@@ -598,10 +598,14 @@ func _show_village(shown: bool) -> void:
 	# fight in the village is no other map.
 	if not shown and _village_fight == null:
 		_special_units.clear()
-	for node: Node in [_view, _orders, _hud, _camera, _enemies] + ([_spell_book] if _spell_book != null else []):
+	for node: Node in [_view, _orders, _camera, _enemies] + ([_spell_book] if _spell_book != null else []):
 		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 	_view.visible = shown
-	_hud.visible = shown
+	# The client keeps the HUD of the village during a fight in the village.
+	var hud_shown := shown or _village_fight != null
+	_hud.process_mode = Node.PROCESS_MODE_INHERIT if hud_shown else Node.PROCESS_MODE_DISABLED
+	_hud.visible = hud_shown
+	_hud.set_fighting(not shown and _village_fight != null)
 	if shown:
 		SoundPlayer.play_music(SoundPlayer.town_music(_village.race))
 	_spell_layer.visible = shown
@@ -1472,7 +1476,7 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
 	_goals.watch_battle(battle.sim)
-	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar())
+	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar(), _hud)
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _village_fight.map_view(), false)
 	_village_fight.village_changed.connect(_save)

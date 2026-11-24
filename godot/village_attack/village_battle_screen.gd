@@ -2,14 +2,15 @@ class_name VillageBattleScreen
 extends Node2D
 ## A fight in the village on the screen (VillageBattle): the village as a
 ## battle map with the controls of the battles (BattleScreen), the bottom bar
-## of the battles with the panel of the selected units (BattleBar) and the
-## spell book. In the client the fight is a
-## part of the normal village; the port shows the village as a battle until
-## the fight ends, and the player cannot build in this time.
+## with the panel of the selected units (BattleBar) and the spell book. In
+## the client the fight is a part of the normal village, with the whole HUD of
+## the village. The port shows the village as a battle until the fight ends,
+## with the HUD of the village (VillageHud.set_fighting()) and the buttons of
+## the village in the bottom bar; the player cannot build in this time.
 ##
 ## A captain's line shows over the unit for LINE_SECONDS seconds. The client
-## shows no special bar for these fights; the port shows a line at the top
-## with the number of enemies (STATUS_TEXT).
+## shows no special bar for these fights; the port shows a line under the top
+## bars of the HUD with the number of enemies (STATUS_TEXT).
 
 signal closed  ## The fight ended; the owner applies VillageBattle.apply().
 signal village_changed  ## A spell changed the mana or the spells of the village; the owner saves it.
@@ -17,6 +18,11 @@ signal village_changed  ## A spell changed the mana or the spells of the village
 const LINE_SECONDS := 3.0
 const LINE_OFFSET := Vector2(-60, -110)
 const STATUS_TEXT := "Enemies in your village: %d"
+## The line is this far from the top, under the cash of the HUD.
+const STATUS_Y := 88.0
+## The bar, the spell book and the line of the fight are over the HUD of the
+## village (layer 1) and under the windows of the HUD (VillageHud.WINDOW_LAYER).
+const LAYER := 2
 
 var battle: VillageBattle
 var _village: Village
@@ -35,7 +41,8 @@ var _spells := {}  # Spell id -> BattleSpell of this fight.
 
 ## camera_position: where the village camera was, in map pixels.
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
-func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2, neighbours: NeighbourBar) -> void:
+## hud: the HUD of the village, whose bottom bar the bar of the fight shows.
+func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2, neighbours: NeighbourBar, hud: VillageHud) -> void:
 	battle = village_battle
 	_village = village
 	_config = config
@@ -61,13 +68,18 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 		_screen.paused = true
 		closed.emit())
 	battle.said.connect(_show_line)
+	_windows.layer = LAYER
 	add_child(_windows)
-	_status.position = Vector2(20, 12)
+	_status.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	_status.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status.position.y = STATUS_Y
+	_status.add_theme_color_override("font_color", Color.WHITE)
 	_status.add_theme_color_override("font_outline_color", Color.BLACK)
 	_status.add_theme_constant_override("outline_size", 4)
 	_windows.add_child(_status)
 	_bar = BattleBar.new(ui, config, neighbours, _screen, _camera)
-	_bar.hide_select_buttons()
+	_bar.show_village_buttons(hud)
 	_windows.add_child(_bar)
 	if SpellBook.is_shown(village):
 		# After the battle screen, so that it gets the mouse first while the player aims.

@@ -39,6 +39,13 @@ signal first_offer_requested
 ## The buttons of the client that open the cash shop show this message. The
 ## port has the cash sources of the server only (decision 8 in docs/PORT_GAPS.md).
 const NO_CASH_SHOP := "The port has no cash shop. You get cash at most new levels, from the login bonus and from unit collections. A PvP shield also gives back twice its price."
+## During a fight in the village (set_fighting()) the HUD shows, as in the
+## client, but the port fights on a copy of the village (VillageBattle), so
+## the buttons that change the village or leave it show this message.
+const FIGHT_MESSAGE := "Wait until the fight in your village ends."
+## The parts of the bottom bar that the bar of a fight in the village shows
+## as the village does (BattleBar.show_village_buttons()).
+const FIGHT_BAR_PARTS := ["storeButton", "achievementsButton", "giftButton", "gamesButton", "giftCounter"]
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
 const BAR_HEIGHT := 125
@@ -117,6 +124,8 @@ var _rename_edit := LineEdit.new()
 var _windows := Control.new()  # The windows of the HUD, see WINDOW_LAYER.
 var _menus: Array[String] = ["bgBar/iconMenuWorld", "bgBar/iconMenuGift", "bgBar/iconMenuGames"]
 var _locked := false
+var _fighting := false
+var _window_layer := CanvasLayer.new()
 var _zoom: ZoomSlider
 var _panel_tween: Tween
 var _options: OptionsPanel
@@ -166,9 +175,11 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	name_field.mouse_filter = Control.MOUSE_FILTER_STOP
 	name_field.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	name_field.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _locked:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _locked and _fight_allows():
 			open_rename())
-	_clip_button("topRight/hudShield", func() -> void: shields_requested.emit())
+	_clip_button("topRight/hudShield", func() -> void:
+		if _fight_allows():
+			shields_requested.emit())
 	_options = OptionsPanel.new(ui, _gui, _gui.clip("options_panel"))
 	add_child(_options)
 	# The client puts the zoom slider under the bottom bar.
@@ -197,8 +208,12 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_gui.clip("bgBar/mcTrolls").add_child(_town_quest)
 	_gui.set_part_visible("bgBar/mcTrolls/buf", false)
 	_goal_box = GoalBox.new(ui, config)
-	_goal_box.goal_requested.connect(func(id: int) -> void: goal_requested.emit(id))
-	_goal_box.list_requested.connect(func() -> void: goal_requested.emit(0))
+	_goal_box.goal_requested.connect(func(id: int) -> void:
+		if _fight_allows():
+			goal_requested.emit(id))
+	_goal_box.list_requested.connect(func() -> void:
+		if _fight_allows():
+			goal_requested.emit(0))
 	add_child(_goal_box)
 	move_child(_goal_box, 0)
 	_message.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
@@ -219,11 +234,10 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	store.stored_items_requested.connect(func() -> void: stored_items_requested.emit())
 	_windows.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_windows.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var window_layer := CanvasLayer.new()
-	window_layer.layer = WINDOW_LAYER
-	window_layer.add_child(_windows)
-	add_child(window_layer)
-	visibility_changed.connect(func() -> void: window_layer.visible = visible)
+	_window_layer.layer = WINDOW_LAYER
+	_window_layer.add_child(_windows)
+	add_child(_window_layer)
+	visibility_changed.connect(_show_window_layer)
 	_windows.add_child(store)
 	_rename_dialog.title = "Name of your empire"
 	_rename_dialog.add_child(_rename_edit)
@@ -296,7 +310,7 @@ func add_icon(icon: UiClip, action: Callable) -> void:
 	_gui.move_child(icon, 0)
 	icon.make_button()
 	icon.pressed.connect(func() -> void:
-		if not _locked:
+		if not _locked and _fight_allows():
 			action.call())
 	for pair: Array in [["mouse_entered", ICON_HOVER_SCALE], ["mouse_exited", 1.0]]:
 		var target: float = pair[1]
@@ -469,6 +483,44 @@ func show_zoom(level: float) -> void:
 ## Opens the store at the page of the item, as the client does for a goal.
 func show_build_item(item: GameConfig.ItemDef) -> void:
 	store.open_at(item)
+
+
+## A fight in the village starts or ends. During the fight the bar of the
+## fight (BattleBar) takes the place of the bottom bar and the zoom slider,
+## and the windows of the HUD are hidden, as they were before the HUD showed
+## in these fights.
+func set_fighting(fighting: bool) -> void:
+	_fighting = fighting
+	_gui.set_part_visible("bgBar", not fighting)
+	_zoom.visible = not fighting
+	_show_window_layer()
+	if fighting:
+		_close_menus()
+		_rename_dialog.hide()
+
+
+## Shows FIGHT_MESSAGE.
+func show_fight_message() -> void:
+	show_message(FIGHT_MESSAGE)
+
+
+## Shows the parts of FIGHT_BAR_PARTS in bar, the bottom bar of a fight, as
+## the bottom bar of the village shows them.
+func show_bar_parts_in(bar: UiClip) -> void:
+	for path: String in FIGHT_BAR_PARTS:
+		bar.set_part_visible(path, _gui.part("bgBar/" + path).visible)
+	bar.set_text("giftCounter/count", (_gui.part("bgBar/giftCounter/count") as Label).text)
+
+
+## False, with FIGHT_MESSAGE, during a fight in the village.
+func _fight_allows() -> bool:
+	if _fighting:
+		show_fight_message()
+	return not _fighting
+
+
+func _show_window_layer() -> void:
+	_window_layer.visible = visible and not _fighting
 
 
 ## During the tutorial, the client blocks the menus and the tools of the selected item.
