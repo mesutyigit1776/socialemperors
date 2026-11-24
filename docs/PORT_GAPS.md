@@ -75,7 +75,7 @@ Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.
 5. **Ship and zeppelin explorations.** Decided: not needed. The 1.4.07 client does not open them in normal play; the Sail and Fly buttons open the island window, as in the port. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
 7. **Server bugs.** Decided: fix them. Three are fixed; the fourth is not a bug. See [Server bugs](#server-bugs).
-8. **Cash without payment.** The port has no cash shop. See [Facebook and payment parts](#facebook-and-payment-parts).
+8. **Cash without payment.** Decided: as on the server. The port has no cash shop and no new cash source. See [Facebook and payment parts](#facebook-and-payment-parts).
 
 ## Group 1: fixes
 
@@ -463,7 +463,14 @@ The pictures `bg_quest_progress_ship1.jpg` to `bg_quest_progress_ship3.jpg` in `
 
 ### Facebook and payment parts
 
-- **Cash shop.** "Add Cash" and the cash buttons of other windows call `gotoBuy` on the page. The server page does not define it, so the button does nothing on this server. A real shop needs a payment service. The port shows a message.
+- **Cash shop.** "Add Cash" and the cash buttons of other windows call `gotoBuy` on the page. The server page does not define it, so the button does nothing on this server. A real shop needs a payment service. Decided: the port has the cash sources of the server and no others. Its message (`VillageHud.NO_CASH_SHOP`) tells the player these sources:
+  - 20 cash at the start of a new empire;
+  - 1 cash at each new level (96 of the 100 levels);
+  - the login bonus: 10 cash on day 3 (the bonus has 5 days and does not repeat, as `daily_bonus_repeatable` is off);
+  - 1 cash for each completed unit collection;
+  - the PvP shields, from level 8: a bought shield gives back twice its price (`shield_allow_original_bug`, on by default). The shields cost 10, 20 and 50 cash with waits of 1, 2 and 7 days, so a player who buys each shield when its wait ends gets about 27 cash each day.
+
+  For comparison, the 80 store items that cost cash cost 15 at the median and 1,944 together.
 - **Other viral icons.** Cross-promotion of other Social Point games, the like button, video ads, the Monday bonus, the comeback bonus, special-day offers and the achievements button are all off in the server config (`active` 0). Most need Facebook or other Social Point services.
 - **Friend features.** Potions and help from friends, viral offers bought from friends and hiring friends need other players. The port uses the villages of `villages/` and mock villages as neighbours (step 4.4).
 

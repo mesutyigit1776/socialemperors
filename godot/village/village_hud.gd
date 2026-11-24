@@ -36,8 +36,9 @@ signal zoom_requested(level: float)
 ## The player clicked the icon of the first purchase offer.
 signal first_offer_requested
 
-## The buttons of the client that open the cash shop show this message.
-const NO_CASH_SHOP := "The port has no cash shop."
+## The buttons of the client that open the cash shop show this message. The
+## port has the cash sources of the server only (decision 8 in docs/PORT_GAPS.md).
+const NO_CASH_SHOP := "The port has no cash shop. You get cash at most new levels, from the login bonus and from unit collections. A PvP shield also gives back twice its price."
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
 const BAR_HEIGHT := 125
