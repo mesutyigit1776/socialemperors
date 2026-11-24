@@ -381,12 +381,13 @@ func _add_spell_book() -> void:
 
 
 ## The client opens the island window from the ship; a village without
-## fighting units cannot sail.
-func _open_quests() -> void:
+## fighting units cannot sail. The Fly button of the Zeppelin Tower opens the
+## same window, with its own alert.
+func _open_quests(no_army_text := "AVISO_NAVEGAR_SIN_TROPAS") -> void:
 	if not _load_quest_graphics():
 		return
 	if _village.quest_army().is_empty():
-		_alert(_config.text("AVISO_NAVEGAR_SIN_TROPAS").strip_edges())
+		_alert(_config.text(no_army_text).strip_edges())
 		return
 	_record(VillageEvent.Kind.WINDOW_OPENED, {"window": "popups.PopupQuestsManager"})
 	var window := QuestListWindow.new(_ui, QuestBook.new(_village, _config), _config, _now)
@@ -1018,6 +1019,12 @@ func _on_action_requested(id: String) -> void:
 		return
 	if id == "rider_train" or id == "tame":
 		_play_rider_game(id)
+		return
+	if id == "sail":
+		_open_quests()
+		return
+	if id == "fly":
+		_open_quests("AVISO_VOLAR_SIN_TROPAS")
 		return
 	_run_action(id, _selected)
 

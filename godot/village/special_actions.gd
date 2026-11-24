@@ -7,6 +7,11 @@ extends RefCounted
 
 enum View { NONE, BUILDING, COLLECTIONS, STORE, LAND, PACKS }
 
+## The Sail and Fly buttons of these buildings open the island window (main.gd),
+## as in the client. They have no rules in Village.
+const HARBOR := 224
+const ZEPPELIN_TOWER := 299
+
 ## Result of run(): the message for the player, whether the village changed (then
 ## the caller updates the view and saves), whether the client loads the map
 ## again after the change (the Time Machine and the Weather Machine), and the
@@ -234,6 +239,10 @@ func _describe_building(building: Village.PlacedItem, now: int) -> Array:
 	match building.item_id:
 		Village.WIZARDRY:
 			return ["%s: learn spells and see their levels." % name, [["spells", "Open the spell book", true]]]
+		HARBOR:
+			return ["%s: sail to the islands." % name, [["sail", "Sail", true]]]
+		ZEPPELIN_TOWER:
+			return ["%s: fly to the islands." % name, [["fly", "Fly", true]]]
 		Village.DRAGON_NEST, Village.MONSTERS_NEST:
 			if not _village.is_nest_active(building):
 				var costs: Dictionary = _config.dragon_nest_costs if building.item_id == Village.DRAGON_NEST else _config.monster_nest_costs

@@ -72,7 +72,7 @@ Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.
 2. **Darts.** Decided: the port leaves it out, as 1.4.07 does. See [Darts](#darts).
 3. **The text of tutorial steps 15 to 31.** Decided: the port keeps its own short text with the arrow; the client shows only the arrow. See [Tutorial](#tutorial).
 4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
-5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
+5. **Ship and zeppelin explorations.** Decided: not needed. The 1.4.07 client does not open them in normal play; the Sail and Fly buttons open the island window, as in the port. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
 7. **Server bugs.** Decided: fix them. Three are fixed; the fourth is not a bug. See [Server bugs](#server-bugs).
 8. **Cash without payment.** The port has no cash shop. See [Facebook and payment parts](#facebook-and-payment-parts).
@@ -104,7 +104,7 @@ Checked, no change needed:
 
 ### Battle zoom
 
-The client has one zoom for the whole game (`Base.currentZoom`). Each map starts at the zoom of the map before it. Only the spy screen (0.5), the tournament (0.1) and the quests in which the player cannot move the map (0.7; the ship and zeppelin quests, which the port does not have) set their own zoom, and the maps after them keep it. The port did the same only for the spy screen and the tournament, and started all other maps at 0.7. Now `MapCamera` keeps the zoom of the last map for the next one (`godot/village/map_camera.gd`). The game starts at 0.7, as in the client.
+The client has one zoom for the whole game (`Base.currentZoom`). Each map starts at the zoom of the map before it. Only the spy screen (0.5), the tournament (0.1) and the quests in which the player cannot move the map (0.7; the ship and zeppelin maps, which the client opens only with developer keys) set their own zoom, and the maps after them keep it. The port did the same only for the spy screen and the tournament, and started all other maps at 0.7. Now `MapCamera` keeps the zoom of the last map for the next one (`godot/village/map_camera.gd`). The game starts at 0.7, as in the client.
 
 ### Thin line between land pieces
 
@@ -451,13 +451,15 @@ In 1.4.07 players cannot open it: the games menu is always hidden (`GuiManager`)
 
 ### Ship and zeppelin explorations
 
-The client gets the maps of the ship (`100000009`) and the zeppelin (`100000016`) from the game server when the player starts the exploration, not from its files. No copy is in `assets/`, in the `villages/` folders, or in the forks of `AcidCaos/socialemperors` that were checked (18 of the forks; one other fork has the same 35 quest maps as this repository). `server.py` also does not send these ids to the quest code, because they are not in its list of quest ids. So the original game cannot play them on this server either. Web searches found no copy of the maps and no pictures of their layout.
+The exploration maps of the ship (`100000009`) and the zeppelin (`100000016`) come from the game server, and no copy of them is known. The 1.4.07 client does not open them in normal play:
 
-To add them the port needs one of these:
+- The Quests button, the Sail button of the Harbor (item 224), the Fly button of the Zeppelin Tower (item 299) and the end of an island quest all open the island window (`PopupQuestsManager`). The island window loads the island quest directly.
+- Only the developer keys `s` and `S` load the two maps, and these keys work only when the client runs without its server address (`dynamicUrl`).
+- The ship map opens the island window when it is loaded. Its island buildings refuse each click with `AVISO_BARCO_SIN_MUELLE`, because no code sets `QuestShip.bBarca` to false.
 
-- a copy of the two maps from an old capture of the Social Point servers on the web archive, or from a fork that was not checked;
-- pictures or videos of the explorations, to make the maps again by hand;
-- new maps made for the port, with the client's rules for the ship and zeppelin quests (the map does not move in these quests, and the zoom is 0.7).
+Decided: the port does not add the maps. The Harbor and the Zeppelin Tower have Sail and Fly buttons in the selection panel (`godot/village/special_actions.gd`), which open the island window. Without fighting units, Sail shows `AVISO_NAVEGAR_SIN_TROPAS` and Fly shows `AVISO_VOLAR_SIN_TROPAS`, as in the client. The client opens the window at page 1 for the ship and page 3 for the zeppelin, then moves it to the page of the current island; the port opens it at the page of the current island.
+
+The pictures `bg_quest_progress_ship1.jpg` to `bg_quest_progress_ship3.jpg` in `assets/images_new` ("Ship map", "Zeppelin map") look like the pages of the island window, not like battle maps. The 1.4.07 client does not use them.
 
 ### Facebook and payment parts
 
@@ -491,4 +493,4 @@ These were found by reading the code. Decision 7: fix them.
 
 ## Limits of the research
 
-The web research was partial. Web searches worked, but the session could not open the Social Empires fan wiki (`socialempires.fandom.com`), `web.archive.org` and the SuperCheats guides; only search results and the GitHub page of `AcidCaos/socialemperors` could be read. A session with these hosts in the allowed domains of its environment can complete this part, and can look for the exploration maps and the missing graphics on the web archive.
+The web research was partial. Web searches worked, but the session could not open the Social Empires fan wiki (`socialempires.fandom.com`), `web.archive.org` and the SuperCheats guides; only search results and the GitHub page of `AcidCaos/socialemperors` could be read. A session with these hosts in the allowed domains of its environment can complete this part, and can look for the missing graphics on the web archive.
