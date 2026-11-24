@@ -70,7 +70,7 @@ Groups 1 to 3 and the player save are done. The launcher and the builds (step 6.
 
 1. **Mini-game of the Dragon Riding and the Rider Academy.** Decided: the port plays the mini-game of the client, and the Rider Academy keeps Fast train. See [Dragon Riding and Rider Academy mini-game](#dragon-riding-and-rider-academy-mini-game).
 2. **Darts.** Decided: the port leaves it out, as 1.4.07 does. See [Darts](#darts).
-3. **The text of tutorial steps 15 to 31.** The client shows only the arrow; the port also shows its own short text. See [Tutorial](#tutorial).
+3. **The text of tutorial steps 15 to 31.** Decided: the port keeps its own short text with the arrow; the client shows only the arrow. See [Tutorial](#tutorial).
 4. **HUD on wide screens.** Decided: only a UI scale; the layout of the client stays. See [The HUD on modern screens](#the-hud-on-modern-screens).
 5. **Ship and zeppelin explorations.** Find the maps, make them again from videos, or make new maps. See [Ship and zeppelin explorations](#ship-and-zeppelin-explorations).
 6. **Island Forge.** Decided: the port has it. The event runs at the date of the server, or at the date of the settings file; the horns are bought for cash, as on the server. See [Island Forge](#island-forge-collect-game).
@@ -91,9 +91,11 @@ The port now does the same as the client in these points:
 2. **The nest steps at the end.** After the dragon nest of the tutorial, the client sends 9 `next_step` commands without cash (`MapInitializer.spawnDragonNest`), and the server accepts them, because a new empire has `dragonNestActive` 1. The port gives the nest the same 9 steps, with the time of the last step. The client sends them only when `privateState.iphoneTutorialCompleted` is below 100. The saves of this server do not have this value; Ruffle then sent the 9 commands (server log of the run). Flash Player was not checked.
 3. **The goal window in the tutorial.** The client hides the dark background of the goal window in the tutorial (`MissionPopup`, `fons`); the port does the same.
 
-Open:
+4. **Step 26.** The step ends when the farm is ready. Before, the port ended it only when its own speed-up made the farm ready; when the real time made it ready between two ticks, the tutorial stopped at step 26.
 
-- **Steps 15 to 31.** The client shows only the arrow. The port also shows its own short text (`ARROW_TEXTS` in `godot/tutorial/tutorial.gd`, decision 3).
+Different from the client, by decision:
+
+- **Steps 15 to 31.** The client shows only the arrow. The port also shows its own short text in the tutorial box (`ARROW_TEXTS` in `godot/tutorial/tutorial.gd`). Decided: the port keeps the text (decision 3).
 
 Checked, no change needed:
 
