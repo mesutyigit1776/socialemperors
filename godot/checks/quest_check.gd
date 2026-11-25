@@ -425,9 +425,13 @@ func _check_forge_islands() -> bool:
 	var quest := _quest(IslandForge.QUEST_IDS[0], {SPEARMAN: 4}, 0)
 	_check(quest is ForgeQuest and quest.enemies_left() == 7 and quest.counter_texts()[0] == _config.text("QUEST_ESQUELETOS_VIVOS"), "the first forge island counts its 7 skeletons")
 	quest.start(1)
-	for enemy in quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY):
+	var winner := []
+	quest.won.connect(func(last_enemy: BattleFighter) -> void: winner.append(last_enemy))
+	var enemies := quest.sim.fighters.filter(func(item: BattleFighter) -> bool: return item.team == ENEMY)
+	for enemy in enemies:
 		quest.sim.receive_attack(enemy, 100000, null)
 	_check(quest.is_won() and quest.gold == 0 and quest.xp == 0, "the first forge island gives no gold and no experience")
+	_check(winner.size() == 1 and winner[0] != null and winner[0].dead and winner[0].is_unit(), "the win names the last enemy, where the forge item falls")
 	var ended := [false]
 	quest.ended.connect(func() -> void: ended[0] = true)
 	for i in QuestBattle.END_DELAY_FRAMES * ForgeQuest.WIN_SECONDS:

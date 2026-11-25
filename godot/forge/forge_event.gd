@@ -135,20 +135,34 @@ func on_village_event(kind: VillageEvent.Kind, data: Dictionary) -> void:
 
 
 ## Enemy units that die in the battle give items: in the village (pvp
-## false) or in an attack on another player. view shows the battle.
+## false) or in an attack on another player. view shows the battle. The
+## client fights in the village on its map, so the pictures of a fight in the
+## village stay there until the player clicks them; the port moves them to
+## the village view when the fight view closes. The client removes the
+## pictures when it loads another map, as after an attack on a player.
 func watch_battle(sim: BattleSim, view: Node2D, pvp: bool) -> void:
 	sim.died.connect(func(item: BattleFighter, _killer: BattleFighter) -> void:
 		if item.team != BattleFighter.Team.ENEMY or item.summoned or not forge.enemy_killed(item.def, pvp, _clock.call(), _rng):
 			return
 		_drop(IslandForge.PVP if pvp else IslandForge.TROLLS, view, item.tile)
 		changed.emit())
+	if not pvp:
+		view.tree_exiting.connect(func() -> void:
+			for child in view.get_children():
+				if child is ForgeToken and is_instance_valid(_view):
+					child.reparent(_view, false))
 
 
-## The end of a forge island: a win with more stars gives an item. old_stars
-## is the rank before the quest.
-func quest_ended(result: Dictionary, old_stars: int) -> void:
-	if int(result["win"]) == 1 and forge.quest_won(str(result["quest_id"]), int(result["difficulty"]), old_stars, _clock.call()):
-		changed.emit()
+## A forge island (QuestCollectable of the client): the death of the last
+## enemy gives an item when the quest has more stars than its rank before,
+## and its picture falls at that enemy (CollectGameManager.onQuestEnd).
+func watch_quest(quest: QuestBattle, view: Node2D) -> void:
+	var old_stars := _village.quest_rank(quest.island.id)
+	quest.won.connect(func(last_enemy: BattleFighter) -> void:
+		if last_enemy == null or not forge.quest_won(quest.island.id, quest.stars, old_stars, _clock.call()):
+			return
+		_drop(IslandForge.QUEST, view, last_enemy.tile)
+		changed.emit())
 
 
 func _drop(item_id: int, view: Node2D, tile: Vector2i) -> void:

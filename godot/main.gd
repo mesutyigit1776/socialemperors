@@ -588,6 +588,8 @@ func _land(quest_id: String, army: Dictionary) -> void:
 	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_quest_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(quest.sim)
+	if quest_id in IslandForge.QUEST_IDS and _forge != null:
+		_forge.watch_quest(quest, _quest_screen.map_view())
 	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
 		_village.start_quest(quest_id, _now())
@@ -604,8 +606,6 @@ func _on_quest_closed(result: Dictionary) -> void:
 	for found in _quest_screen.quest.collectibles:
 		_village.add_collectible(found)
 	var forge_quest := str(result["quest_id"]) in IslandForge.QUEST_IDS
-	if forge_quest and _forge != null:
-		_forge.quest_ended(result, _village.quest_rank(str(result["quest_id"])))
 	_village.end_quest(result)
 	# The client loads the village map again: new enemies come, and a new level
 	# of the quest brings no attacks of its own.

@@ -37,6 +37,9 @@ signal changed  ## The gold, the experience or the counter changed.
 signal collectable_opened(item: BattleFighter)
 signal treasure_opened  ## Troll islands: the treasure opened, see TrollQuest.
 signal ended  ## The quest ended with a win or a loss; is_won() tells which.
+## The quest is won; it ends a moment later. last_enemy: the enemy whose death
+## won it, or null when another rule won it.
+signal won(last_enemy: BattleFighter)
 
 const END_DELAY_FRAMES := 30  ## The client waits 1 second.
 const COPY_RINGS := 4
@@ -336,7 +339,7 @@ func _on_enemy_died(item: BattleFighter) -> void:
 		_enemies_left -= 1
 		changed.emit()
 	if _enemies_left <= 0:
-		_win()
+		_win(item)
 
 
 ## The enemy gives gold and experience when it dies.
@@ -480,12 +483,13 @@ func _loot_source(def: GameConfig.ItemDef) -> int:
 	return -1
 
 
-func _win() -> void:
+func _win(last_enemy: BattleFighter = null) -> void:
 	if _won:
 		return
 	_won = true
 	gold += _gold_on_win
 	changed.emit()
+	won.emit(last_enemy)
 	_end_soon()
 
 
