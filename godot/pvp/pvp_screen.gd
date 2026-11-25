@@ -11,6 +11,10 @@ extends Node2D
 ##
 ## The bar is at the place of the spy screen (SpyScreen.BAR_POSITION), which
 ## comes before the attack with the same bar.
+##
+## As the client (PVPManager.loadMap: setAssaultMode, then the start window),
+## the screen shows under the start window with the battle paused; start()
+## lands the army and runs the battle.
 
 signal closed(result: Dictionary)  ## For Village.end_pvp_attack().
 signal village_changed  ## A spell changed the mana or the spells; the owner saves the village.
@@ -46,7 +50,8 @@ var _enemy_level := 0
 
 
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
-func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2i, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
+## camera_position: the place of the map that shows until start().
+func _init(pvp: PvpBattle, map: Village, enemy_name: String, camera_position: Vector2, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
 	battle = pvp
 	_village = village
 	_config = config
@@ -58,9 +63,10 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	battle.sim.spell_uses = village.spell_uses()
 	add_child(_view)
 	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land), ui)
-	_camera.position = IsoGrid.tile_to_map(start_tile)
+	_camera.position = camera_position
 	add_child(_camera)
 	_screen = BattleScreen.new(battle.sim, _view, numbers)
+	_screen.paused = true
 	add_child(_screen)
 	_screen.stepped.connect(func() -> void:
 		battle.update()
@@ -105,12 +111,24 @@ func map_view() -> BattleView:
 	return _view
 
 
-func _ready() -> void:
-	_layout()
-	get_viewport().size_changed.connect(_layout)
+## The army lands at start_tile, and the battle runs.
+func start(start_tile: Vector2i) -> void:
+	battle.place_army(start_tile)
+	_camera.position = IsoGrid.tile_to_map(start_tile)
+	_screen.paused = false
 	if battle.is_won():
 		# A village without a town hall is won at once (PopupNoTownhall).
 		_show_result()
+
+
+## The layer of the windows of the attack, for example the start window.
+func window_layer() -> CanvasLayer:
+	return _windows
+
+
+func _ready() -> void:
+	_layout()
+	get_viewport().size_changed.connect(_layout)
 
 
 func _layout() -> void:

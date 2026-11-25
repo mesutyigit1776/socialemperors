@@ -2129,40 +2129,23 @@ func _on_attack_requested() -> void:
 		return
 	var window := ConfirmWindow.new(_ui, _config, _config.text("PVP_SHIELDS_ATTACK_CONFIRMATION").strip_edges())
 	window.confirmed.connect(_open_assault_start)
-	_add_spy_window(window)
+	_add_window_to(_spy, window)
 
 
+## As the client (Assault.assaultEnemy, PVPManager.loadMap), the attack
+## needs an army, and the screen of the attack shows under the start window.
+## The whole army of the player goes, as getCurrentArmy() of the client.
 func _open_assault_start() -> void:
-	_spy.hide_bar()
-	var window := AssaultStartWindow.new(_ui, _config)
-	window.start_requested.connect(_start_attack)
-	_add_spy_window(window)
-
-
-func _add_spy_window(window: Control) -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = WINDOW_LAYER
-	layer.add_child(window)
-	window.tree_exited.connect(layer.queue_free)
-	_spy.add_child(layer)
-
-
-## The attack starts ("begin_attack_new"): the own shield ends, and the whole
-## army of the player goes, as getCurrentArmy() of the client.
-func _start_attack(start_tile: Vector2i) -> void:
-	if not _load_quest_graphics():
-		return
 	var army := _village.quest_army()
 	if army.is_empty():
-		_hud.show_message(_config.text("PVP_NEED_ARMY").strip_edges())
+		_add_window_to(_spy, AlertWindow.new(_ui, _config, _config.text("PVP_NEED_ARMY").strip_edges()))
 		return
-	_village.drop_shield()
-	_record(VillageEvent.Kind.ASSAULT_STARTED, {"level": _enemy["village"].get_level()})
-	_save()
-	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], start_tile, _config, _sprites, _rng, _village.get_level())
+	if not _load_quest_graphics():
+		return
+	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], _config, _sprites, _rng, _village.get_level())
 	_goals.watch_battle(battle.sim)
 	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
-	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
+	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], _spy.camera_position(), _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_pvp_screen.map_view().show_production_of(_enemy["village"], _load_time())
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _pvp_screen.map_view(), true)
@@ -2170,6 +2153,26 @@ func _start_attack(start_tile: Vector2i) -> void:
 	_pvp_screen.closed.connect(_on_attack_closed)
 	_close_spy()
 	add_child(_pvp_screen)
+	var window := AssaultStartWindow.new(_ui, _config)
+	window.start_requested.connect(_start_attack)
+	_add_window_to(_pvp_screen, window)
+
+
+func _add_window_to(screen: Node, window: Control) -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = WINDOW_LAYER
+	layer.add_child(window)
+	window.tree_exited.connect(layer.queue_free)
+	screen.add_child(layer)
+
+
+## The attack starts ("begin_attack_new"): the own shield ends, and the army
+## lands at start_tile.
+func _start_attack(start_tile: Vector2i) -> void:
+	_village.drop_shield()
+	_record(VillageEvent.Kind.ASSAULT_STARTED, {"level": _enemy["village"].get_level()})
+	_save()
+	_pvp_screen.start(start_tile)
 
 
 ## The end of the attack: the save of the player ("end_attack",

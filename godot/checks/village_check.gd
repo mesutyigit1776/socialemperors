@@ -1415,7 +1415,8 @@ func _check_pvp() -> bool:
 	var map := source.load_village("mock_2", NOW + 86400 * 3)
 	var loot := PvpBattle.loot_of(map, 20, _config, rng)
 	_check(loot["g"] == int(map.loot_resources()["g"] * PvpBattle.LOOT_SHARE), "the loot is a third of each resource")
-	var battle := PvpBattle.create(map, {LIGHT_KNIGHT: 3}, loot, Vector2i(10, 50), _config, null, rng, 20)
+	var battle := PvpBattle.create(map, {LIGHT_KNIGHT: 3}, loot, _config, null, rng, 20)
+	battle.place_army(Vector2i(10, 50))
 	_check(battle.has_town_hall and not battle.is_won() and battle.sim.fighters.filter(func(f: BattleFighter) -> bool: return f.team == BattleFighter.Team.PLAYER).size() == 3, "the army lands, and the village has a town hall")
 	var town_hall: BattleFighter = battle._targets.filter(func(f: BattleFighter) -> bool: return f.def.subcat_functional == PvpBattle.SUBCAT_TOWN_HALL)[0]
 	battle.sim.receive_attack(town_hall, 10, null)

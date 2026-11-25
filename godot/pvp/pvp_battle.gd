@@ -79,8 +79,9 @@ static func loot_of(map: Village, level: int, config: GameConfig, rng: RandomNum
 
 
 ## map: the village of the other player. army: unit id -> number. loot: see
-## loot_of(). level: the level of the attacker.
-static func create(map: Village, army: Dictionary, loot_amounts: Dictionary, start_tile: Vector2i, config: GameConfig, sprites: SpriteLibrary, rng: RandomNumberGenerator, level: int) -> PvpBattle:
+## loot_of(). level: the level of the attacker. The army lands with
+## place_army(), after the player chooses the start point.
+static func create(map: Village, army: Dictionary, loot_amounts: Dictionary, config: GameConfig, sprites: SpriteLibrary, rng: RandomNumberGenerator, level: int) -> PvpBattle:
 	var battle := PvpBattle.new()
 	battle.sim = BattleSim.new(rng)
 	battle.sim.config = config
@@ -96,9 +97,6 @@ static func create(map: Village, army: Dictionary, loot_amounts: Dictionary, sta
 	for id: int in ids:
 		battle._units.append([id, int(army[id]), 0, 0])
 		battle._player_units += int(army[id])
-		for i in int(army[id]):
-			var tile: Variant = BattleFormation.nearest_free_tile(start_tile, IsoGrid.MAP_TILES, battle.sim.is_free)
-			battle._add(config.get_item(id), tile if tile != null else start_tile, BattleFighter.Team.PLAYER)
 	battle.sim.hit.connect(battle._on_hit)
 	battle.sim.died.connect(battle._on_died)
 	battle.sim.converted.connect(func(unit: BattleFighter, _team: BattleFighter.Team) -> void: battle._on_died(unit, null))
@@ -106,6 +104,14 @@ static func create(map: Village, army: Dictionary, loot_amounts: Dictionary, sta
 	if not battle.has_town_hall:
 		battle._win()
 	return battle
+
+
+## Puts the army on the free tiles nearest to start_tile.
+func place_army(start_tile: Vector2i) -> void:
+	for entry: Array in _units:
+		for i in int(entry[1]):
+			var tile: Variant = BattleFormation.nearest_free_tile(start_tile, IsoGrid.MAP_TILES, sim.is_free)
+			_add(_config.get_item(entry[0]), tile if tile != null else start_tile, BattleFighter.Team.PLAYER)
 
 
 ## Call after each frame: the time runs out, and the battle ends

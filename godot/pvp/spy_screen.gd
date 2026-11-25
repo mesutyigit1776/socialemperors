@@ -111,6 +111,6 @@ static func grow_label(button: UiClip, font_size: int) -> void:
 	label.position.y = -font.get_height(font_size) / 2 - LABEL_RISE + offset.y
 
 
-## The client changes the bar for the attack when the start window opens.
-func hide_bar() -> void:
-	_bar.visible = false
+## The place of the map that shows now.
+func camera_position() -> Vector2:
+	return _camera.position

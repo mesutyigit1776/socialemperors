@@ -44,7 +44,7 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| Spy screen: the client shows the assault HUD behind the start window; the port shows the enemy village without the bar. | Open | |
+| Under many windows the client covers its HUD with a cover (`GuiManager.addGuiCover`, alpha 0.85; 102 calls), for example under the start window of a PvP attack. The port has no such cover; some windows of the port put a dark layer of their own behind them. | Open | Found with the start window of a PvP attack. |
 | Spy screen, attack log, Withdraw: the client grows the button labels until they fill the button (`ButtonGenericTall`). The port uses the sizes that Ruffle showed (Attack: 34). | Open | A text of another length gets the wrong size. |
 | The animation of the start window of an attack has an unnamed mask. The import keeps only named masks, so `assault_start_window.gd` cuts the animation with the rectangle of the mask. | Limit | The result looks the same. |
 | PvP result window: the client shows the loss animation only from the second result of a session on, because it loads the file at the first result. The port shows it each time. | Port rule | A load fault of the client. |
