@@ -16,6 +16,8 @@ signal pressed  ## The player clicked a clip that is a button, see make_button()
 const TEXT_GUTTER := 2.0
 ## The smallest font size to which TextFieldUtil.resizeText makes a text smaller.
 const MIN_FIT_SIZE := 8
+## The distance from the button at which ButtonGenericTall.setTextSize stops the growth of a label.
+const TEXT_GROW_MARGIN := 10.0
 ## A matrix whose axes are further than this from a right angle (the cosine
 ## of their angle) skews; see _is_skewed().
 const SKEW_LIMIT := 0.001
@@ -279,6 +281,35 @@ func set_text(path: String, text: String, fit := true, clip := false) -> void:
 		# A line that is wider than its field starts at the left edge in Flash, also in a centred field.
 		var too_wide: bool = not label.get_meta("word_wrap") and not _fits(label, label.get_theme_font_size("font_size"))
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if too_wide else label.get_meta("art_align")
+
+
+## ButtonGenericTall.setTextSize: the font of the label grows by 1 while the
+## text is at least 10 pixels narrower and lower than the button. box is the
+## size of the button as Flash measures it, with its scale. Then
+## GameStatic.gotoFrame writes the text again with setHTML, which makes the
+## font smaller while the text does not fit the field (see _fits()). A text
+## that fills the button, such as "Attack", grows until its word breaks and
+## then shrinks to the largest size that fits the field. Call it after set_text().
+func grow_text(path: String, box: Vector2) -> void:
+	var label := part(path) as Label
+	var layout: FlashTextLayout = label.get_meta("text_layout")
+	var text: String = label.get_meta("flash_text")
+	var field: Vector2 = label.get_meta("field_size")
+	var leading: float = label.get_meta("leading")
+	var size := label.get_theme_font_size("font_size")
+	while true:
+		var lines := layout.wrap(text, size, field.x) if label.get_meta("word_wrap") else text.split("\n")
+		var text_width := 0.0
+		for line in lines:
+			text_width = maxf(text_width, layout.width(line, size))
+		var text_height := lines.size() * layout.line_height(size, leading)
+		if text_width >= box.x - TEXT_GROW_MARGIN or text_height >= box.y - TEXT_GROW_MARGIN:
+			break
+		size += 1
+	_show_text(label, text, size)
+	while size > MIN_FIT_SIZE and not _fits(label, size):
+		size -= 1
+		_show_text(label, text, size)
 
 
 ## Shows a text in a field at a font size. In a field with word wrap, the

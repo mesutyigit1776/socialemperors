@@ -17,9 +17,6 @@ const UNITS_FRAME := "popup_elements/popup_pvp/units_frame.png"
 const ARMY_COLUMNS := 4
 const ARMY_ROWS := 4
 const ARMY_GAP := Vector2(8, 4)
-## The size of the Attack Log label that the client shows in Ruffle
-## (SpyScreen.grow_label), before the scale of the button in the art (0.86).
-const LOG_FONT_SIZE := 19
 
 var _ui: UiLibrary
 var _config: GameConfig
@@ -51,7 +48,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village) -> void:
 		search_requested.emit())
 	var log_button := _window.clip("btnAttackLog")
 	log_button.set_text("lbl", config.text("PVP_ATTACK_LOG"))
-	SpyScreen.grow_label(log_button, LOG_FONT_SIZE)
+	SpyScreen.grow_label(log_button)
 	log_button.make_button(true)
 	log_button.pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
