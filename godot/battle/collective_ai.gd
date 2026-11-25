@@ -26,8 +26,8 @@ extends GroupAI
 ##   items of the player nearest to the centres of the owned land. The army
 ##   does not retreat.
 ##
-## The client only shows a captain's line when the unit is on the screen; the
-## port sends each line with said, and the screen shows it over the unit.
+## A captain's line goes out with said; the screen shows it in a speech
+## bubble over the unit (IsoUnit.say).
 
 signal said(unit: BattleFighter, text: String)
 

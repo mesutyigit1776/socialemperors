@@ -8,15 +8,14 @@ extends Node2D
 ## with the HUD of the village (VillageHud.set_fighting()) and the buttons of
 ## the village in the bottom bar; the player cannot build in this time.
 ##
-## A captain's line shows over the unit for LINE_SECONDS seconds. The client
-## shows no special bar for these fights; the port shows a line under the top
-## bars of the HUD with the number of enemies (STATUS_TEXT).
+## A captain's line shows in a speech bubble over the unit
+## (BattleView.say()). The client shows no special bar for these fights; the
+## port shows a line under the top bars of the HUD with the number of enemies
+## (STATUS_TEXT).
 
 signal closed  ## The fight ended; the owner applies VillageBattle.apply().
 signal village_changed  ## A spell changed the mana or the spells of the village; the owner saves it.
 
-const LINE_SECONDS := 3.0
-const LINE_OFFSET := Vector2(-60, -110)
 const STATUS_TEXT := "Enemies in your village: %d"
 ## The line is this far from the top, under the cash of the HUD.
 const STATUS_Y := 88.0
@@ -33,7 +32,6 @@ var _screen: BattleScreen
 var _bar: BattleBar
 var _windows := CanvasLayer.new()
 var _status := Label.new()
-var _lines := {}  # BattleFighter -> [Label, seconds left]
 var _cast_ui: UiLibrary
 var _spell_graphics: Dictionary
 var _spells := {}  # Spell id -> BattleSpell of this fight.
@@ -67,7 +65,7 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	battle.ended.connect(func() -> void:
 		_screen.paused = true
 		closed.emit())
-	battle.said.connect(_show_line)
+	battle.said.connect(_view.say)
 	_windows.layer = LAYER
 	add_child(_windows)
 	_status.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
@@ -119,17 +117,6 @@ func map_view() -> BattleView:
 	return _view
 
 
-func _process(delta: float) -> void:
-	for fighter: BattleFighter in _lines.keys():
-		var entry: Array = _lines[fighter]
-		entry[1] -= delta
-		if entry[1] <= 0.0 or fighter.dead:
-			entry[0].queue_free()
-			_lines.erase(fighter)
-		else:
-			entry[0].position = fighter.position + LINE_OFFSET
-
-
 func _on_stepped() -> void:
 	battle.update()
 	if not battle.sim.fighters.any(func(fighter: BattleFighter) -> bool: return fighter.attacking and not fighter.dead):
@@ -141,19 +128,6 @@ func _on_stepped() -> void:
 func _update_status() -> void:
 	var enemies := battle.sim.fighters.filter(func(fighter: BattleFighter) -> bool: return fighter.is_unit() and not fighter.dead and fighter.team == BattleFighter.Team.ENEMY).size()
 	_status.text = STATUS_TEXT % enemies
-
-
-func _show_line(unit: BattleFighter, text: String) -> void:
-	if _lines.has(unit):
-		_lines[unit][0].queue_free()
-	var label := Label.new()
-	label.text = text
-	label.add_theme_color_override("font_outline_color", Color.BLACK)
-	label.add_theme_constant_override("outline_size", 4)
-	label.position = unit.position + LINE_OFFSET
-	label.z_index = 10
-	add_child(label)
-	_lines[unit] = [label, LINE_SECONDS]
 
 
 func _cast(spell: GameConfig.SpellDef, tile: Vector2i, level: int) -> void:

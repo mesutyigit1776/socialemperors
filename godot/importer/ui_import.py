@@ -179,6 +179,8 @@ SYMBOLS = [
 	# (NumberParticle), with the icons of the resources.
 	"NumberParticle2MC",
 	"IconResourcesMC",
+	# The speech bubble of a unit (IsoUnit.say), for the lines of the captains.
+	"BS_MC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows

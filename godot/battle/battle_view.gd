@@ -87,6 +87,7 @@ var _trail_layer := Node2D.new()
 var _shot_layer := Node2D.new()  # Shots and blasts.
 var _overlay := _Overlay.new()  # Over the items: health bars, selection box.
 var _nodes := {}  # BattleFighter -> Sprite2D or UnitSprite
+var _bubbles := {}  # BattleFighter -> SpeechBubble, see say().
 var _directions := {}  # BattleFighter (unit) -> direction 1 to 8
 var _shots := {}  # BattleProjectile -> _Flight
 var _blast_count := 0
@@ -219,6 +220,32 @@ func show_spell(spell: BattleSpell) -> void:
 	spell.particle_shown.connect(_add_particle)
 
 
+## Shows text in a speech bubble over the unit (IsoUnit.say), in place of
+## its earlier bubble.
+func say(fighter: BattleFighter, text: String) -> void:
+	if _map_ui == null or not _nodes.has(fighter):
+		return
+	if _bubbles.has(fighter):
+		_bubbles[fighter].queue_free()
+	_bubbles[fighter] = SpeechBubble.new(_map_ui, text)
+	_overlay.add_child(_bubbles[fighter])
+	_place_bubble(fighter)
+
+
+func _update_bubbles(delta: float) -> void:
+	for fighter: BattleFighter in _bubbles.keys():
+		if fighter.dead or not _nodes.has(fighter) or not _bubbles[fighter].step(delta):
+			_bubbles[fighter].queue_free()
+			_bubbles.erase(fighter)
+		else:
+			_place_bubble(fighter)
+
+
+## The client puts the bubble at the top of the graphic of the unit.
+func _place_bubble(fighter: BattleFighter) -> void:
+	_bubbles[fighter].position = _nodes[fighter].position - Vector2(0, _graphic_height(fighter))
+
+
 ## The layer under the items, for example for the marker of the area of a spell.
 func under_items() -> Node2D:
 	return _below_layer
@@ -332,6 +359,7 @@ func _process(delta: float) -> void:
 		_info.place(_nodes[_hovered].position)
 		_show_info_production()
 	_update_bars()
+	_update_bubbles(delta)
 	for fighter: BattleFighter in _flashes.keys():
 		var flash: Dictionary = _flashes[fighter][0]
 		_flashes[fighter][1] += delta

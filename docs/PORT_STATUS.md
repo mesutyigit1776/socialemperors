@@ -35,7 +35,6 @@ Kind:
 | During a fight in the village, the store, World, Gift, the town selector, the goals, the shield, the empire name and the icons show "Wait until the fight in your village ends." In the client they work. Open windows hide during the fight. The top bars change at the end of the fight. | Port rule | The port fights on a copy of the village (`VillageBattle`) and writes the result at the end. |
 | The quests in the town play in the port. The box `mcTrolls` of the bottom bar shows the quest or the time until the next one, also during a fight in the village. The client 1.4.07 does not start these quests and always hides the box (`StateNormal`). | Port rule | `town_quests/town_quests.gd` gives the rules of the port. |
 | During a fight in the village the player cannot build. The fight screen shows the number of enemies; the client does not. | Port rule | Same cause as above. |
-| The lines of the captains show as text over the unit; the client shows a speech bubble. | Open | |
 | The Goals button of the goal box shows during the tutorial; the client hides it. | Open | |
 | Tutorial steps 15 to 31: the port shows a short text with the arrow; the client shows only the arrow. | Port rule | Decision 3. `ARROW_TEXTS` in `tutorial/tutorial.gd`. |
 | The bottom bar is 3 pixels higher than in Ruffle at 760 × 600. | Port rule | The port uses the full-screen layout of the client (`StateNormal.setFullScreen`) at every window size. |
@@ -85,6 +84,7 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
+| The client shows other lines in the speech bubble of a unit (`IsoUnit.say`) that the port does not show: the farewell of the cart of the allies (`ASALTO_CARRO_DESPEDIDA`), the messenger of a quest (`CustomQuest`, `CustomQuestNew`), the end of a mummy (`UNIT_MOMIA_EXPIRADO`), the boss of the dragon quest of `CQuestChinosDragon` and the Greater Demon. | Open | Found with the lines of the captains. The port shows the bubble with `BattleView.say()`. |
 | A kill comes up to about 10 % earlier or later than in Ruffle. | Limit | Random numbers in both games, and the path search of the client in Ruffle, which stops after 50 ms of real time. |
 | The time under the start window of a quest differs (client 200 to 950 frames, port about 575), so the fights that start under it are at another point. | Open | |
 | Mini-game: the client tests the pixels of the hero and the enemies against the terrain. The port tests the bottom of their bounds against the top of the terrain. | Port rule | |
