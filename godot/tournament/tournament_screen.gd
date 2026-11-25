@@ -33,6 +33,7 @@ var _bot: Dictionary
 var _view := BattleView.new()
 var _camera := MapCamera.new()
 var _screen: BattleScreen
+var _numbers: NumberLayer
 var _windows := CanvasLayer.new()
 var _bar: UiClip
 var _bar_widths := {}  # Part path -> the scale of the full bar.
@@ -43,7 +44,8 @@ var _spells := {}
 
 ## map: the tournament map, for its land. bot: an entry of GameConfig.tournament_bots.
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
-func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, village: Village, player_name: String, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
+func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, village: Village, player_name: String, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	battle = match_battle
 	_village = village
 	_ui = ui
@@ -62,7 +64,7 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	# The client shows the whole field at zoom 0.1, below the limit of the mouse wheel.
 	_camera.set_mode_zoom(TOURNAMENT_ZOOM)
 	add_child(_camera)
-	_screen = BattleScreen.new(battle.sim, _view)
+	_screen = BattleScreen.new(battle.sim, _view, numbers)
 	_screen.paused = true
 	add_child(_screen)
 	_screen.stepped.connect(battle.update)
@@ -119,7 +121,7 @@ func _start() -> void:
 			_bar_widths[pair[0]] = bar.scale.x
 	_windows.add_child(_bar)
 	if SpellBook.is_shown(_village):
-		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)
+		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows, _numbers)
 		book.cast_on = _cast
 		book.marker_layer = _view.under_items()
 		book.changed.connect(func() -> void: village_changed.emit())

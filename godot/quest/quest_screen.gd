@@ -36,6 +36,7 @@ var _config: GameConfig
 var _view := BattleView.new()
 var _camera := MapCamera.new()
 var _screen: BattleScreen
+var _numbers: NumberLayer
 var _windows := CanvasLayer.new()
 var _hud: QuestHud
 var _end_window: QuestEndWindow
@@ -48,7 +49,8 @@ var _spells := {}  # Spell id -> BattleSpell of this battle.
 ## cast_ui and spell_graphics: the banner of a cast and how the spell graphics
 ## play, see SpellBook and BattleSpell.read_graphics(). neighbours: the
 ## neighbour bar of the bottom bar, see BattleBar.
-func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
+func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	quest = quest_battle
 	_village = village
 	_ui = ui
@@ -64,7 +66,7 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	_camera.position = IsoGrid.tile_to_map(island.start_tile)
 	add_child(_camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
-	_screen = BattleScreen.new(quest.sim, _view)
+	_screen = BattleScreen.new(quest.sim, _view, numbers)
 	_screen.paused = not RUN_UNDER_START_WINDOW
 	_screen.takes_orders = false
 	add_child(_screen)
@@ -110,7 +112,7 @@ func _on_started(stars: int, start_window: QuestStartWindow) -> void:
 	_windows.add_child(_hud)
 	if SpellBook.is_shown(_village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
-		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)
+		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows, _numbers)
 		book.cast_on = _cast
 		book.mark = _mark
 		book.marker_layer = _view.under_items()

@@ -21,6 +21,7 @@ const ISLAND_SEARCH := 100
 const ICON_SYMBOL := "easterDragon"
 
 var forge: IslandForge
+var _numbers: NumberLayer
 var _village: Village
 var _view: VillageView
 var _hud: VillageHud
@@ -40,7 +41,8 @@ var _window: ForgeWindow
 
 ## windows: the node of the windows. clock returns the time now.
 func _init(island_forge: IslandForge, village: Village, view: VillageView, hud: VillageHud, ui: UiLibrary, data_dir: String, frames: FrameCache,
-		config: GameConfig, sprites: SpriteLibrary, rng: RandomNumberGenerator, windows: Node, clock: Callable) -> void:
+		config: GameConfig, sprites: SpriteLibrary, rng: RandomNumberGenerator, windows: Node, clock: Callable, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	forge = island_forge
 	_village = village
 	_view = view
@@ -93,7 +95,7 @@ func check_prizes() -> void:
 func open_window() -> void:
 	if _window != null or not _ui.has_symbol("PoupIslandForgeMC"):
 		return
-	_window = ForgeWindow.new(_ui, _bar_ui, _hammer_ui, _config, _sprites, forge, _clock)
+	_window = ForgeWindow.new(_ui, _bar_ui, _hammer_ui, _config, _sprites, forge, _clock, _numbers)
 	_window.changed.connect(func() -> void:
 		changed.emit()
 		update(_clock.call(), true))

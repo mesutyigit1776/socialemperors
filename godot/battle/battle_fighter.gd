@@ -64,6 +64,7 @@ var attack_adder_buff := false
 var ai: BattleAI
 var origin: Vector2i  ## The tile where the unit was at the start.
 var added_frame := 0  ## The frame of the battle when the item came on the map.
+var number_frame := -BattleSim.NUMBER_INTERVAL  ## The frame of the battle when the item last showed the number of a hit or a heal.
 var attacking := false
 var moving := false
 var path: Array[Vector2i] = []  ## Tiles after the current walk point.

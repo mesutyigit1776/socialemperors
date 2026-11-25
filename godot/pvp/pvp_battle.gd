@@ -34,6 +34,7 @@ const FRAMES_PER_SECOND := 30
 const LOOT_SHARE := 0.333
 const TOWN_HALL_SHARE := 0.25
 const SUBCAT_TOWN_HALL := 135
+const TOWN_HALL_NUMBER_SHIFT := Vector2(0, -100)  ## The loot of the town hall shows higher.
 const SUBCAT_DECORATION := 411
 const SUBCAT_LOST := 911
 const GOLD_BUILDINGS: Array[int] = [23, 188, 189, 266, 325]  ## Markets, the Allies Market and the Troll Coliseum.
@@ -244,12 +245,20 @@ func _on_hit(target: BattleFighter, _attacker: BattleFighter, damage: int, _crit
 	if _finished or not target in _targets:
 		return
 	var done := damage + mini(target.health, 0)
+	# PVPManager.onDamage shows what each hit takes over the building, the
+	# share of the town hall 100 pixels higher and rounded.
 	if target.def.subcat_functional == SUBCAT_TOWN_HALL:
+		var values := []
 		for code in RESOURCE_CODES:
 			taken[code] += _town_hall_per_damage[code] * done
+		for code in ["g", "w", "s", "f"]:
+			values.append([code, roundi(_town_hall_per_damage[code] * done)])
+		sim.show_numbers(target, values, 1.0, NumberParticle.LIFE, TOWN_HALL_NUMBER_SHIFT)
 	else:
 		var code: String = target.def.collect_type if target.def.collect > 0 and target.def.collect_type in RESOURCE_CODES else "g"
 		taken[code] += _per_damage[code] * done
+		if _per_damage[code] * done > 0:
+			sim.show_numbers(target, [[code, _per_damage[code] * done]])
 	changed.emit()
 
 

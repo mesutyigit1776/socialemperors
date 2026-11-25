@@ -46,7 +46,7 @@ var _enemy_level := 0
 
 
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
-func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2i, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
+func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2i, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
 	battle = pvp
 	_village = village
 	_config = config
@@ -60,7 +60,7 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 	_view.show_battle(battle.sim, config, sprites, effects, VillageView.LAND_ITEM_BASE_ID + map.skin, VillageView.village_land_frames(map.owned_land), ui)
 	_camera.position = IsoGrid.tile_to_map(start_tile)
 	add_child(_camera)
-	_screen = BattleScreen.new(battle.sim, _view)
+	_screen = BattleScreen.new(battle.sim, _view, numbers)
 	add_child(_screen)
 	_screen.stepped.connect(func() -> void:
 		battle.update()
@@ -92,7 +92,7 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, start_tile: Vector2
 			_show_result())
 		_windows.add_child(question))
 	if SpellBook.is_shown(village):
-		var book := SpellBook.new(ui, cast_ui, config, village, _windows)
+		var book := SpellBook.new(ui, cast_ui, config, village, _windows, numbers)
 		book.cast_on = _cast
 		book.marker_layer = _view.under_items()
 		book.changed.connect(func() -> void: village_changed.emit())

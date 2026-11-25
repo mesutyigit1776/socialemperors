@@ -34,6 +34,7 @@ var giant := false
 var cooldown_speed := 1
 ## The unit teleports instead of walking, see BattleSim._teleport().
 var teleports := false
+var teleport_message_shown := false  ## The text that the unit cannot teleport yet showed since its last teleport.
 var teleport_ready := 0  ## The frame from which the unit can teleport again.  ## A giant unit (bIsGiant): an absorb does not move it, see BattleSim.absorb_and_push().
 var immune_to_freeze := false
 var immune_to_poison := false

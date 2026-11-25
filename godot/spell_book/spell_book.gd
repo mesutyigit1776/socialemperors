@@ -25,6 +25,8 @@ const MARKER_FRAME := 4
 const MARKER_OFFSET := Vector2(0, 27)
 const MARKER_AREA := 5.0
 const HUMAN_RACE := "h"
+const MANA_NUMBER_SCALE := 2.0
+const SPELL_NUMBER_SCALE := 1.5
 
 ## Called with (spell, tile, level) when the player casts a spell.
 var cast_on: Callable
@@ -42,14 +44,17 @@ var _config: GameConfig
 var _village: Village
 var _windows: Node
 var _hud: SpellBookHud
+var _numbers: NumberLayer
 var _aimed: GameConfig.SpellDef
 var _marker: UiClip
 var _shop: SpellShopWindow
 
 
 ## cast_ui: the banner of a cast, see UiLibrary.load_from(). windows: the node
-## that holds the book and the windows, over the map.
-func _init(ui: UiLibrary, cast_ui: UiLibrary, config: GameConfig, village: Village, windows: Node) -> void:
+## that holds the book and the windows, over the map. numbers: where the
+## floating numbers of a cast and a purchase show.
+func _init(ui: UiLibrary, cast_ui: UiLibrary, config: GameConfig, village: Village, windows: Node, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	_ui = ui
 	_cast_ui = cast_ui
 	_config = config
@@ -126,6 +131,8 @@ func _cast(tile: Vector2i) -> void:
 	if level == 0:
 		_open_mana_window()
 		return
+	# MagicManager.castMagic: the name and the mana over the tile.
+	_numbers.show_numbers(get_global_transform_with_canvas() * IsoGrid.tile_to_map(tile), [[NumberParticle.TEXT_RED, spell.name], [NumberParticle.MANA, "-%d" % spell.mana]])
 	if cast_on.is_valid():
 		cast_on.call(spell, tile, level)
 	_windows.add_child(CastBanner.new(_cast_ui, spell))
@@ -184,6 +191,9 @@ func _open_mana_window() -> void:
 		if _village.buy_mana(with_cash) != Village.Placement.OK:
 			_not_enough(with_cash)
 			return
+		# PopupBuyMana
+		var price := _config.mana_price_cash if with_cash else _config.mana_price_gold
+		_numbers.show_numbers(_numbers.middle(), [[NumberParticle.MANA, "+%d" % _config.mana_per_purchase], ["c" if with_cash else "g", "-%d" % price]], MANA_NUMBER_SCALE)
 		_updated())
 	_windows.add_child(window)
 
@@ -192,6 +202,8 @@ func _buy_spell(spell: GameConfig.SpellDef, with_cash: bool) -> void:
 	if _village.buy_spell(spell, with_cash) != Village.Placement.OK:
 		_not_enough(with_cash)
 		return
+	# SelectedMagic: the mana that the spell gives.
+	_numbers.show_numbers(_numbers.middle(), [[NumberParticle.MANA, "+%d" % spell.mana]], SPELL_NUMBER_SCALE)
 	_updated()
 
 

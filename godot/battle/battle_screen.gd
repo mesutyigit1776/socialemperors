@@ -55,10 +55,14 @@ var _last_click: BattleFighter
 var _last_click_msec := 0
 
 
-func _init(battle: BattleSim, view: BattleView) -> void:
+## numbers: where the floating numbers of the battle show, or null for none.
+func _init(battle: BattleSim, view: BattleView, numbers: NumberLayer) -> void:
 	sim = battle
 	_view = view
 	BattleSounds.listen(sim)
+	if numbers != null:
+		sim.numbers_shown.connect(func(fighter: BattleFighter, values: Array, scale_factor: float, life: int, shift: Vector2) -> void:
+			numbers.show_numbers(view.screen_point(fighter) + shift, values, scale_factor, life))
 	sim.removed.connect(func(fighter: BattleFighter) -> void:
 		if fighter in _selected:
 			_selected.erase(fighter)

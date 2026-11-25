@@ -25,6 +25,7 @@ const BUTTON_OUT_SCALE := 0.86
 ## The box in which the client fits the dragon of a prize (AnimatedUnit).
 const DRAGON_BOX := Vector2(400, 300)
 ## The client calls a page of its own for the invitations; the port cannot invite.
+const COST_NUMBER_SCALE := 2.0
 const NO_INVITE := "The port cannot invite friends. You can buy the horns."
 const HAMMER_FPS := 30.0
 ## A complete item gets a white GlowFilter with blur 30 and strength 3.
@@ -39,11 +40,13 @@ var _items: Dictionary = {}  # Item id -> its place (item1 to item6).
 var _bar: UiClip
 var _hammer: UiClip
 var _clock: Callable
+var _numbers: NumberLayer
 
 
 ## bar_ui and hammer_ui: the progress bar and the hammer (ui/forge_bar and
 ## ui/forge_hammer), or null. clock returns the time now.
-func _init(ui: UiLibrary, bar_ui: UiLibrary, hammer_ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, forge: IslandForge, clock: Callable) -> void:
+func _init(ui: UiLibrary, bar_ui: UiLibrary, hammer_ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, forge: IslandForge, clock: Callable, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	_forge = forge
 	_config = config
 	_ui = ui
@@ -163,8 +166,12 @@ func _add_item(clip: UiClip, entry: Dictionary, number: int) -> UiClip:
 		tooltip.show_label("right" if area.get_global_rect().position.x < get_viewport_rect().size.x / 2 else "left")
 		tooltip.set_text("txtInfo", _config.text(entry["tooltip"])))
 	area.mouse_exited.connect(func() -> void: clip.clip("tooltip").show_label("hidden"))
-	_scaled_button(clip.clip("btnBuy"), func() -> void: _result(_forge.buy(item_id, _clock.call())))
-	_scaled_button(clip.clip("btnSpeedup"), func() -> void: _result(_forge.speed_up(item_id, _clock.call())))
+	_scaled_button(clip.clip("btnBuy"), func() -> void:
+		var cost := _forge.price(item_id)
+		_result(_forge.buy(item_id, _clock.call()), clip.clip("btnBuy"), cost))
+	_scaled_button(clip.clip("btnSpeedup"), func() -> void:
+		var cost: int = _forge.item(item_id)["speedup_cost"]
+		_result(_forge.speed_up(item_id, _clock.call()), clip.clip("btnSpeedup"), cost))
 	_scaled_button(clip.clip("btn"), _action.bind(item_id))
 	return clip
 
@@ -198,18 +205,28 @@ func _play_hammer() -> void:
 func _buy_all() -> void:
 	if _forge.progress() >= _forge.total():
 		return
+	var cost := _forge.pack_price()
 	if _forge.buy_all().is_empty():
 		_no_cash()
 		return
+	_show_cost(_window.clip("btnBuyAll"), cost)
 	changed.emit()
 	_alert(_config.text("ISLAND_FORGE_REWARDS_GIVEN"))
 
 
-func _result(result: Village.Placement) -> void:
+func _result(result: Village.Placement, button: UiClip, cost: int) -> void:
 	if result == Village.Placement.NOT_ENOUGH_RESOURCES:
 		_no_cash()
 	elif result == Village.Placement.OK:
+		_show_cost(button, cost)
 		changed.emit()
+
+
+## The cash of a purchase floats up in green from the registration point of
+## its button, half its width to the right (PopupIslandForge).
+func _show_cost(button: UiClip, cost: int) -> void:
+	var at := button.get_global_transform_with_canvas() * Vector2(button.bounds().size.x / 2, 0)
+	_numbers.show_numbers(at, [[NumberParticle.TEXT_GREEN, "-%d" % cost]], COST_NUMBER_SCALE)
 
 
 ## The client offers its cash shop; the port has none.

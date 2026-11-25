@@ -28,7 +28,10 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| The client shows the numbers that float up (`NumberParticle`) at 70 places. The port shows them at one place only: the purchase of a pack. | Open | The others are collections, rewards, battles and purchases in other windows. `ui/number_particle.gd` makes them; each place needs a call. |
+| The floating numbers (`NumberParticle`): the client calls them at 68 places. The port calls them for all parts that it has; `ui/number_layer.gd` lists the rules. The calls of parts that the port does not have are missing: darts, Kompu, the Arabic deals, the admin panel, building upgrades, the sale of stored items, the Heavy Siege window, graveyard capacity, the population of the recruitment, the hurry-up help of friends, the Round Table rewards and the quest bars (`FauxBar`). | Limit | These parts are not in the port. |
+| The floating numbers of the actions of special buildings (graveyard, Soul Mixer, Time Machine, nests) start at the middle of the screen. The client starts some of them at a button of its window. | Port rule | The port shows these actions in a panel of the HUD, not in the client windows. |
+| The numbers of the purchase of the troll town do not show: the port loads the new town at once. | Port rule | |
+| "Teleport not ready yet" and the Dragon Hunter text show over the unit. The client adds half the stage size instead of the place of the map, so it shows them at a wrong place when the map has moved. | Port rule | A fault of the client. |
 | During a fight in the village, the store, World, Gift, the town selector, the goals, the shield, the empire name and the icons show "Wait until the fight in your village ends." In the client they work. Open windows hide during the fight. The top bars change at the end of the fight. | Port rule | The port fights on a copy of the village (`VillageBattle`) and writes the result at the end. |
 | During a fight in the village the box of the town quest (`mcTrolls`) does not show in the bottom bar. | Open | |
 | During a fight in the village the player cannot build. The fight screen shows the number of enemies; the client does not. | Port rule | Same cause as above. |
@@ -115,6 +118,7 @@ For each part: what was done, and what a comparison needs. "From the code" means
 |---|---|---|
 | Island Forge: the hammer animation, the prizes, Buy All, the pictures of found items, a fight on a forge island, the glow of a complete item | From the code; `village_check.gd` and `quest_check.gd`; port screenshots. The window, the dragon card and the island list were compared. | Ruffle with the event running and items given in the save. |
 | The timing of the floating numbers and of the glows of a super pack | Layout and colours compared; times not. | A Ruffle run in real time. Headless Ruffle runs too slowly. |
+| The floating numbers other than those of a pack: collections, purchases, sales, training, repairs, neighbour help, rewards, battle damage and heals, PvP loot, spells and the special-building windows | From the code; a port screenshot of the kinds of values and one of a fight in the village. | Ruffle runs of these actions. |
 | The place of the host on a stage larger than 760 × 600 | Not compared. | Ruffle in a larger page. |
 | The news window opening at the start of a session | From the code. It did not open in the Ruffle runs, because no window of a town quest opened first. | A Ruffle session that starts with a town quest window, at level 5 or higher. |
 | The tool tips and the menus of the HUD during a change of the window size | Not checked. | A port run only. |

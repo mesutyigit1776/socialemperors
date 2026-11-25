@@ -50,6 +50,17 @@ signal converted(unit: BattleFighter, new_team: BattleFighter.Team)
 signal sound_played(effect: int, delay_ms: int)
 ## A spell flashes the unit white (highlightElement of the client); only the view uses it.
 signal highlighted(unit: BattleFighter)
+## The client shows these values over the item as floating numbers (see
+## NumberParticle): the damage and the absorbed part of a hit, a heal, or a
+## text such as the name of a special attack. shift moves the start point on
+## the screen.
+signal numbers_shown(fighter: BattleFighter, values: Array, scale_factor: float, life: int, shift: Vector2)
+
+## An item shows the number of a hit or a heal at most once in this number of
+## frames (INTERVAL_FRAME_SHOW_PARTICLE_ATTACK of the client).
+const NUMBER_INTERVAL := 15
+## A critical hit shows its number larger.
+const CRITICAL_NUMBER_SCALE := 1.3
 
 ## The eagle and the ships make a sound when they get an order to walk (setMove).
 const MOVE_SOUNDS := {543: SoundEffect.MOVEMENT_EAGLE, 542: SoundEffect.MOVEMENT_SHIP, 582: SoundEffect.MOVEMENT_SHIP}
@@ -352,9 +363,15 @@ func attack(unit: BattleFighter, target: BattleFighter) -> void:
 func walk(unit: BattleFighter, tile: Vector2i) -> bool:
 	if unit.dead or unit.incapacitated:
 		return false
-	if unit.ability != null and unit.ability.teleports and unit.forced_action < 0 and frame >= unit.ability.teleport_ready:
-		_teleport(unit, tile)
-		return true
+	if unit.ability != null and unit.ability.teleports:
+		if unit.forced_action < 0 and frame >= unit.ability.teleport_ready:
+			unit.ability.teleport_message_shown = false
+			_teleport(unit, tile)
+			return true
+		# IsoSpecialUnit.setMove: once until the next teleport, then the unit walks.
+		if frame < unit.ability.teleport_ready and not unit.ability.teleport_message_shown:
+			unit.ability.teleport_message_shown = true
+			show_numbers(unit, [[NumberParticle.TEXT_RED, "Teleport not ready yet"]])
 	var nodes: Array[Vector2i] = []
 	if unit.flying:
 		nodes = _line(unit.tile, tile)
@@ -446,9 +463,28 @@ func heal(target: BattleFighter, amount: int, healer: BattleFighter = null) -> v
 		return
 	target.health = mini(target.health + amount, target.max_life())
 	healed.emit(target, amount)
+	if _may_show_number(target):
+		show_numbers(target, [[NumberParticle.HEAL, amount]])
 	if healer != null and healer.ability != null:
 		healer.ability.add_limit(self, healer, amount, true)
 		healer.ability.on_healing_done(self, healer, amount)
+
+
+## Shows values over the item as floating numbers, see numbers_shown. The
+## client keeps a number with a life of 0 frames, which never shows; the port
+## does not show it.
+func show_numbers(fighter: BattleFighter, values: Array, scale_factor := 1.0, life := NumberParticle.LIFE, shift := Vector2.ZERO) -> void:
+	if life > 0:
+		numbers_shown.emit(fighter, values, scale_factor, life, shift)
+
+
+## Whether the number of a hit or a heal of the item shows: at most one in
+## NUMBER_INTERVAL frames.
+func _may_show_number(item: BattleFighter) -> bool:
+	if frame - item.number_frame < NUMBER_INTERVAL:
+		return false
+	item.number_frame = frame
+	return true
 
 
 ## An attack of amount points on target. attacker can be null.
@@ -476,13 +512,17 @@ func receive_attack(target: BattleFighter, amount: int, attacker: BattleFighter)
 	var critical := rng.randf() * 100 < CRITICAL_PERCENT
 	var variance := rng.randf() * DAMAGE_VARIANCE - DAMAGE_VARIANCE / 2
 	points = (points + absf(variance)) * CRITICAL_MULTIPLIER if critical else points + variance
-	points -= floorf(points - points * shield_factor(target.tile, target.team) + 0.5)
+	var absorbed := floorf(points - points * shield_factor(target.tile, target.team) + 0.5)
+	points -= absorbed
 	points *= target.damage_factor
 	var damage := maxi(floori(points - target.defense + 0.5), 1)
 	target.health -= damage
 	if target.cannot_die:
 		target.health = maxi(target.health, 1)
 	hit.emit(target, attacker, damage, critical)
+	if _may_show_number(target):
+		var kind := NumberParticle.DAMAGE_ENEMY if target.team == BattleFighter.Team.ENEMY else NumberParticle.DAMAGE_SELF
+		show_numbers(target, [[kind, damage], [NumberParticle.ABSORBED, int(absorbed)]], CRITICAL_NUMBER_SCALE if critical else 1.0)
 	if attacker != null and attacker.ability != null:
 		attacker.ability.add_limit(self, attacker, damage, false)
 		attacker.ability.on_damage_done(self, attacker, damage)

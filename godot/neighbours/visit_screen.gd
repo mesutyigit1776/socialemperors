@@ -7,7 +7,8 @@ extends Node2D
 ## helps it, up to VillageSocial.ASSIST_CLICKS buildings in one visit, when
 ## the player can help the neighbour (VillageSocial.can_assist()) and did not
 ## help them in this session. A helped building gets a mark. The client shows
-## gold and experience over it, but does not give them in a visit; it gives
+## gold and experience over it (ASSIST_CLICK_GOLD and ASSIST_CLICK_XP), but
+## does not give them in a visit; it gives
 ## honour for the fifth building, which the owner applies at the end
 ## (VillageSocial.assist_neighbour()).
 
@@ -21,6 +22,9 @@ const HIDDEN := ["barraAttackArriba", "questProgressButton", "panelCollection", 
 		"bgBar/recuadroInfo"]
 ## The frame of topLeft for a visit (GameMode.NEIGHBOUR).
 const NEIGHBOUR_FRAME := 1
+## The numbers over a helped building (ASSIST_CLICK_REWARD_GOLD and _XP of the client).
+const ASSIST_CLICK_GOLD := 10
+const ASSIST_CLICK_XP := 3
 
 var _neighbour: Village
 var _config: GameConfig
@@ -32,10 +36,12 @@ var _camera := MapCamera.new()
 var _gui: UiClip
 var _top_y: Dictionary
 var _message := Label.new()
+var _numbers: NumberLayer
 
 
 ## entry: the entry of the neighbour bar, see NeighbourBar.entries().
-func _init(ui: UiLibrary, neighbour: Village, entry: Dictionary, can_help: bool, config: GameConfig, sprites: SpriteLibrary, start_position: Vector2) -> void:
+func _init(ui: UiLibrary, neighbour: Village, entry: Dictionary, can_help: bool, config: GameConfig, sprites: SpriteLibrary, start_position: Vector2, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	_neighbour = neighbour
 	_config = config
 	_can_help = can_help
@@ -106,8 +112,11 @@ func _on_map_clicked(_tile: Vector2i, placed: Village.PlacedItem) -> void:
 	_marked.append(placed)
 	_view.show_marks(_marked, [])
 	_message.text = "You helped the %s." % _config.get_item(placed.item_id).name
+	var values := [["g", ASSIST_CLICK_GOLD], [NumberParticle.XP, ASSIST_CLICK_XP]]
 	if _clicks.size() == VillageSocial.ASSIST_CLICKS:
 		_message.text += " You get %d honour." % _config.honour_help_friend
+		values.append([NumberParticle.HONOR, _config.honour_help_friend])
+	_numbers.show_numbers(_view.screen_point(placed), values)
 	helped.emit()
 	_show_status()
 

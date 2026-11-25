@@ -42,7 +42,7 @@ var _spells := {}  # Spell id -> BattleSpell of this fight.
 ## camera_position: where the village camera was, in map pixels.
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
 ## hud: the HUD of the village, whose bottom bar the bar of the fight shows.
-func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2, neighbours: NeighbourBar, hud: VillageHud) -> void:
+func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, camera_position: Vector2, neighbours: NeighbourBar, hud: VillageHud, numbers: NumberLayer) -> void:
 	battle = village_battle
 	_village = village
 	_config = config
@@ -55,7 +55,7 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	_camera.position = camera_position
 	add_child(_camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
-	_screen = BattleScreen.new(battle.sim, _view)
+	_screen = BattleScreen.new(battle.sim, _view, numbers)
 	add_child(_screen)
 	_screen.stepped.connect(_on_stepped)
 	# The client plays the battle music while the items of the player are
@@ -83,7 +83,7 @@ func _init(village_battle: VillageBattle, village: Village, ui: UiLibrary, cast_
 	_windows.add_child(_bar)
 	if SpellBook.is_shown(village):
 		# After the battle screen, so that it gets the mouse first while the player aims.
-		var book := SpellBook.new(ui, cast_ui, config, village, _windows)
+		var book := SpellBook.new(ui, cast_ui, config, village, _windows, numbers)
 		book.cast_on = _cast
 		book.marker_layer = _view.under_items()
 		book.changed.connect(func() -> void: village_changed.emit())

@@ -23,6 +23,18 @@ class Outcome:
 	var redraw: bool  ## The land or the items changed: the caller draws the map again.
 	var place: GameConfig.ItemDef
 	var sound := -1  ## A sound of SoundEffect that the client plays for the action, or -1.
+	## The floating numbers that the client shows for the action (see
+	## NumberParticle): the values, where they start, their scale and life.
+	var numbers: Array = []
+	var numbers_at := NumbersAt.MIDDLE
+	var number_scale := 1.0
+	var number_frames := 30
+
+
+## Where the numbers of an action start. The client starts some of them at a
+## button of its window; the port, which shows the actions in a panel, starts
+## those at the middle of the screen.
+enum NumbersAt { MIDDLE, BUILDING, LOW }  ## LOW: the middle, 130 pixels above the bottom.
 
 
 ## The land area for View.LAND, see IsoGrid.land_area_number().
@@ -80,9 +92,11 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 				outcome.text = "You completed %s. %s is in your item store." % [_collection_name(argument), _config.get_item(_config.collection_rewards[argument]).name]
 				outcome.sound = SoundEffect.LEVEL_UP  # PopUpCollectionComplete
 		"activate":
+			var before := _village.get_resource(parts[1])
 			result = _village.activate_nest(building, parts[1])
 			if result == Village.Placement.OK:
 				outcome.text = "%s is active. Care for %s." % [name, _village.nest_unit(building).name]
+				_set_numbers(outcome, [[parts[1], _village.get_resource(parts[1]) - before]], NumbersAt.MIDDLE, 2.0)  # PopupInactiveNest
 		"care":
 			var unit := _village.nest_unit(building)
 			result = _village.care_for_nest(building, now)
@@ -124,17 +138,23 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			if result == Village.Placement.OK:
 				outcome.text = "%s came back." % _config.get_item(argument).name
 				outcome.sound = SoundEffect.COLLECTION
+				_set_numbers(outcome, [[NumberParticle.TEXT_RED, "-%d" % _config.get_item(argument).potion]])  # PopupGraveyard
 		"potions":
 			result = _village.buy_potions()
 			if result == Village.Placement.OK:
 				outcome.text = "You bought %d potions." % _config.graveyard_potions
+				# PopupBuyGraveyardPotion
+				_set_numbers(outcome, [[NumberParticle.TEXT_BLACK, "+%d potions" % _config.graveyard_potions], ["c", "-%d" % _config.graveyard_potions_price]], NumbersAt.MIDDLE, 2.0)
 		"hero":
 			result = _village.resurrect_hero(building, argument, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s came back." % _config.get_item(argument).name
 				outcome.sound = SoundEffect.COLLECTION
 		"power_up":
+			var cash := _village.soul_power_up_cash(building)
 			result = _village.power_up_soul_mix(building, _rng)
+			if result == Village.Placement.OK:
+				_set_numbers(outcome, [[NumberParticle.TEXT_GREEN, "-%d" % cash]], NumbersAt.MIDDLE, 2.0)  # PopupSoulMixer
 			if result == Village.Placement.OK:
 				outcome.text = "The result is now %s." % _village.soul_mix_result(building, _rng).name
 		"mix":
@@ -143,9 +163,11 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			if result == Village.Placement.OK:
 				outcome.text = "%s mixes %s." % [name, unit.name]
 		"mix_finish":
+			var cash := _village.speed_up_cost(building, now)
 			result = Village.Placement.OK if _village.speed_up_training(building, now) == Village.Training.OK else Village.Placement.NOT_ENOUGH_RESOURCES
 			if result == Village.Placement.OK:
 				outcome.text = "The mix is finished."
+				_set_numbers(outcome, [[NumberParticle.TEXT_GREEN, "-%d" % cash]], NumbersAt.MIDDLE, 2.0)  # PopupSoulMixer
 		"mix_take":
 			var unit := _config.get_item(_village.soul_mix_unit_id(building))
 			result = _village.take_soul_mix(building, now)
@@ -155,6 +177,7 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.buy_time_packet(argument)
 			if result == Village.Placement.OK:
 				outcome.text = "You bought a packet of %s." % _hours_text(_config.time_packets[argument][0])
+				_set_numbers(outcome, [["c", -_config.time_packets[argument][1]]])  # PopupSelectTime
 		"time_use":
 			result = _village.use_time_packet(argument)
 			if result == Village.Placement.OK:
@@ -169,6 +192,9 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.do_temple_step(argument, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s: step %d of %d is done." % [name, _village.temple_steps_done().size(), Village.TEMPLE_STEPS]
+				if argument < Village.TEMPLE_OFFERINGS.size():
+					var offering: Array = Village.TEMPLE_OFFERINGS[argument]
+					_set_numbers(outcome, [[offering[0], -offering[1]]], NumbersAt.LOW)  # PopupBahamutSupremeInvocationTemple
 		"temple_wait":
 			result = _village.end_temple_wait(now)
 			if result == Village.Placement.OK:
@@ -211,6 +237,7 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			result = _village.collect_allies_market(building, now)
 			if result == Village.Placement.OK:
 				outcome.text = "%s gave %d %s." % [name, amount, VillageHud.RESOURCE_NAMES[code]]
+				_set_numbers(outcome, [[code, amount]], NumbersAt.BUILDING)  # IsoElement.collect
 		"recruit_prize":
 			var prizes := _village.open_recruitment_prizes().filter(func(prize: Dictionary) -> bool: return prize["id"] == argument)
 			result = _village.take_recruitment_prize(building, prizes[0]) if not prizes.is_empty() else Village.Placement.NOT_ALLOWED
@@ -231,6 +258,12 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 		outcome.text = "There is no free place next to %s." % name if result == Village.Placement.OCCUPIED \
 				else VillageHud.PLACEMENT_MESSAGES.get(result, "")
 	return outcome
+
+
+func _set_numbers(outcome: Outcome, values: Array, at := NumbersAt.MIDDLE, scale_factor := 1.0) -> void:
+	outcome.numbers = values
+	outcome.numbers_at = at
+	outcome.number_scale = scale_factor
 
 
 func _describe_building(building: Village.PlacedItem, now: int) -> Array:

@@ -25,6 +25,18 @@ extends Node2D
 ## spell book and its windows of the village are over the map, under them.
 const WINDOW_LAYER := 10
 const SPELL_LAYER := 5
+const NUMBER_LAYER := 15  ## The floating numbers, over the windows (NumberLayer).
+## The numbers of a purchase or a reward in a window of the client.
+const WINDOW_NUMBER_SCALE := 2.0
+## The gold of a goal floats up from NumberLayer.low(), large and slowly.
+const GOAL_NUMBER_SCALE := 3.0
+const GOAL_NUMBER_FRAMES := 90
+## The client shows the login bonus at this point of the stage.
+const DAILY_BONUS_NUMBER_POINT := Vector2(300, 300)
+## The number of a collected token (Token.onClick).
+const TOKEN_NUMBER_SCALE := 1.5
+const TOKEN_NUMBER_FRAMES := 60
+const FARM_WOOD_SHIFT := Vector2(0, 50)  ## The wood that a farm uses floats up from 50 pixels below the farm.
 const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
 const TOURNAMENT_LEVEL := 15  ## MIN_LEVEL_TOURNAMENT of the client.
 const NEWS_LEVEL := 5  ## The client opens the news among the windows of the start from this level.
@@ -59,6 +71,7 @@ var _effects: SpriteLibrary  # The shots, effects and spells of battles.
 var _spell_layer := CanvasLayer.new()
 var _spell_book: SpellBook
 var _windows := CanvasLayer.new()  # The windows of the quests, over the village bar.
+var _numbers: NumberLayer  # The floating numbers.
 var _quest_screen: QuestScreen
 var _survival_screen: SurvivalScreen
 var _tournament_screen: TournamentScreen
@@ -104,6 +117,8 @@ var _forge: ForgeEvent  # The Island Forge, or null when the configuration has n
 ## The neighbours that the player visited in this session: the client lets the
 ## player help each neighbour once in a session (arFriendsAssisted).
 static var _visited := {}
+## The alert of a farm without wood showed in this session (bPopUpRepoblarGranjaShowed).
+static var _farm_alert_shown := false
 var _visit: VisitScreen
 var _spy: SpyScreen
 var _enemy: Dictionary = {}  # The enemy of the spy screen: {"pid", "village", "loot"}.
@@ -188,6 +203,7 @@ func _ready() -> void:
 		_orders = UnitOrders.new(_village, _view, _config, _rng)
 		_orders.village_changed.connect(_on_units_changed)
 		_orders.order_failed.connect(func(text: String) -> void: _hud.show_message(text))
+		_orders.numbers_shown.connect(func(placed: Village.PlacedItem, values: Array) -> void: _numbers.show_numbers(_view.screen_point(placed), values))
 		add_child(_orders)
 		_camera = MapCamera.new()
 		_camera.position = _start_position(_village)
@@ -254,6 +270,9 @@ func _ready() -> void:
 		_update_neighbour_bar()
 		_windows.layer = WINDOW_LAYER
 		add_child(_windows)
+		_numbers = NumberLayer.new(_ui, NUMBER_LAYER)
+		_numbers.absorbed_text = _config.text("AUX_ABSORBER")
+		add_child(_numbers)
 		_spell_layer.layer = SPELL_LAYER
 		add_child(_spell_layer)
 		_add_spell_book()
@@ -264,7 +283,7 @@ func _ready() -> void:
 		_town_quests = TownQuests.new(_village, _config, _rng)
 		var island_forge := IslandForge.from_settings(_config, _village, SoundPlayer.SETTINGS_FILE)
 		if island_forge != null:
-			_forge = ForgeEvent.new(island_forge, _village, _view, _hud, _ui, data_dir, _frames, _config, _sprites, _rng, _windows, _now)
+			_forge = ForgeEvent.new(island_forge, _village, _view, _hud, _ui, data_dir, _frames, _config, _sprites, _rng, _windows, _now, _numbers)
 			_forge.changed.connect(func() -> void:
 				_save()
 				_hud.refresh(_village))
@@ -360,7 +379,7 @@ func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 	camera.position = _start_position(map)
 	add_child(camera)
 	# After the camera, so that it gets the mouse first: a selection box does not move the map.
-	add_child(BattleScreen.new(battle, view))
+	add_child(BattleScreen.new(battle, view, null))
 
 
 ## The spell book of the village, when the import has the windows of the
@@ -371,7 +390,7 @@ func _start_battle(map_path: String, effects: SpriteLibrary) -> void:
 func _add_spell_book() -> void:
 	if not FileAccess.file_exists(_data_dir.path_join("ui/cast/layout.json")) or not _load_quest_graphics():
 		return
-	_spell_book = SpellBook.new(_ui, _cast_ui, _config, _village, _spell_layer)
+	_spell_book = SpellBook.new(_ui, _cast_ui, _config, _village, _spell_layer, _numbers)
 	_spell_book.cast_on = func(spell: GameConfig.SpellDef, tile: Vector2i, _level: int) -> void:
 		var sprite := _effects.get_sprite(spell.img_name)
 		if sprite == null:
@@ -429,7 +448,7 @@ func _start_survival(map_id: String) -> void:
 	var survival := SurvivalBattle.create(SurvivalMap.find(map_id), map, army, _config, _sprites, _rng, _village.get_level())
 	# The client plays the music of the quests in survival; it never plays its survival music.
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
-	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_survival_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(survival.sim)
 	_survival_screen.village_changed.connect(_save)
@@ -502,7 +521,7 @@ func _start_tournament_match(bot_index: int) -> void:
 	var bot: Dictionary = _config.tournament_bots[bot_index]
 	var bot_places: Array[int] = bot["team"]
 	var match_battle := TournamentBattle.create(map, places, _village.tournament_formation(), bot_places, 0, _config, _sprites, _rng, _village.get_level())
-	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_tournament_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(match_battle.sim)
 	_tournament_screen.village_changed.connect(_save)
@@ -565,7 +584,7 @@ func _land(quest_id: String, army: Dictionary) -> void:
 		return
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
-	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_quest_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(quest.sim)
 	_quest_screen.village_changed.connect(_save)
@@ -833,7 +852,10 @@ func _on_train_requested() -> void:
 	var unit := _village.trained_unit(_selected)
 	if not _tutorial.allows_training(unit):
 		return
+	var costs := _village.training_costs(unit)
 	var result := _village.train(_selected, _now())
+	if result == Village.Training.OK:
+		_numbers.show_numbers(_view.screen_point(_selected), [[unit.cost_type, -costs[unit.cost_type]], ["f", -costs.get("f", 0) if unit.cost_type != "f" else 0]])
 	var texts := {
 		Village.Training.QUEUE_FULL: "The training queue is full (%d units)." % Village.MAX_QUEUE,
 		Village.Training.POPULATION_FULL: "The population is full. Build houses for more population.",
@@ -977,6 +999,9 @@ func _collect_town_quest(placed: Village.PlacedItem) -> void:
 	var ended_text := _config.text(_town_quests.text_name("end_title"))
 	var ended_body := _config.text(_town_quests.text_name("end_text"))
 	var ended_id := _town_quests.quest_id()
+	var at := _view.screen_point(placed)
+	var codes := ["g", "f", "s"]
+	var before := codes.map(_village.get_resource) + [_village.get_xp()]
 	var result := _town_quests.collect(placed, _now())
 	if result.is_empty():
 		_select(placed)
@@ -989,6 +1014,12 @@ func _collect_town_quest(placed: Village.PlacedItem) -> void:
 		_hud.show_message(result)
 		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
 	else:
+		# The treasure gives gold, food, stone and experience (IsoElement.collect).
+		var after := codes.map(_village.get_resource) + [_village.get_xp()]
+		var values := []
+		for i in after.size():
+			values.append([(codes + [NumberParticle.XP])[i], after[i] - before[i]])
+		_numbers.show_numbers(at, values)
 		_open_town_quest_window(ended_text, ended_body, ended_id, true)
 		_end_town_quest(old_level)
 		_check_town_quest()
@@ -1059,9 +1090,17 @@ func _play_rider_game(id: String) -> void:
 
 
 func _run_action(id: String, building: Village.PlacedItem) -> void:
+	var at := _view.screen_point(building) if building != null else Vector2.ZERO
 	var outcome := _specials.run(id, building, _now())
 	if outcome.sound >= 0:
 		SoundPlayer.play(outcome.sound)
+	if not outcome.numbers.is_empty():
+		match outcome.numbers_at:
+			SpecialActions.NumbersAt.MIDDLE:
+				at = _numbers.middle()
+			SpecialActions.NumbersAt.LOW:
+				at = _numbers.low()
+		_numbers.show_numbers(at, outcome.numbers, outcome.number_scale, outcome.number_frames)
 	if outcome.place != null:
 		_select(null)
 		_placing_stored = _view.begin_placement(outcome.place)
@@ -1082,6 +1121,16 @@ func _run_action(id: String, building: Village.PlacedItem) -> void:
 			_panel = SpecialActions.View.NONE
 	_update_production()
 	_hud.show_message(outcome.text)
+
+
+## A time as GameStatic.dhms3 of the client writes it, for example "1 h 30 min".
+static func _duration_text(seconds: int) -> String:
+	var parts: Array[String] = []
+	for unit: Array in [[86400, " d"], [3600, " h"], [60, " min"], [1, " sec"]]:
+		if seconds / unit[0] > 0:
+			parts.append(str(seconds / unit[0]) + unit[1])
+		seconds %= unit[0]
+	return " ".join(parts)
 
 
 ## Loads the saved village again, as the client does with loadMap().
@@ -1109,7 +1158,18 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	var product := _product_text(placed)
 	var cost := _village.collect_cost(placed)
 	var cash_before := _village.get_resource("c")
+	# The client shows the numbers at the place of the building before it goes away.
+	var at := _view.screen_point(placed)
+	var amount := 0 if _village.bred_unit(placed) != null or placed.item_id == Village.TREASURE_MINE else _village.collect_amount(placed)
 	var result := _village.hurry(placed, _now()) if hurry else _village.collect(placed, _now())
+	if result == Village.Production.OK:
+		# IsoElement.collect: the wood of a farm 50 pixels lower, then the
+		# product, the experience and the cash of a hurry, which shows as a
+		# positive number.
+		_numbers.show_numbers(at + FARM_WOOD_SHIFT, [["w", -cost]])
+		_numbers.show_numbers(at, [[item.collect_type, amount], [NumberParticle.XP, item.collect_xp], ["c", cash_before - _village.get_resource("c")]])
+	elif result == Village.Production.FARM_REMOVED and _farm_alert_shown:
+		_numbers.show_numbers(at + FARM_WOOD_SHIFT, [["w", "Not Enough Wood!"]], 1.5, 60)
 	match result:
 		Village.Production.OK:
 			if placed.item_id == Village.TREASURE_MINE:
@@ -1141,7 +1201,10 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 	if not _save():
 		return
 	if result == Village.Production.FARM_REMOVED:
-		_hud.show_message("%s needs %d wood to collect. You do not have it, so the farm is gone." % [item.name, cost])
+		# The client shows its alert once in a session, then the floating text.
+		if not _farm_alert_shown:
+			_hud.show_message("%s needs %d wood to collect. You do not have it, so the farm is gone." % [item.name, cost])
+		_farm_alert_shown = true
 	else:
 		var text := "Collected %s from %s." % [product, item.name]
 		if cost > 0:
@@ -1154,6 +1217,9 @@ func _collect(placed: Village.PlacedItem, hurry: bool = false) -> void:
 func _on_work_time_chosen(work_time: int) -> void:
 	if _selected == null or _village.start_work(_selected, work_time, _now()) != Village.Production.OK:
 		return
+	# PopupCollect: "Working" and the time, as GameStatic.dhms3 writes it.
+	var text := "%s %s" % [_config.text("WORKING"), _duration_text(Village.WORK_MINUTES[work_time] * 60)]
+	_numbers.show_numbers(_view.screen_point(_selected), [[NumberParticle.TIME, text]], TOKEN_NUMBER_SCALE, TOKEN_NUMBER_FRAMES)
 	_update_production()
 	if _save():
 		_hud.show_message("%s works for %d minutes." % [_config.get_item(_selected.item_id).name, Village.WORK_MINUTES[work_time]])
@@ -1188,10 +1254,13 @@ func _on_sell_confirmed() -> void:
 		return
 	var placed := _selected
 	var item := _config.get_item(placed.item_id)
+	var at := _view.screen_point(placed)
+	var before := _village.get_resource(item.cost_type)
 	var result := _village.sell(placed, _now())
 	if result != Village.Placement.OK:
 		_hud.show_placement_result(result)
 		return
+	_numbers.show_numbers(at, [[item.cost_type, _village.get_resource(item.cost_type) - before]])
 	_select(null)
 	_view.sync_items()
 	_update_store()
@@ -1237,6 +1306,9 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 		return
 	_view.end_placement()
 	_view.add_placed(_village.items.back())
+	if not _placing_stored:
+		# The client shows the cost as a positive number.
+		_numbers.show_numbers(_view.screen_point(_village.items.back()), [[NumberParticle.XP, item.xp], [item.cost_type, item.cost]])
 	_start_construction(_village.items.back(), item)
 	_update_store()
 	if not _save():
@@ -1400,7 +1472,7 @@ func _show_pack_numbers(pack: Dictionary, choice: int, frames: int) -> void:
 	for code: String in ["g", "s", "f", "w"]:
 		values.append([code, pack["resources"][code]])
 	values.append(["m", pack["mana"]])
-	_windows.add_child(NumberParticle.new(_ui, values, PACK_NUMBER_SCALE, frames))
+	_numbers.show_numbers(_numbers.middle(), values, PACK_NUMBER_SCALE, frames)
 
 
 ## The client opens the window of the login bonus when it loads the game, or
@@ -1414,6 +1486,12 @@ func _show_daily_bonus() -> void:
 		_village.add_daily_bonus_unit(int(window.reward()["u"]))
 		_save()
 	window.closed.connect(func(reward: Dictionary) -> void:
+		# DailyBonusManager.showReward: the resources and potions at a fixed point.
+		var values := []
+		for code: String in reward:
+			if code in ["f", "g", "s", "w", "c", "p"]:
+				values.append([code, int(reward[code])])
+		_numbers.show_numbers(DAILY_BONUS_NUMBER_POINT, values, WINDOW_NUMBER_SCALE, TOKEN_NUMBER_FRAMES)
 		var parts: Array[String] = []
 		for code: String in reward:
 			if code == "u":
@@ -1497,7 +1575,7 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 	_orders.stop_walks()
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
 	_goals.watch_battle(battle.sim)
-	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar(), _hud)
+	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar(), _hud, _numbers)
 	_village_fight.map_view().show_production_of(_village, _now)
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _village_fight.map_view(), false)
@@ -1591,6 +1669,8 @@ func _on_tutorial_finished() -> void:
 func _on_goal_completed(goal: GameConfig.GoalDef) -> void:
 	_goal_done = true
 	if _hud != null:
+		# AbstractGoal.onReward
+		_numbers.show_numbers(_numbers.low(), [["g", goal.reward]], GOAL_NUMBER_SCALE, GOAL_NUMBER_FRAMES)
 		_hud.show_message("%s %s. You get %d gold." % [_config.text("POPUP_GOAL_COMPLETED").strip_edges(), _goals.text(goal.title), goal.reward])
 	if _goal_window != null and is_instance_valid(_goal_window):
 		_goal_window.show_list()
@@ -1823,7 +1903,7 @@ func _visit_neighbour(entry: Dictionary) -> void:
 		return
 	# The host has no help mark in the client, but can be helped once in a session.
 	var can_help: bool = (entry["host"] or entry["assist"]) and not _visited.has(pid)
-	_visit = VisitScreen.new(_ui, neighbour, entry, can_help, _config, _sprites, _start_position(neighbour))
+	_visit = VisitScreen.new(_ui, neighbour, entry, can_help, _config, _sprites, _start_position(neighbour), _numbers)
 	_visit.helped.connect(func() -> void: _record(VillageEvent.Kind.FRIEND_ASSISTED, {}))
 	_visit.closed.connect(_on_visit_closed.bind(pid))
 	_select(null)
@@ -1862,6 +1942,13 @@ func _offer_received_assists() -> void:
 		var helped := _village.accept_assist(pid)
 		if not helped.is_empty():
 			SoundPlayer.play(SoundEffect.COLLECTION)  # collectHurryUp
+		# The cart of the client (IACartAlly) leaves a resource token and an
+		# experience token at each building; each shows its number.
+		for placed in helped:
+			var item := _config.get_item(placed.item_id)
+			var at := _view.screen_point(placed)
+			_numbers.show_numbers(at, [[item.collect_type, _village.received_assist_amount(item)]], TOKEN_NUMBER_SCALE, TOKEN_NUMBER_FRAMES)
+			_numbers.show_numbers(at, [[NumberParticle.XP, Village.RECEIVED_ASSIST_XP]], TOKEN_NUMBER_SCALE, TOKEN_NUMBER_FRAMES)
 		_hud.show_message("%s helped %d of your buildings." % [name, helped.size()])
 		_after_assist())
 	window.declined.connect(func() -> void:
@@ -1902,6 +1989,9 @@ func _open_shields() -> void:
 		var result := _village.buy_shield(shield_id, _now())
 		_hud.show_placement_result(result)
 		if result == Village.Placement.OK:
+			# ShieldManager.buyShield
+			var shield: Dictionary = _config.pvp_shields.filter(func(entry: Dictionary) -> bool: return entry["id"] == shield_id)[0]
+			_numbers.show_numbers(_numbers.middle(), [[shield["price_type"], "-%d" % shield["price"]]], WINDOW_NUMBER_SCALE)
 			_save()
 			_hud.refresh(_village)
 		window.show_shields())
@@ -1968,11 +2058,14 @@ func _travel(index: int, message: String) -> void:
 ## finds (the server's "pvp/enemy"), or a message.
 func _search_enemy() -> void:
 	_close_spy()
+	var cost := _village.pvp_search_cost()
 	var result := _village.pay_pvp_search()
 	if result != Village.Placement.OK:
 		_show_village(true)
 		_hud.show_placement_result(result)
 		return
+	# PopupPvp.onSearchEnemy and StateSpy.findNextEnemy
+	_numbers.show_numbers(_numbers.middle(), [["g", "-%d" % cost]], WINDOW_NUMBER_SCALE)
 	_save()
 	var pid := _neighbours.find_enemy(_village.player_id(), _village.get_level(), _now(), _rng)
 	var enemy := _neighbours.load_village(pid, _now()) if not pid.is_empty() else null
@@ -2046,7 +2139,7 @@ func _start_attack(start_tile: Vector2i) -> void:
 	var battle := PvpBattle.create(_enemy["village"], army, _enemy["loot"], start_tile, _config, _sprites, _rng, _village.get_level())
 	_goals.watch_battle(battle.sim)
 	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
-	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar(), _numbers)
 	_pvp_screen.map_view().show_production_of(_enemy["village"], _load_time())
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _pvp_screen.map_view(), true)

@@ -35,7 +35,6 @@ const PANEL_LIMIT_POSITION := Vector2(-60, 4)
 const BOTTOM_MARGIN := 70.0
 const MASK_COLOR := Color(0, 0, 0, 0.6)
 const LIMIT_COLOR := Color(1.0, 0.8, 0.1)
-const TEXT_SECONDS := 1.5
 
 var _sim: BattleSim
 var _ui: UiLibrary
@@ -47,8 +46,6 @@ var _in_panel := false
 var _size := BUTTON_SIZE
 var _masks := {}  # Button id -> ColorRect.
 var _bars := {}  # Button id -> ColorRect (the limit bar).
-var _message := Label.new()
-var _message_seconds := 0.0
 
 
 func _init(sim: BattleSim, ui: UiLibrary, config: GameConfig) -> void:
@@ -59,11 +56,6 @@ func _init(sim: BattleSim, ui: UiLibrary, config: GameConfig) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_row)
-	_message.add_theme_color_override("font_outline_color", Color.BLACK)
-	_message.add_theme_constant_override("outline_size", 4)
-	_message.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_message.visible = false
-	add_child(_message)
 
 
 func _ready() -> void:
@@ -172,32 +164,18 @@ func _on_pressed(id: int) -> void:
 			idle_pressed.emit(id)
 		return
 	var button: BattleAbility.UnitButton = _unit.ability.buttons[id]
+	# PortraitSpecialAttack: the name of the attack floats over the unit for
+	# the cast time, a refusal in red for the normal life.
 	if _sim.use_button(_unit, id):
-		_say(button.name, Color.BLACK)
+		_sim.show_numbers(_unit, [[NumberParticle.TEXT_BLACK, button.name]], 1.0, button.cast_seconds * BattleSim.FRAMES_PER_SECOND)
 	elif _unit.ability.button_state != BattleAbility.ButtonState.IDLE and id != BattleAbility.LIMIT_BUTTON:
-		_say(_config.text("AUX_NO_ESTA_LISTO"), Color.RED)
-	else:
+		_sim.show_numbers(_unit, [[NumberParticle.TEXT_RED, _config.text("AUX_NO_ESTA_LISTO")]])
+	elif button.uses != 0:
 		# The text can hold text keys of the client, as "4 MINIONS_MAX".
-		_say(" ".join(Array(button.cant_text.split(" ")).map(_config.text)), Color.RED)
+		_sim.show_numbers(_unit, [[NumberParticle.TEXT_RED, " ".join(Array(button.cant_text.split(" ")).map(_config.text))]])
 
 
-func _say(text: String, colour: Color) -> void:
-	if text == "":
-		return
-	_message.text = text
-	_message.add_theme_color_override("font_color", colour)
-	_message.visible = true
-	_message_seconds = TEXT_SECONDS
-
-
-func _process(delta: float) -> void:
-	if _message_seconds > 0:
-		_message_seconds -= delta
-		_message.visible = _message_seconds > 0
-		if _unit != null:
-			var camera := get_viewport().get_camera_2d()
-			var screen_point := get_viewport().get_canvas_transform() * _unit.position if camera != null else _unit.position
-			_message.position = screen_point - Vector2(_message.size.x / 2, 90)
+func _process(_delta: float) -> void:
 	if _unit == null:
 		return
 	if _unit.dead:

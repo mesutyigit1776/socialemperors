@@ -33,6 +33,7 @@ var _config: GameConfig
 var _view := BattleView.new()
 var _camera := MapCamera.new()
 var _screen: BattleScreen
+var _numbers: NumberLayer
 var _windows := CanvasLayer.new()
 var _bar: UiClip
 var _relic_bar_width := 0.0
@@ -44,7 +45,8 @@ var _spells := {}
 
 
 ## neighbours: the neighbour bar of the bottom bar, see BattleBar.
-func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar) -> void:
+func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: UiLibrary, spell_graphics: Dictionary, config: GameConfig, sprites: SpriteLibrary, effects: SpriteLibrary, neighbours: NeighbourBar, numbers: NumberLayer) -> void:
+	_numbers = numbers
 	battle = survival
 	_village = village
 	_ui = ui
@@ -57,7 +59,7 @@ func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: U
 	_view.show_battle(battle.sim, config, sprites, effects, SurvivalMap.LANDS[battle.map.index], battle.map.land_frames(), ui)
 	_camera.position = IsoGrid.tile_to_map(SurvivalMap.START_TILE)
 	add_child(_camera)
-	_screen = BattleScreen.new(battle.sim, _view)
+	_screen = BattleScreen.new(battle.sim, _view, numbers)
 	_screen.paused = true
 	add_child(_screen)
 	_screen.stepped.connect(battle.update)
@@ -124,7 +126,7 @@ func _start() -> void:
 	_bar.clip("mcImageSelected").add_child(picture)
 	_windows.add_child(_bar)
 	if SpellBook.is_shown(_village):
-		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows)
+		var book := SpellBook.new(_ui, _cast_ui, _config, _village, _windows, _numbers)
 		book.cast_on = _cast
 		book.marker_layer = _view.under_items()
 		book.changed.connect(func() -> void: village_changed.emit())

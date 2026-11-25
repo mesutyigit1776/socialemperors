@@ -149,6 +149,14 @@ func add_placed(placed: Village.PlacedItem) -> void:
 		_nodes[placed] = node
 
 
+## The point of the screen where the item shows now (the registration point
+## of its graphic), for the floating numbers over it.
+func screen_point(placed: Village.PlacedItem) -> Vector2:
+	if _nodes.has(placed):
+		return _nodes[placed].get_global_transform_with_canvas().origin
+	return get_global_transform_with_canvas() * IsoGrid.tile_to_map(placed.tile)
+
+
 ## Draws the item at its tile and in its direction after Village.move() or Village.rotate().
 func update_placed(placed: Village.PlacedItem) -> void:
 	if not _nodes.has(placed):

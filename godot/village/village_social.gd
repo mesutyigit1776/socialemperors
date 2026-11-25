@@ -92,11 +92,16 @@ func accept_assist(pid: String) -> Array[PlacedItem]:
 		var item := _config.get_item(int(entry[2]))
 		if placed == null or placed.item_id != int(entry[2]) or placed.tile != Vector2i(int(entry[0]), int(entry[1])) or not is_assistable(item):
 			continue
-		_add_resource(item.collect_type, floori(item.collect * RECEIVED_ASSIST_SHARE))
+		_add_resource(item.collect_type, received_assist_amount(item))
 		_add_xp(RECEIVED_ASSIST_XP)
 		helped.append(placed)
 	decline_assist(pid)
 	return helped
+
+
+## What the help of a neighbour gives from a building, with RECEIVED_ASSIST_XP.
+func received_assist_amount(item: GameConfig.ItemDef) -> int:
+	return floori(item.collect * RECEIVED_ASSIST_SHARE)
 
 
 ## The help of the neighbour leaves the save without effect.

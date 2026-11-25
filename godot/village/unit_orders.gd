@@ -17,6 +17,8 @@ extends Node
 signal village_changed(message: String, old_level: int)
 ## A unit could not do what the player ordered.
 signal order_failed(message: String)
+## The client shows these values over the item as floating numbers (see NumberParticle).
+signal numbers_shown(placed: Village.PlacedItem, values: Array)
 
 ## Walks move in frames of the client, see IsoGrid.step_toward().
 const FRAME_SECONDS := 1.0 / 30.0
@@ -189,7 +191,7 @@ func _update_repairs() -> void:
 		var building: Village.PlacedItem = _repairs[unit]
 		if not unit in _village.items or not building in _village.items:
 			_repairs.erase(unit)
-		elif _village.repair(building):
+		elif _repair(building):
 			_repairs.erase(unit)
 			village_changed.emit("%s repaired %s." % [_config.get_item(unit.item_id).name, _config.get_item(building.item_id).name], _village.get_level())
 
@@ -207,7 +209,15 @@ func _update_springs(delta: float) -> void:
 		var unit := _village.spring_target(placed)
 		if unit != null:
 			_village.heal(placed, unit)
+			numbers_shown.emit(unit, [[NumberParticle.HEAL, item.attack]])
 			village_changed.emit("", _village.get_level())
+
+
+## One repair step, which the client shows over the building (IsoBuilding.updateRepair).
+func _repair(building: Village.PlacedItem) -> bool:
+	if _village.is_damaged(building):
+		numbers_shown.emit(building, [[NumberParticle.HEAL, Village.REPAIR_STEP]])
+	return _village.repair(building)
 
 
 ## A captured animal walks into the nearest building of its kind. When that

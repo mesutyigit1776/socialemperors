@@ -207,6 +207,14 @@ func show_production_of(map: Village, now: Callable) -> void:
 
 
 ## Shows the particles of spell, see BattleSpell.particle_shown.
+## The point of the screen where the item shows now (the registration point
+## of its graphic), for the floating numbers over it.
+func screen_point(fighter: BattleFighter) -> Vector2:
+	if _nodes.has(fighter):
+		return _nodes[fighter].get_global_transform_with_canvas().origin
+	return get_global_transform_with_canvas() * IsoGrid.tile_to_map(fighter.tile)
+
+
 func show_spell(spell: BattleSpell) -> void:
 	spell.particle_shown.connect(_add_particle)
 
