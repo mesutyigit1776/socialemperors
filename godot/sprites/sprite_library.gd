@@ -95,6 +95,21 @@ class ItemSprite:
 		frame = _index(frame)
 		return points[frame] if frame < points.size() else null
 
+	## The parts with these instance names in the clip that frame shows, in
+	## the order in which Flash draws them (by depth), as name -> Transform2D
+	## relative to the registration point. Empty when the frame has no such part.
+	func named_parts(frame: int, names: Array[String]) -> Dictionary:
+		var parts := {}
+		if _art == null:
+			return parts
+		var top := _art.frame_parts(_id, _index(frame))
+		if top.is_empty():
+			return parts
+		for part: Dictionary in _art.frame_parts(top[0]["id"], 0):
+			if part["name"] in names:
+				parts[part["name"]] = top[0]["transform"] * part["transform"]
+		return parts
+
 	## The clip in frame of a graphic that does not play its clips, or null.
 	## The client shows another frame of such a clip for some items, for
 	## example the tree of each map style.
