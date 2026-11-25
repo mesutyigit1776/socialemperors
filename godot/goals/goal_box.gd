@@ -102,8 +102,10 @@ func show_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
 	_host_area = area
 
 
-## The client hides the host of the box while the host of the tutorial shows.
+## The client hides the host of the box and the Goals button while the host
+## of the tutorial shows (TutorialMain).
 func set_host_visible(shown: bool) -> void:
+	_clip.set_part_visible("btnHelp", shown)
 	if _host_area != null:
 		_host_area.visible = shown
 

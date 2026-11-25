@@ -545,15 +545,16 @@ func show_goal_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
 
 
 ## The host of the tutorial (TutorialMain), under the bars of the HUD as in
-## the client; the client hides the host of the goal box while it shows.
+## the client; the client hides the host and the Goals button of the goal box
+## while it shows.
 ## graphic: the imported Host.tutorial_symbol(), or null.
 func show_tutorial_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
+	_goal_box.set_host_visible(false)
 	if graphic == null:
 		return
 	_tutorial_host = HostSprite.new(graphic, host)
 	add_child(_tutorial_host)
 	move_child(_tutorial_host, 0)
-	_goal_box.set_host_visible(false)
 	_layout()
 
 
@@ -561,13 +562,13 @@ func show_tutorial_host(graphic: SpriteLibrary.ItemSprite, host: Host) -> void:
 ## shows; it removes the host when the tutorial no longer needs it, and shows
 ## the host of the goal box again.
 func tutorial_step(host_shown: bool) -> void:
-	if _tutorial_host == null:
-		return
 	if host_shown:
-		_tutorial_host.well_done()
+		if _tutorial_host != null:
+			_tutorial_host.well_done()
 		return
-	_tutorial_host.queue_free()
-	_tutorial_host = null
+	if _tutorial_host != null:
+		_tutorial_host.queue_free()
+		_tutorial_host = null
 	_goal_box.set_host_visible(true)
 
 
