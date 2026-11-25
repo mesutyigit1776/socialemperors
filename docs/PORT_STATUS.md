@@ -35,7 +35,6 @@ Kind:
 | During a fight in the village, the store, World, Gift, the town selector, the goals, the shield, the empire name and the icons show "Wait until the fight in your village ends." In the client they work. Open windows hide during the fight. The top bars change at the end of the fight. | Port rule | The port fights on a copy of the village (`VillageBattle`) and writes the result at the end. |
 | The quests in the town play in the port. The box `mcTrolls` of the bottom bar shows the quest or the time until the next one, also during a fight in the village. The client 1.4.07 does not start these quests and always hides the box (`StateNormal`). | Port rule | `town_quests/town_quests.gd` gives the rules of the port. |
 | During a fight in the village the player cannot build. The fight screen shows the number of enemies; the client does not. | Port rule | Same cause as above. |
-| A burning building lowers the population in the client, not in the port. | Open | |
 | The lines of the captains show as text over the unit; the client shows a speech bubble. | Open | |
 | The Goals button of the goal box shows during the tutorial; the client hides it. | Open | |
 | Tutorial steps 15 to 31: the port shows a short text with the arrow; the client shows only the arrow. | Port rule | Decision 3. `ARROW_TEXTS` in `tutorial/tutorial.gd`. |

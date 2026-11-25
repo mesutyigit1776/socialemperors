@@ -1259,7 +1259,11 @@ func _check_village_actions() -> bool:
 	_check(village.unit_packs_bought([1]) == 1 and village.unit_pack_for_slot(1, NOW).get("id", 0) != 1, "the pack is bought out")
 	# Damage, repairs and the healing spring.
 	var house := village.item_at(HOUSE_TILE)
+	var full_population := village.max_population()
+	village.set_health(house, 0)
+	_check(village.max_population() == full_population - _config.get_item(HOUSE).population, "a destroyed house gives no population")
 	village.set_health(house, 10)
+	_check(village.max_population() == full_population - _config.get_item(HOUSE).population, "a house that is repaired in part still gives no population")
 	village._stored()[str(VILLAGER)] = 1
 	_check(village.place_stored(_config.get_item(VILLAGER), _free_tile(village, VILLAGER, Rect2i(44, 46, 8, 8)), NOW) == Village.Placement.OK, "a villager comes out of the item store")
 	var villager := village.items.filter(func(placed: Village.PlacedItem) -> bool: return placed.item_id == VILLAGER and village.is_own_unit(placed))
@@ -1269,6 +1273,7 @@ func _check_village_actions() -> bool:
 		repairs += 1
 	_check(repairs == ceili((_config.get_item(HOUSE).life - 10) / float(Village.REPAIR_STEP)) - 1 and not village.is_damaged(house), "each repair step gives 25 life until the house is whole")
 	_check(events.any(func(event: Array) -> bool: return event[0] == VillageEvent.Kind.FIRE_PUT_OUT), "the repair sends the event of its goal")
+	_check(village.max_population() == full_population, "the whole house gives its population again")
 	var spring_id: int = _config.items().filter(func(item: GameConfig.ItemDef) -> bool: return item.subcat_functional == Village.SUBCAT_HEALING)[0].id
 	var spring_tile := _free_tile(village, spring_id, Rect2i(44, 44, 12, 12))
 	_check(village.place_stored(_config.get_item(spring_id), spring_tile, NOW) == Village.Placement.NOT_ALLOWED, "a spring that the store does not have cannot be placed")

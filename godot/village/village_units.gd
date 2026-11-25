@@ -165,6 +165,11 @@ const SOUL_MIXER := 1529
 # that come out of buildings.
 var _captured: Dictionary = {}
 var _health: Dictionary = {}  # PlacedItem -> life below the full life, see health().
+## Items that lost all their life in this session: PlacedItem -> true. A
+## building in it gives no population until its life is full again (bDead of
+## the client, see _population_parts()). A building that the save gives with
+## no life is not in it: the client sets bDead only when a fight kills it.
+var _destroyed: Dictionary = {}
 var _construction_ends: Dictionary = {}  # PlacedItem -> unix time, see start_construction().
 ## Units that summons bring in a fight in the village. The client keeps them on
 ## the map as units of the player (IsoUnit.summoned) until the map loads again,
@@ -193,6 +198,7 @@ func sell(placed: PlacedItem, now: int) -> Placement:
 func _remove(placed: PlacedItem) -> void:
 	_captured.erase(placed)
 	_health.erase(placed)
+	_destroyed.erase(placed)
 	_construction_ends.erase(placed)
 	_summoned.erase(placed)
 	super(placed)
@@ -214,8 +220,11 @@ func max_life(placed: PlacedItem) -> int:
 func set_health(placed: PlacedItem, value: int) -> void:
 	if value >= max_life(placed):
 		_health.erase(placed)
+		_destroyed.erase(placed)
 	else:
 		_health[placed] = maxi(value, 0)
+		if value <= 0:
+			_destroyed[placed] = true
 
 
 func is_damaged(placed: PlacedItem) -> bool:
@@ -981,14 +990,19 @@ func is_population_capped() -> bool:
 
 
 ## The population of all buildings, and the part of it that wonders give,
-## which does not count for MAX_POPULATION.
+## which does not count for MAX_POPULATION. As in the client
+## (PlayerStatus.updatePopulation), a destroyed building other than the town
+## hall gives nothing to the first part, and a wonder always gives the second.
+## The client gives the population of a repaired building back only at its
+## next count of the population; the port gives it back at once.
 func _population_parts() -> Vector2i:
 	var total := 0
 	var wonders := 0
 	for placed in items:
 		var item := _config.get_item(placed.item_id)
 		if item != null and not item.is_unit():
-			total += item.population
+			if not _destroyed.has(placed) or item.subcat_functional == ConstructionLimits.SUBCAT_TOWNHALL:
+				total += item.population
 			if item.category_id == CATEGORY_WONDER:
 				wonders += item.population
 	return Vector2i(total, wonders)
