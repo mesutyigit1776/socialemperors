@@ -44,7 +44,6 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| In the unit list a few long names get a slightly different font size. | Open | Cause not found. |
 | Spy screen: the client shows the assault HUD behind the start window; the port shows the enemy village without the bar. | Open | |
 | Spy screen, attack log, Withdraw: the client grows the button labels until they fill the button (`ButtonGenericTall`). The port uses the sizes that Ruffle showed (Attack: 34). | Open | A text of another length gets the wrong size. |
 | The animation of the start window of an attack has an unnamed mask. The import keeps only named masks, so `assault_start_window.gd` cuts the animation with the rectangle of the mask. | Limit | The result looks the same. |
