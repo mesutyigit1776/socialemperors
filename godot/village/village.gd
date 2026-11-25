@@ -1209,6 +1209,8 @@ func take_supreme_bahamut(temple: PlacedItem, now: int) -> Placement:
 ## - The Recruitment Prize: each prize of GameConfig.recruitment_prizes needs
 ##   a number of recruits; the units of the prize go to the item store
 ##   ("finish_si_recruitment").
+## - The Round Table: after its activation time, 4 helpers give gold, 6 also
+##   experience, and 8 also a hero ("finish_si"); see open_round_table().
 const SUMMITS: Array[int] = [234, 361]
 const ALLIES_MARKETS: Array[int] = [266, 352]
 const RECRUITMENT_PRIZE := 387
@@ -1216,6 +1218,12 @@ const ALLIANCE_KNIGHT := 576
 const SUMMIT_KNIGHTS := 9
 const ALLIES_RESOURCES: Array[String] = ["g", "w", "f", "s"]
 const RECRUITS_KEPT := 4  ## The server keeps at most this number of recruits.
+const ROUND_TABLE_HELPERS_GOLD := 4
+const ROUND_TABLE_HELPERS_XP := 6
+const ROUND_TABLE_HELPERS_HERO := 8
+const ROUND_TABLE_GOLD := 1000
+const ROUND_TABLE_XP := 100
+const ROUND_TABLE_HEROES: Array[int] = [533, 534, 535, 550]  ## Xena, Arthur, Ranger, Merlin.
 
 
 ## Opens a full Allies Building: the Alliance Knights come next to it. Needs
@@ -1279,6 +1287,47 @@ func collect_allies_market(placed: PlacedItem, now: int) -> Placement:
 	_map["resourceAlliesMarket"] = "n"
 	happened.emit(VillageEvent.Kind.SOCIAL_BUILDING_OPENED, {"item": placed.item_id})
 	return Placement.OK
+
+
+## What the Round Table gives for this number of helpers (PopupSocialFeeds of
+## the client): gold from ROUND_TABLE_HELPERS_GOLD, experience from
+## ROUND_TABLE_HELPERS_XP, and a hero from ROUND_TABLE_HELPERS_HERO.
+static func round_table_reward(helpers: int) -> Dictionary:
+	return {
+		"gold": ROUND_TABLE_GOLD if helpers >= ROUND_TABLE_HELPERS_GOLD else 0,
+		"xp": ROUND_TABLE_XP if helpers >= ROUND_TABLE_HELPERS_XP else 0,
+		"hero": helpers >= ROUND_TABLE_HELPERS_HERO,
+	}
+
+
+## Seconds until the Round Table gives its reward; 0 when it is ready.
+func round_table_seconds(placed: PlacedItem, now: float) -> float:
+	return maxf(0, _config.get_item(placed.item_id).activation - (now - float(placed._entry[4])))
+
+
+## Takes the reward of the Round Table, as the client does with the commands
+## "finish_si" and "collect": the gold and the experience, a random hero for
+## the item store, and the helpers and the asked friends leave. The time
+## starts again. The client opens the table after its time, also with too
+## few helpers; it then gives nothing. Returns the reward as the amounts
+## ("gold", "xp" and the "hero" item id, 0 for none), or {} when the table
+## is not ready.
+func open_round_table(placed: PlacedItem, now: int, rng: RandomNumberGenerator) -> Dictionary:
+	if placed.item_id != ROUND_TABLE or round_table_seconds(placed, now) > 0:
+		return {}
+	var reward := round_table_reward(workers(placed)[0])
+	var hero := ROUND_TABLE_HEROES[rng.randi_range(0, ROUND_TABLE_HEROES.size() - 1)] if reward["hero"] else 0
+	if reward["gold"] > 0:
+		_add_resource("g", reward["gold"])
+	if reward["xp"] > 0:
+		_add_xp(reward["xp"])
+	if hero > 0:
+		_add_stored(hero)
+		_register_unit(hero)
+	placed._entry[4] = now
+	placed._entry[7]["si"] = []
+	placed._entry[7]["sif"] = {}
+	return {"gold": reward["gold"], "xp": reward["xp"], "hero": hero}
 
 
 ## The prizes of the Recruitment Prize that the player did not take yet.

@@ -28,7 +28,7 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| The floating numbers (`NumberParticle`): the client calls them at 68 places. The port calls them for all parts that it has; `ui/number_layer.gd` lists the rules. The calls of parts that the port does not have are missing: darts, Kompu, the Arabic deals, the admin panel, building upgrades, the sale of stored items, the Heavy Siege window, graveyard capacity, the population of the recruitment, the hurry-up help of friends, the Round Table rewards and the quest bars (`FauxBar`). | Limit | These parts are not in the port. |
+| The floating numbers (`NumberParticle`): the client calls them at 68 places. The port calls them for all parts that it has; `ui/number_layer.gd` lists the rules. The calls of parts that the port does not have are missing: darts, Kompu, the Arabic deals, the admin panel, building upgrades, the sale of stored items, the Heavy Siege window, graveyard capacity, the population of the recruitment, the hurry-up help of friends and the quest bars (`FauxBar`). | Limit | These parts are not in the port. |
 | The floating numbers of the actions of special buildings (graveyard, Soul Mixer, Time Machine, nests) start at the middle of the screen. The client starts some of them at a button of its window. | Port rule | The port shows these actions in a panel of the HUD, not in the client windows. |
 | The numbers of the purchase of the troll town do not show: the port loads the new town at once. | Port rule | |
 | "Teleport not ready yet" and the Dragon Hunter text show over the unit. The client adds half the stage size instead of the place of the map, so it shows them at a wrong place when the map has moved. | Port rule | A fault of the client. |
