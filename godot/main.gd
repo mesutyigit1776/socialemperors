@@ -425,6 +425,7 @@ func _start_survival(map_id: String) -> void:
 	# The client plays the music of the quests in survival; it never plays its survival music.
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
 	_survival_screen = SurvivalScreen.new(survival, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_survival_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(survival.sim)
 	_survival_screen.village_changed.connect(_save)
 	_survival_screen.started.connect(func() -> void:
@@ -497,6 +498,7 @@ func _start_tournament_match(bot_index: int) -> void:
 	var bot_places: Array[int] = bot["team"]
 	var match_battle := TournamentBattle.create(map, places, _village.tournament_formation(), bot_places, 0, _config, _sprites, _rng, _village.get_level())
 	_tournament_screen = TournamentScreen.new(match_battle, map, bot, _village, _village.player_name(), _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_tournament_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(match_battle.sim)
 	_tournament_screen.village_changed.connect(_save)
 	_tournament_screen.closed.connect(func(score: int, won: bool) -> void:
@@ -559,6 +561,7 @@ func _land(quest_id: String, army: Dictionary) -> void:
 	var quest := QuestBattle.create(QuestIsland.find(quest_id), map, army, _config, _village.quest_rank(quest_id), _sprites, _rng, _village.get_level(), _village.race)
 	SoundPlayer.play_music(SoundPlayer.Music.QUEST)
 	_quest_screen = QuestScreen.new(quest, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_quest_screen.map_view().show_production_of(map, _load_time())
 	_goals.watch_battle(quest.sim)
 	_quest_screen.village_changed.connect(_save)
 	_quest_screen.started.connect(func(_stars: int) -> void:
@@ -1478,6 +1481,7 @@ func _start_village_fight(unit: Village.PlacedItem = null, target := Vector2i.ZE
 	var battle := VillageBattle.new(_village, _enemies.take_groups(), _config, _sprites, _rng, _orders.is_busy)
 	_goals.watch_battle(battle.sim)
 	_village_fight = VillageBattleScreen.new(battle, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _camera.position, _battle_neighbour_bar(), _hud)
+	_village_fight.map_view().show_production_of(_village, _now)
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _village_fight.map_view(), false)
 	_village_fight.village_changed.connect(_save)
@@ -2026,6 +2030,7 @@ func _start_attack(start_tile: Vector2i) -> void:
 	_goals.watch_battle(battle.sim)
 	SoundPlayer.play_music(SoundPlayer.Music.ASSAULT)
 	_pvp_screen = PvpScreen.new(battle, _enemy["village"], _enemy["name"], start_tile, _village, _ui, _cast_ui, _spell_graphics, _config, _sprites, _effects, _battle_neighbour_bar())
+	_pvp_screen.map_view().show_production_of(_enemy["village"], _load_time())
 	if _forge != null:
 		_forge.watch_battle(battle.sim, _pvp_screen.map_view(), true)
 	_pvp_screen.village_changed.connect(_save)
@@ -2059,6 +2064,12 @@ func _on_attack_closed(result: Dictionary) -> void:
 ## The server stores whole seconds.
 static func _now() -> int:
 	return int(Time.get_unix_time_from_system())
+
+
+## The time of a map load, which the labels of a battle keep (BattleView.show_production_of()).
+static func _load_time() -> Callable:
+	var now := _now()
+	return func() -> int: return now
 
 
 ## Saves the village after a change. Shows the error and returns false when the save fails.

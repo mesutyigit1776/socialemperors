@@ -106,6 +106,9 @@ var _opened: Array[BattleFighter] = []  # Doors that show open.
 var _map_ui: UiLibrary  # The marks and bars of the client, see SelectionMark and HealthBar; or null.
 var _ui: UiLibrary  # For the label of the hovered item (InfoPopup), or null.
 var _info: InfoPopup
+var _production_map: Village  # The map whose buildings show their production, see show_production_of().
+var _production_now := Callable()
+var _producers := {}  # BattleFighter (a building) -> Village.PlacedItem of _production_map that produces.
 var _mark_nodes := {}  # BattleFighter -> UiClip: the selection marks, children of the nodes.
 var _bars := {}  # BattleFighter -> HealthBar.
 var _dome_ranges := {}  # BattleFighter (a dome) -> DomeRange.
@@ -183,6 +186,26 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 		_pushes[unit] = [unit.position, IsoGrid.tile_to_map(unit.tile), 0.0, frames / float(BattleSim.FRAMES_PER_SECOND)])
 
 
+## The label of a building of map that produces shows its production, as the
+## client does on every map (InfoPopup). The client counts the seconds since
+## the last collection from the server time of the map load, and in battles it
+## does not count further; in a fight in the village the time goes on. now
+## gives that time in unix seconds. A building of the battle is the item of map
+## with the same id on the same tile.
+func show_production_of(map: Village, now: Callable) -> void:
+	_production_map = map
+	_production_now = now
+	_producers.clear()
+	var buildings := {}  # [tile, item id] -> BattleFighter
+	for fighter in _sim.fighters:
+		if not fighter.is_unit():
+			buildings[[fighter.tile, fighter.def.id]] = fighter
+	for placed in map.items:
+		var fighter: BattleFighter = buildings.get([placed.tile, placed.item_id])
+		if fighter != null and map.is_producer(placed):
+			_producers[fighter] = placed
+
+
 ## Shows the particles of spell, see BattleSpell.particle_shown.
 func show_spell(spell: BattleSpell) -> void:
 	spell.particle_shown.connect(_add_particle)
@@ -240,12 +263,20 @@ func _show_hovered() -> void:
 	_hovered = fighter
 	if _hovered != null and _nodes.has(_hovered):
 		HoverGlow.set_shown(_nodes[_hovered], true)
-		# The units and buildings of a battle show their name only.
 		if InfoPopup.shows_for(_ui, _hovered.def):
 			_info = InfoPopup.new(_ui, _hovered.def)
 			_info.z_index = VillageView.INFO_Z_INDEX
 			_info.place(_nodes[_hovered].position)
 			add_child(_info)
+			_show_info_production()
+
+
+## The production of the hovered building in its label; units and other
+## buildings show their name only.
+func _show_info_production() -> void:
+	if _info != null and _producers.has(_hovered):
+		var placed: Village.PlacedItem = _producers[_hovered]
+		_info.show_production(_production_map.seconds_to_ready(placed, _production_now.call()), _production_map.production_seconds(placed))
 
 
 ## The selection box that the player drags, in map pixels.
@@ -291,6 +322,7 @@ func _process(delta: float) -> void:
 	_show_hovered()
 	if _info != null:
 		_info.place(_nodes[_hovered].position)
+		_show_info_production()
 	_update_bars()
 	for fighter: BattleFighter in _flashes.keys():
 		var flash: Dictionary = _flashes[fighter][0]

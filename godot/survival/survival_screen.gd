@@ -73,6 +73,11 @@ func _init(survival: SurvivalBattle, village: Village, ui: UiLibrary, cast_ui: U
 	_windows.add_child(BattleBar.new(ui, config, neighbours, _screen, _camera))
 
 
+## The map of the battle, on which other screens can show things.
+func map_view() -> BattleView:
+	return _view
+
+
 func _ready() -> void:
 	_add_start_window()
 

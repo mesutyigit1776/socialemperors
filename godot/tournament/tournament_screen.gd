@@ -78,6 +78,11 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 		_windows.add_child(TournamentAlert.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER"), _screen_size() / 2, battle.withdraw)))
 
 
+## The map of the battle, on which other screens can show things.
+func map_view() -> BattleView:
+	return _view
+
+
 func _ready() -> void:
 	var cover := _cover()
 	var window := _ui.make("PopupLoadingTournamentMC")

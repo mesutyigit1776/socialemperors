@@ -87,6 +87,11 @@ func _init(quest_battle: QuestBattle, village: Village, ui: UiLibrary, cast_ui: 
 	_windows.add_child(start_window)
 
 
+## The map of the battle, on which other screens can show things.
+func map_view() -> BattleView:
+	return _view
+
+
 func _enter_tree() -> void:
 	_village_color = RenderingServer.get_default_clear_color()
 	RenderingServer.set_default_clear_color(SEA_COLOR)
