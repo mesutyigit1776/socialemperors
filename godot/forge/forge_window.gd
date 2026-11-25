@@ -109,7 +109,9 @@ func _add_prize(index: int, sprites: SpriteLibrary) -> void:
 		card.show_picture("anchor", _ui.image("IslandForge/dragonBG.png"))
 		var sprite := sprites.get_sprite(unit.img_name)
 		if sprite != null:
-			card.clip("anchor").add_child(_dragon(sprite))
+			# The client adds the dragon to the card last (AnimatedUnit), so
+			# it covers the attack and life texts.
+			card.add_child(_dragon(sprite))
 	area.make_button()
 	area.mouse_entered.connect(func() -> void: card.visible = true)
 	area.mouse_exited.connect(func() -> void: card.visible = false)
@@ -121,7 +123,7 @@ func _add_prize(index: int, sprites: SpriteLibrary) -> void:
 
 
 ## The walking dragon, made smaller when it is larger than DRAGON_BOX and
-## centred on the anchor.
+## centred on the origin of the card.
 func _dragon(sprite: SpriteLibrary.ItemSprite) -> UnitSprite:
 	var frame := UnitSprite.frame_of(UnitSprite.Action.WALKING, UnitCard.DIRECTION)
 	var unit := UnitSprite.new(sprite)

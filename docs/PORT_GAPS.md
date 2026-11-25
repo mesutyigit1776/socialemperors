@@ -256,16 +256,18 @@ The rules (`godot/forge/island_forge.gd`) follow the client and the server:
 
 Checks: `village_check.gd` has 31 checks for the event time, the chances, the sources, the waits, the prices (506 and 72 cash, the values of the server's `hellforge_buy_all_price` for the same saves), the prizes, the end of the event and the save. `quest_check.gd` has 9 checks for the forge islands.
 
-Comparison with the original game in Ruffle, with the server event set to start on the day of the test: the island stands at the top corner of the map in both. The forge icon is under the icon of the first purchase offer in both. The forge window, the dragon card, the wait of the hammer with its speed-up button, the Buy All price (439 cash at 20 of 110 items), the island list and the start window of a forge island have the same layout and texts. Ruffle showed four differences, which the port now follows:
+Comparison with the original game in Ruffle, with the server event set to start on the day of the test: the island stands at the top corner of the map in both. The forge icon is under the icon of the first purchase offer in both. The forge window, the dragon card, the wait of the hammer with its speed-up button, the Buy All price (439 cash at 20 of 110 items), the island list and the start window of a forge island have the same layout and texts. Ruffle showed five differences, which the port now follows:
 
 - The client fills the places of the window with the items in the order 4, 5, 6, 1, 2, 3 (in Ruffle), and the picture of each place comes from the number of the place. So the copper picture is above the name Skull, and so on. The order in Flash Player is not known.
 - The island list shows the name ribbons and the stars, not the level lock.
 - The client writes a red "NEW!" with a font that it does not have under that name, so Ruffle shows no text.
 - The arrows of the island list do not look disabled.
+- The dragon of a prize card covers the attack and life texts, because the client adds it to the card last.
+
+A second comparison in Ruffle took 30 pictures of each prize card in the client and in the port. In the pictures with the same frame of the walk, the Demon Dragon and the Forge Dragon have the same size and place in both.
 
 Differences that are left:
 
-- The port draws the dragon of a prize card larger than Ruffle. The port fits the walking frame of the dragon into 400 × 300 pixels, as the client does; the cause of the difference was not found. The client measures the visible pixels of the frame (`Utils.getVisibleBounds`). For the Demon Dragon the frame plays a clip whose visible pixels are 994 × 676, against 994 × 780 for the frame that the port measures, so the rule of the client would make the dragon a little larger, not smaller. A new comparison in Ruffle is necessary.
 - The client gives a complete item a white glow; the port does not.
 - The picture of a found item (`ForgeToken`) shows on the map of the village, of a village fight and of a PvP attack, but not on the map of a forge island, because the port gives the copper at the end of the quest. In the client the picture stays until the player clicks it; in the port the picture of a fight goes away with the fight screen.
 - The Invite button shows a message of the port. Without enough cash, the port shows the text of the client and says that it has no cash shop.
