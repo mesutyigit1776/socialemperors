@@ -52,7 +52,7 @@ Kind:
 | The cash buttons show a message of the port. | Limit | Decision 8: no cash shop. |
 | Tournament: the port builds the formations from their texts and button pictures, hides the help of the start window, and writes "YOU LOST" as the title of a lost match. The window of the bots is the port's own. | Limit | The configuration has no formation layouts and none of these texts. The client windows show server data. |
 | Team window in a quest: the port sorts the units by life. The client asks to sort by life but does not give the value, so its order comes from a Flash object. | Port rule | |
-| The second dragon island: the client draws land blocks without land black and draws blue dotted lines on the borders of land blocks. The port draws sea and no lines. | Open | Only the picture changes. |
+| The second dragon island: the client draws blue dotted lines on the borders of the land blocks; the port does not. | Open | Only the picture changes. The lines are not drawn by the code of the client (no `lineStyle`), and the port draws the same frames of the land graphic, so their cause is not found. A screenshot in Ruffle is needed. |
 
 ### Text
 

@@ -25,8 +25,11 @@ signal village_changed  ## A spell or mana changed the village; the owner saves 
 const RUN_UNDER_START_WINDOW := true
 const COLLECTABLE_RESOURCE := "g"  ## The mark of a collectable item has the color of gold.
 ## The client fills the screen behind a quest island with this blue, which is
-## the sea around the island.
+## the sea around the island (Config.BG_COLOR_BLUE). The second dragon island
+## has a black background (QuestBossDragon2.mapLoaded) and the forge islands a
+## red one (QuestCollectable, Config.BG_COLOR_RED).
 const SEA_COLOR := Color8(0x2e, 0x94, 0xe6)
+const FAMILY_COLORS := {QuestIsland.Family.DRAGON_2: Color.BLACK, QuestIsland.Family.FORGE: Color8(0x86, 0x38, 0x14)}
 
 var quest: QuestBattle
 var _village_color: Color  # The colour around the map before this screen.
@@ -96,7 +99,7 @@ func map_view() -> BattleView:
 
 func _enter_tree() -> void:
 	_village_color = RenderingServer.get_default_clear_color()
-	RenderingServer.set_default_clear_color(SEA_COLOR)
+	RenderingServer.set_default_clear_color(FAMILY_COLORS.get(quest.island.family, SEA_COLOR))
 
 
 ## The village has the colour of its map style, see VillageView.
