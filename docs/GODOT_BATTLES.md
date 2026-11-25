@@ -1,6 +1,6 @@
 # Battles in the Godot port
 
-This file records the battle rules of the port and where they come from in the client, the errors of the client that the port keeps or corrects, the differences from the client, and the comparisons with the client in Ruffle. All battle modes are in the port: the campaign, the spells, the special abilities, the fights in the own village, survival, the tournament and PvP. The work that remains is in `docs/PORT_GAPS.md`.
+This file records the battle rules of the port and where they come from in the client, the errors of the client that the port keeps or corrects, the differences from the client, and the comparisons with the client in Ruffle. All battle modes are in the port: the campaign, the spells, the special abilities, the fights in the own village, survival, the tournament and PvP. The differences and the parts not compared that remain are in `docs/PORT_STATUS.md`.
 
 ## How the original game does battles
 
@@ -208,7 +208,7 @@ The gift of the client at level 15, and a played quest:
 
 ## The islands of the campaign
 
-All 28 islands of the island list are in the port. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; see "Single-player modes". The forge islands (`100000051` to `100000055`) are not in the list either: they belong to the Island Forge event (`CollectGameManager`), which opens them from its own window (`ForgeQuest`, see `docs/PORT_GAPS.md`).
+All 28 islands of the island list are in the port. Survival (`100000035`, `100000036`) and the tournament (`100000040`) are not in the island list; see "Single-player modes". The forge islands (`100000051` to `100000055`) are not in the list either: they belong to the Island Forge event (`CollectGameManager`), which opens them from its own window (`ForgeQuest`, rules in `godot/forge/island_forge.gd`).
 
 | File | Contents |
 |---|---|
@@ -266,9 +266,7 @@ The rules come from the client. Where the client has an error that the player ca
 - The smash of the 4-Weapons Gladiator kills a small unit when the unit lands; a unit that cannot fly does not die.
 - A star particle of a healer also gives an attack of 0 to an enemy on its tile.
 
-Not in the port (`docs/PORT_GAPS.md`):
-
-- The Dummy (`DummyDelegate`, item 1533) is not in the configuration.
+The Dummy (`DummyDelegate`, item 1533) is not in the configuration, so neither game has it.
 
 Tests: `checks/spell_check.gd` has a scenario for Instant Limit. Scratch tests ran each of the 600 item ids with an ability or buttons in a battle against spearmen and a tower for 600 frames, and each of the 261 special units with each of its buttons; they found no script errors. The attacks of single units were also checked in small battles against the client code, for example the helpers of the Black Yeti, the conversions of Anubis and the target choice of the Dragon Killer Fortress. Not tested: a played battle by hand with each unit, and a comparison with the original game in Ruffle.
 

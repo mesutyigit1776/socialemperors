@@ -7,7 +7,7 @@ Started 2026-10-29, from `docs/AUDIT.md`, measurements of the client SWF and web
 The project has two ways to a native game:
 
 - **Option A: the original client with Ruffle desktop and the local server.** Paused at about 20%. It keeps the original behaviour and runs on Windows, macOS and Linux, but not on mobile.
-- **Option C: a new client in Godot 4.** The current work, on branch `godot-port`. Steps 1 to 6.1 of the roadmap (section 3) are done. The work before the release is in `docs/PORT_GAPS.md`; then come the launcher and the builds (step 6.2).
+- **Option C: a new client in Godot 4.** The current work, on branch `godot-port`. Steps 1 to 6.1 of the roadmap (section 3) are done. `docs/PORT_STATUS.md` lists the differences from the client, the parts not compared with it, and the launcher and the builds (step 6.2).
 
 Two other options were studied on 2026-10-29 and not chosen: a Harman AIR wrapper around the original client (2–4 person-months, possible license fees, one small vendor) and a conversion of the decompiled AS3 to Haxe/OpenFL (8–18 person-months, the weakest legal position). The study is in the history of this file (commit `8c4125c`).
 
@@ -102,7 +102,7 @@ The 1.4.07 client has a chain of 30 quests on the player's own map, but it never
 1. A comparison of the whole game with the original, and its fixes. Done. Four saves ran for 4 minutes in the original client (Ruffle with the server) and in the port, and the saves after the run were compared item by item. The port got the rules that the comparison found: the login bonus of the server; at each start of the map, the clean of the border and the trolls, deposits, trees and animals on the land that the player does not own; and the experience rule of `rt_publish_score`. Screens were compared at 760 × 600; the port got the start zoom of the client, the scaffold of a new building, the host of the goal box and the shield animations. After the fixes, the four saves give the same login bonus values, goals and experience as the client after the load; later differences come only from the fights of the units.
 2. The launcher, and builds for Windows, macOS and Linux. Mobile builds come much later, if the owner decides so (touch changes the unit control in battles). Until then the port runs from the Godot editor or the command line.
 
-Before step 6.2 comes the work in `docs/PORT_GAPS.md`.
+`docs/PORT_STATUS.md` lists what is still different or not compared.
 
 ## 4. Risks
 

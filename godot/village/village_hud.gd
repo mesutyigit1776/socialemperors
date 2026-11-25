@@ -37,7 +37,7 @@ signal zoom_requested(level: float)
 signal first_offer_requested
 
 ## The buttons of the client that open the cash shop show this message. The
-## port has the cash sources of the server only (decision 8 in docs/PORT_GAPS.md).
+## port has the cash sources of the server only (decision 8 in docs/PORT_STATUS.md).
 const NO_CASH_SHOP := "The port has no cash shop. You get cash at most new levels, from the login bonus and from unit collections. A PvP shield also gives back twice its price."
 ## During a fight in the village (set_fighting()) the HUD shows, as in the
 ## client, but the port fights on a copy of the village (VillageBattle), so

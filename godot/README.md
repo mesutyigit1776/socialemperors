@@ -2,7 +2,7 @@
 
 A new client for Social Empires, written in GDScript for Godot 4.7. It does not contain Social Point files. You import the graphics and the game configuration from your own copy of the socialemperors server.
 
-Status: steps 1 to 6.1 of the roadmap in `docs/NATIVE_PORT.md` are done. `docs/PORT_GAPS.md` lists what the port does not have yet and the work before the release.
+Status: steps 1 to 6.1 of the roadmap in `docs/NATIVE_PORT.md` are done. `docs/PORT_STATUS.md` lists the differences from the client, the parts not compared with it, and the work for the release.
 
 The port shows the village map with its land, buildings, decorations and units, at the same positions as the original client. You can pan with a mouse drag and zoom with the mouse wheel.
 
@@ -96,7 +96,7 @@ The Rider Academy and Dragon Riding play the mini-game of the client (`assets/sw
 - Skills: Valiant Strike and Flip Strike (the sabre), Wrath Bolt, and from level 3 Regeneration, from level 5 Hammer of Reckoning (it stuns), from level 7 Thunderous Arrow. After an attack the hero is busy for 25 frames, and each skill waits its own time.
 - The hero has 500 health, and 5 come back every 100 frames. The stakes in a pit kill him. Levels 1 to 7 are won when no enemy is left and the hero walks past the end; level 8 when the dragon dies. Some crows fly away when the hero comes near and come back with a warrior, unless the sabre kills them first.
 
-`rider_game/` has the game: `rider_game.gd` runs a level at the 30 frames per second of the client, `rider_hero.gd`, `rider_enemy.gd` and `enemies/` have the hero and the enemies, `rider_shots.gd` the spears, arrows and spells, `rider_level.gd` the ground, the pits, the crows and the falling tree, and `rider_hud.gd` the health bar, the skill bar and the result screens. `flash_clip.gd` plays the sprites of the file as Flash does, with their labels, nested clips, masks and colour transforms, and measures their parts for the hits. The rules come from the file, in the frames in which the client acts; `docs/PORT_GAPS.md` ("Dragon Riding and Rider Academy mini-game") lists the differences.
+`rider_game/` has the game: `rider_game.gd` runs a level at the 30 frames per second of the client, `rider_hero.gd`, `rider_enemy.gd` and `enemies/` have the hero and the enemies, `rider_shots.gd` the spears, arrows and spells, `rider_level.gd` the ground, the pits, the crows and the falling tree, and `rider_hud.gd` the health bar, the skill bar and the result screens. `flash_clip.gd` plays the sprites of the file as Flash does, with their labels, nested clips, masks and colour transforms, and measures their parts for the hits. The rules come from the file, in the frames in which the client acts; `docs/PORT_STATUS.md` lists the differences.
 
 ## Import the game files
 
