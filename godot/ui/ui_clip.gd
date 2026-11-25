@@ -258,16 +258,27 @@ func show_label(label: String) -> void:
 ## fit is false for a field that the client writes with TextField.text or with
 ## an auto size: its font keeps the size of the art. An auto size field grows
 ## with its text, so resizeText finds no text outside it.
-func set_text(path: String, text: String, fit := true) -> void:
+## clip is true for a field that has no auto size and that the client writes
+## with TextField.text: Flash shows only the part of the text inside the
+## field, so a line that is too wide is cut at the right edge and the lines
+## below the bottom are not shown. Other fields show all of their text.
+func set_text(path: String, text: String, fit := true, clip := false) -> void:
 	var label := part(path) as Label
 	if label == null:
 		return
 	label.set_meta("written", true)
+	label.clip_text = clip
 	var size: int = label.get_meta("art_font_size")
 	_show_text(label, text, size)
 	while fit and size > MIN_FIT_SIZE and not _fits(label, size):
 		size -= 1
 		_show_text(label, text, size)
+	if clip:
+		# The minimum size of the Label can have made it larger than the field.
+		label.size = label.get_meta("field_size")
+		# A line that is wider than its field starts at the left edge in Flash, also in a centred field.
+		var too_wide: bool = not label.get_meta("word_wrap") and not _fits(label, label.get_theme_font_size("font_size"))
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if too_wide else label.get_meta("art_align")
 
 
 ## Shows a text in a field at a font size. In a field with word wrap, the
@@ -490,6 +501,7 @@ func _make_part(part: Dictionary) -> Control:
 	label.add_theme_color_override("font_color", color)
 	label.set_meta("frame_colour", settings["color"])
 	label.horizontal_alignment = {"left": HORIZONTAL_ALIGNMENT_LEFT, "right": HORIZONTAL_ALIGNMENT_RIGHT, "center": HORIZONTAL_ALIGNMENT_CENTER}.get(settings["align"], HORIZONTAL_ALIGNMENT_FILL)
+	label.set_meta("art_align", label.horizontal_alignment)
 	# The client makes most fields grow with their text (autoSize), so the port does not cut the text.
 	label.clip_text = false
 	if part.has("glow"):

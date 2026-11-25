@@ -59,7 +59,7 @@ Kind:
 | Difference | Kind | Notes |
 |---|---|---|
 | Each line can be up to 0.5 pixel higher or lower than in Ruffle. In the help text of 11 lines, the last line was 5 pixels from its place in Ruffle. | Limit | Godot uses whole pixels between lines. |
-| The texts of the mini-game get smaller when they do not fit. The client code of `SagaOTDC.swf` was not read for this. | Open | In the windows and HUDs, 33 calls of `UiClip.set_text` now keep the size of the art (`fit` false), as the client writes these fields with `TextField.text` or with an auto size. The art of the client has no field with an auto size. A field without an auto size cuts a text that is too long in the client; the port shows all of it. |
+| In the mini-game, the texts keep the size of the art, and a text that is too long is cut. In the windows and HUDs, a text that is too long is not cut. | Open | `SagaOTDC.swf` writes all its fields with `TextField.text` (health, hit numbers, "Level N completed", "Level N failed", "Training Level N"). No field has an auto size, and no code makes a font smaller. So the 4 calls in `rider_hud.gd` have `fit` false and `clip` true: a line that is too wide is cut at the right edge and starts at the left edge, and lines below the bottom are not shown. In the windows and HUDs, 33 calls of `UiClip.set_text` keep the size of the art (`fit` false), as the client writes these fields with `TextField.text` or with an auto size. These calls do not cut a text, because the port does not know which of the fields have an auto size. A field without an auto size cuts a text that is too long in the client; the port shows all of it there. Tested with the end screen of a lost level and a long text. |
 
 ### Art
 
