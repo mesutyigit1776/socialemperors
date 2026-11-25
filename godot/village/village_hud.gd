@@ -46,6 +46,7 @@ const FIGHT_MESSAGE := "Wait until the fight in your village ends."
 ## The parts of the bottom bar that the bar of a fight in the village shows
 ## as the village does (BattleBar.show_village_buttons()).
 const FIGHT_BAR_PARTS := ["storeButton", "achievementsButton", "giftButton", "gamesButton", "giftCounter"]
+const TOWN_QUEST_LABEL := "townQuest"
 const CLIENT_WIDTH := 760
 ## The height of the bottom bar, and the y of the HUD in the 600-pixel stage of the client.
 const BAR_HEIGHT := 125
@@ -118,7 +119,8 @@ var _gui: UiClip
 var _top_y: Dictionary = {}  # Part of TOP_PARTS -> its y in GuiMC.
 var _message := Label.new()
 var _message_timer := Timer.new()
-var _town_quest := Label.new()  # The quest in the town, or the time until the next one.
+var _town_quest := ["", false]  # The text and the troll flag of show_town_quest().
+var _fight_bar: UiClip  # The bottom bar of a fight in the village, see show_bar_parts_in().
 var _rename_dialog := AcceptDialog.new()
 var _rename_edit := LineEdit.new()
 var _windows := Control.new()  # The windows of the HUD, see WINDOW_LAYER.
@@ -195,18 +197,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_gui.clip("bgBar/recuadroInfo/ri").add_child(portraits)
 	special_portraits = SpecialPortraits.new(ui)
 	_gui.clip("bgBar/recuadroInfo").part("specialUnitsAnchor").add_child(special_portraits)
-	# The town quest uses the troll timer of the client (trollTimerMC), which
-	# 1.4.07 does not show; see TownQuests.
-	_town_quest.add_theme_font_override("font", ui.named_font(ClientTheme.BODY_FONT))
-	_town_quest.add_theme_font_size_override("font_size", 12)
-	_town_quest.add_theme_color_override("font_color", Color.WHITE)
-	_town_quest.add_theme_color_override("font_outline_color", Color(0.2, 0.1, 0, 1))
-	_town_quest.add_theme_constant_override("outline_size", 4)
-	_town_quest.position = Vector2(-2, -24)
-	_town_quest.custom_minimum_size.x = 150
-	_town_quest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_gui.clip("bgBar/mcTrolls").add_child(_town_quest)
-	_gui.set_part_visible("bgBar/mcTrolls/buf", false)
+	_add_town_quest_label(_gui.clip("bgBar"))
 	_goal_box = GoalBox.new(ui, config)
 	_goal_box.goal_requested.connect(func(id: int) -> void:
 		if _fight_allows():
@@ -504,12 +495,15 @@ func show_fight_message() -> void:
 	show_message(FIGHT_MESSAGE)
 
 
-## Shows the parts of FIGHT_BAR_PARTS in bar, the bottom bar of a fight, as
-## the bottom bar of the village shows them.
+## Shows the parts of FIGHT_BAR_PARTS and the town quest in bar, the bottom
+## bar of a fight, as the bottom bar of the village shows them. The town
+## quest stays current in bar until bar is freed.
 func show_bar_parts_in(bar: UiClip) -> void:
 	for path: String in FIGHT_BAR_PARTS:
 		bar.set_part_visible(path, _gui.part("bgBar/" + path).visible)
 	bar.set_text("giftCounter/count", (_gui.part("bgBar/giftCounter/count") as Label).text)
+	_fight_bar = bar
+	_add_town_quest_label(bar)
 
 
 ## False, with FIGHT_MESSAGE, during a fight in the village.
@@ -591,9 +585,36 @@ func show_goals(goals: Array) -> void:
 ## The quest in the town (TownQuests), or the time until the next one; an
 ## empty text hides it.
 func show_town_quest(text: String, troll: bool) -> void:
-	_town_quest.text = text
-	_gui.set_part_visible("bgBar/mcTrolls", not text.is_empty())
-	_gui.clip("bgBar/mcTrolls/cara").show_frame(1 if troll else 0)
+	_town_quest = [text, troll]
+	_show_town_quest_in(_gui.clip("bgBar"))
+	if is_instance_valid(_fight_bar):
+		_show_town_quest_in(_fight_bar)
+
+
+## The town quest uses the troll timer of the client (trollTimerMC), which
+## 1.4.07 always hides; see TownQuests. The port shows it in the bottom bar
+## of the village and in the bar of a fight in the village.
+func _add_town_quest_label(bar: UiClip) -> void:
+	var label := Label.new()
+	label.name = TOWN_QUEST_LABEL
+	label.add_theme_font_override("font", _ui.named_font(ClientTheme.BODY_FONT))
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_outline_color", Color(0.2, 0.1, 0, 1))
+	label.add_theme_constant_override("outline_size", 4)
+	label.position = Vector2(-2, -24)
+	label.custom_minimum_size.x = 150
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bar.clip("mcTrolls").add_child(label)
+	bar.set_part_visible("mcTrolls/buf", false)
+	_show_town_quest_in(bar)
+
+
+func _show_town_quest_in(bar: UiClip) -> void:
+	var box := bar.clip("mcTrolls")
+	(box.get_node(TOWN_QUEST_LABEL) as Label).text = _town_quest[0]
+	bar.set_part_visible("mcTrolls", not _town_quest[0].is_empty())
+	box.clip("cara").show_frame(1 if _town_quest[1] else 0)
 
 
 func show_message(text: String) -> void:

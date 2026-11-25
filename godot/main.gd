@@ -969,11 +969,22 @@ func _update_production() -> void:
 
 ## Starts the quest in the town when it is due, spawns its boss waves and
 ## shows what the player does next. The tutorial comes first, and no quest
-## starts while a fight or another screen is open.
+## starts or changes while a fight or another screen is open; the HUD text
+## changes also during a fight in the village, whose bar shows it.
 func _check_town_quest() -> void:
-	if _town_quests == null or _tutorial.is_active() or _village_fight != null or not _view.visible:
+	if _town_quests == null or _tutorial.is_active():
 		return
 	var now := _now()
+	if _village_fight == null and _view.visible:
+		_update_town_quest(now)
+	if _town_quests.is_active():
+		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
+	else:
+		var left := _town_quests.seconds_to_next(now)
+		_hud.show_town_quest("%s: %02d:%02d:%02d" % [_config.text("TIMER_CAMPAMENTO_ENEMIGO"), left / 3600, left / 60 % 60, left % 60] if left > 0 else "", _village.race == "t")
+
+
+func _update_town_quest(now: int) -> void:
 	var was_active := _town_quests.is_active()
 	var old_level := _village.get_level()
 	if _town_quests.start(now):
@@ -987,11 +998,6 @@ func _check_town_quest() -> void:
 		_save()
 		if was_active and not _town_quests.is_active():
 			_end_town_quest(old_level)
-	if _town_quests.is_active():
-		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
-	else:
-		var left := _town_quests.seconds_to_next(now)
-		_hud.show_town_quest("%s: %02d:%02d:%02d" % [_config.text("TIMER_CAMPAMENTO_ENEMIGO"), left / 3600, left / 60 % 60, left % 60] if left > 0 else "", _village.race == "t")
 
 
 func _collect_town_quest(placed: Village.PlacedItem) -> void:

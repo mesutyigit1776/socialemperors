@@ -76,8 +76,8 @@ func _init(ui: UiLibrary, config: GameConfig, neighbours: NeighbourBar, screen: 
 
 
 ## The bar of a fight in the village shows the bottom bar of the village, as
-## the client keeps it in these fights: the store, World, Gift and the town
-## selector, as hud shows them, and the pointer of the village, without
+## the client keeps it in these fights: the store, World, Gift, the town
+## selector and the town quest of the port, as hud shows them, and the pointer of the village, without
 ## Select All and Select Specials (VillageHud.HIDDEN). The buttons that
 ## change or leave the village show VillageHud.FIGHT_MESSAGE.
 func show_village_buttons(hud: VillageHud) -> void:

@@ -33,7 +33,7 @@ Kind:
 | The numbers of the purchase of the troll town do not show: the port loads the new town at once. | Port rule | |
 | "Teleport not ready yet" and the Dragon Hunter text show over the unit. The client adds half the stage size instead of the place of the map, so it shows them at a wrong place when the map has moved. | Port rule | A fault of the client. |
 | During a fight in the village, the store, World, Gift, the town selector, the goals, the shield, the empire name and the icons show "Wait until the fight in your village ends." In the client they work. Open windows hide during the fight. The top bars change at the end of the fight. | Port rule | The port fights on a copy of the village (`VillageBattle`) and writes the result at the end. |
-| During a fight in the village the box of the town quest (`mcTrolls`) does not show in the bottom bar. | Open | |
+| The quests in the town play in the port. The box `mcTrolls` of the bottom bar shows the quest or the time until the next one, also during a fight in the village. The client 1.4.07 does not start these quests and always hides the box (`StateNormal`). | Port rule | `town_quests/town_quests.gd` gives the rules of the port. |
 | During a fight in the village the player cannot build. The fight screen shows the number of enemies; the client does not. | Port rule | Same cause as above. |
 | A burning building lowers the population in the client, not in the port. | Open | |
 | The lines of the captains show as text over the unit; the client shows a speech bubble. | Open | |
