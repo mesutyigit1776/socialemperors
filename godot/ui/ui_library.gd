@@ -25,6 +25,7 @@ var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "f
 var _buttons: Dictionary = {}  # Button id (int) -> top-left of its images (Vector2).
 var _textures: Dictionary = {}  # Path -> Texture2D, or null for a missing file.
 var _fonts: Dictionary = {}  # Font id -> Font.
+var _text_layouts: Dictionary = {}  # Font id -> FlashTextLayout.
 var _font_ids: Dictionary = {}  # Font name -> font id, for the texts that the client makes in code.
 
 
@@ -52,6 +53,12 @@ static func load_from(data_dir: String, frames: FrameCache, folder := "ui", on_m
 		if not (key.is_valid_int() and clip is Dictionary and clip.get("frames") is Array):
 			push_error("'%s' has an incorrect sprite %s." % [path, key])
 			return null
+		for frame: Variant in clip["frames"]:
+			for part: Variant in frame if frame is Array else []:
+				if part is Dictionary and part.get("text") is Dictionary and not part["text"].has("leading"):
+					# An import from before the leading of the text fields.
+					push_error("'%s' is from an older import. Import the game files again." % path)
+					return null
 		var origin: Variant = clip.get("origin")
 		library._clips[key.to_int()] = {
 			"origin": Vector2(origin[0], origin[1]) if origin is Array and origin.size() == 2 else null,
@@ -153,6 +160,13 @@ func font(font_id: Variant) -> Font:
 		file.data = data
 		_fonts[font_id] = file if not data.is_empty() else ThemeDB.fallback_font
 	return _fonts[font_id]
+
+
+## How Flash lays out the texts of a font of the client, for its text fields.
+func text_layout(font_id: Variant) -> FlashTextLayout:
+	if not _text_layouts.has(font_id):
+		_text_layouts[font_id] = FlashTextLayout.new(_art.font_advances(int(font_id)), _art.font_line_metrics(int(font_id)))
+	return _text_layouts[font_id]
 
 
 ## The same library for clips on the map, whose frames are drawn at the

@@ -73,7 +73,7 @@ func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, collection
 	ok.make_button(true)
 	ok.pressed.connect(_close)
 	var packs := _window.clip("btnOpenUnitPacks")
-	packs.fit_text("lbl", config.text("UNITS_PACKS_OPEN_UNITS_PACKS"))
+	packs.set_text("lbl", config.text("UNITS_PACKS_OPEN_UNITS_PACKS"))
 	packs.make_button(true)
 	packs.pressed.connect(func() -> void:
 		_close()
@@ -156,7 +156,7 @@ func _show_page() -> void:
 			var picture: TextureRect = place.get_node("picture")
 			picture.texture = _ui.thumb(item.img_name) if item != null else null
 			picture.material = null if _collections.is_owned(units[column]) else _grey
-			place.fit_text("lblName", item.name if item != null else "")
+			place.set_text("lblName", item.name if item != null else "")
 			place.set_part_visible("lblCounter", column == units.size() - 1)
 			place.set_text("lblCounter", "%d/%d" % [_collections.owned_in(collection), units.size()])
 		if collection.is_empty():

@@ -46,6 +46,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | [PvP attack screen art](#pvp-attack-screen-art) | Done |
 | [Bottom bar in battles](#bottom-bar-in-battles) | Done |
 | [Panel of the selected units](#panel-of-the-selected-units) | Done |
+| [Text fields](#text-fields) | Done |
 
 
 ### Group 4: parts of a release that are not the launcher
@@ -188,10 +189,9 @@ Changes on the way:
 Differences that are left:
 
 - The client shows the assault HUD behind the start window; the port shows the village of the enemy, without the bar.
-- The client grows the label of Attack until it fills the button (`ButtonGenericTall`). The port does not measure text as Flash does, so it uses the size that Ruffle shows (34).
+- The client grows the label of Attack until it fills the button (`ButtonGenericTall`). The port does not use this rule; it uses the size that Ruffle shows (34).
 - The import keeps only named masks. The animation of the start window has an unnamed mask, so `assault_start_window.gd` cuts it with the rectangle of that mask.
 - The zoom slider of the client was not on the spy screen of the port; it is now (`StateSpy` hides the bottom bar but not the slider). As in battles, the knob of the port shows the zoom of the spy screen (0.5); the knob of the client stays where it was.
-- Wrapped texts can break at other words, for example the end text of the animation, because the fonts measure a little differently.
 
 ### Achievement publish
 
@@ -397,12 +397,30 @@ Done. The import adds `PortraitMC`, `PortraitMorUnitsMC`, `EP_SpecialUnitMc` and
 - A special unit of the player in the village shows `EP_SpecialUnitMc` with its attack buttons, as in the client, and each special unit that the player selected keeps a portrait above the panel until another map loads (`ui/special_portraits.gd`, shared with the battles). The buttons also work outside a fight, as in the client: a click starts a fight in the village without enemies (`VillageBattleScreen.use_button()`), in which the unit uses the button. The fight stays while the attack casts or cools down (`VillageBattle.is_calm()`). As in the client, the summoned units stay in the village after the fight as units of the player until the map loads again, and the save does not get them (`Village.add_summoned()`). They count for the population (61 to 65 in Ruffle and in the port), they do not go into buildings, on quests or into the unit collections, and in a later fight they count as minions of their summoner. The port gets the buttons of a unit from a battle with that unit only, because a unit gets its buttons when it enters a battle. `village_check.gd` checks this with the summon of the Demon Dragon (`_check_special_attack_in_village`).
 - The item under the mouse, on the map or on its portrait, lights up as in the client (`IsoInteractiveElement.highlight`), in the village and in all battles: a white glow around its graphic (`sprites/hover_glow.gd`, the GlowFilter of blur 3 and strength 50), its health bar, and its label (`ui/info_popup.gd`, `InfoPopup`) with the name, 30 pixels above its place. Over the label of a building of the village that produces, a bar shows the share done and the time to the next collection, as "1 h 5 m" (`GameStatic.dhms`, now `VillageHud.dhms()`, also used by the forge windows). The buildings of the battles show the same bar, with the same rule (`BattleView.show_production_of()`): a building that needs a unit or a work time and does not have it shows the name only, as in the client. The client counts the time from the server time of the map load and does not count further in a battle, so the label keeps the values of the start of the battle; in a fight in the village the time goes on. A quest map has old times, so its buildings show 100 %. Decorations get no glow and walls no label. Before, the port did not mark the item under the mouse.
 
-Compared with the original client in Ruffle on the same save, in the quest Mysterious Island at 760 × 600: the portraits of Select All, and the panel of one item for the Demon Dragon (with its buttons and its portrait above the panel), a Light Knight at 15/60 life, a War Troll and a Wall II. The texts, values, pictures and life bars are at the same places. The button columns were 43 pixels apart in the port and are now 59, as in Ruffle; the buttons are 1 to 2 pixels from their place in Ruffle. The value digits are 1 to 2 pixels wider in the port at the same height (the known difference of the fonts). In the village of Ruffle, the special panel of the dragon is the same as in battles; the glow, the health bar and the name label of the hovered item were seen in Ruffle and in port screenshots.
+Compared with the original client in Ruffle on the same save, in the quest Mysterious Island at 760 × 600: the portraits of Select All, and the panel of one item for the Demon Dragon (with its buttons and its portrait above the panel), a Light Knight at 15/60 life, a War Troll and a Wall II. The texts, values, pictures and life bars are at the same places. The button columns were 43 pixels apart in the port and are now 59, as in Ruffle; the buttons are 1 to 2 pixels from their place in Ruffle. The value digits were 1 to 2 pixels wider and 1 pixel higher in the port; they are now the same as in Ruffle within 1 pixel (see [Text fields](#text-fields)). In the village of Ruffle, the special panel of the dragon is the same as in battles; the glow, the health bar and the name label of the hovered item were seen in Ruffle and in port screenshots.
 
 Differences that stay:
 
 - During a fight in the village, all buttons of the HUD work in the client. The port fights on a copy of the village (`VillageBattle`), so the store, World, Gift, the town selector, the goals, the shield, the name of the empire and the icons show the message "Wait until the fight in your village ends." The windows of the HUD that are open hide during the fight and show again after it. The port writes the rewards of the fight to the village at its end, so the top bars change then.
 - The box of the town quest (`mcTrolls`) does not show in the bottom bar during a fight in the village.
+
+### Text fields
+
+Done. Words wrapped at other places than in Ruffle, and some numbers were 1 to 2 pixels wider. There were three causes:
+
+- The client writes most of its texts with `TextFieldUtil.setHTML`, which makes the font smaller until the text fits the field (`resizeText`: while `maxScrollH > 0` or `maxScrollV > 1`, to 8 at most). The port kept the size of the art. In a field with more lines, the `</p>` that `setHTML` adds starts an empty last line, so the font gets smaller as soon as one line (ascent + descent of the font + the leading of the field) is higher than the field. For example the values of the battle panel are 11 (attack) and 10 (the others) in Ruffle, not 12. `UiClip.set_text` now uses this rule, from the size of the art. The client writes 1352 texts with this rule, 33 with an auto size and about 95 with `TextField.text`; of the 58 named fields of the art that always get smaller, the client writes with `setHTML` all those into which the port writes a text.
+- The import did not keep the leading of the text fields (114 fields have 2 pixels, 84 have 2.15). It is now in the settings of each field, and the Label of the port has the line height of Flash. Godot takes only whole pixels for the space between lines, so a line can be up to 0.5 pixel higher or lower than in Ruffle.
+- Flash (and Ruffle) takes the advance of each glyph in whole twips (1/20 pixel) and drops the rest, so a line is up to 1/20 pixel narrower for each character than its exact width. Godot measures the exact width, and broke "There you can see how it is going and finalize it whenever you want." (519 pixels) before "want." in a field of 517.3 pixels. The port now breaks the lines itself with the rule of Ruffle (`ui/flash_text_layout.gd`: breaks after spaces and hyphens, a word wider than the field breaks after its last character that fits), and the Label does not wrap them again. `flash_art` gives the advances and the ascent and descent of each font of the SWF file.
+
+The import writes the leading, so the windows must be imported again; the port reports an older import.
+
+Checks: the battle panel of four units, compared with the Ruffle pictures of the panel comparison: the values have the same size, and their width and height are the same within 1 pixel (before: 1 to 2 pixels wider and 1 pixel higher). For the line breaks, a copy of the client SWF with other texts in the help field of the start window of an attack (4 texts from the configuration, at the sizes 13, 15 and 17), drawn by the Ruffle exporter and by the port: all lines end at the same word, and the right ends of the lines are within 1 pixel. The village, battle, quest, spell and mini-game checks pass.
+
+Differences that stay:
+
+- The lines can be up to 0.5 pixel higher or lower each than in Ruffle (see above). In the help text of 11 lines, the last line was 5 pixels from its place in Ruffle.
+- A character without a glyph in the font has no width in Flash; the port draws the empty glyph of the font, which is half an em wide.
+- A text that the client writes with `TextField.text` or with an auto size does not get smaller in the client; the port makes it smaller when it does not fit. Such texts were not found among the fields that the port writes, but the 105 calls of the port that write fields with the same names as these texts were not all compared with the client.
 
 ## Group 4: parts of a release
 

@@ -351,4 +351,20 @@ impl Art {
             _ => None,
         }
     }
+
+    /// The character code and the advance of each glyph of a font, see FontData::advances().
+    pub fn font_advances(&self, id: CharacterId) -> Vec<(u16, f32)> {
+        match self.characters.get(&id) {
+            Some(Character::Font(font)) => font.advances(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The ascent and the descent of a font in 1024ths of the em, see FontData::line_metrics().
+    pub fn font_line_metrics(&self, id: CharacterId) -> Option<(i32, i32)> {
+        match self.characters.get(&id) {
+            Some(Character::Font(font)) => Some(font.line_metrics()),
+            _ => None,
+        }
+    }
 }

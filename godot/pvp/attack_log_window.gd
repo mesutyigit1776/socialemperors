@@ -94,7 +94,7 @@ func _make_item(attack: Dictionary, player_id: String, now: int) -> UiClip:
 	item.clip("btnWinLose").show_frame(1 if attacker_won else 0)
 	var revenge := item.clip("btnRevenge")
 	if int(attack.get("reply", 0)) == 0:
-		revenge.fit_text("lbl", _config.text("BUTTON_REVENGE" if attacker_won else "POPOVER_FRIEND_BUTTON_ATTACK"))
+		revenge.set_text("lbl", _config.text("BUTTON_REVENGE" if attacker_won else "POPOVER_FRIEND_BUTTON_ATTACK"))
 		revenge.make_button(true)
 		revenge.pressed.connect(func() -> void:
 			SoundPlayer.play(SoundEffect.BUTTON_CLICK)

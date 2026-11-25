@@ -315,6 +315,24 @@ impl FlashArt {
         PackedByteArray::from(self.shared.art.font_ttf(id as u16).unwrap_or_default())
     }
 
+    /// The ascent (x) and the descent (y) of a font of the file in 1024ths of
+    /// the em, from its layout. Zero when the id is not a font.
+    #[func]
+    fn font_line_metrics(&self, id: i64) -> Vector2 {
+        self.shared.art.font_line_metrics(id as u16).map_or(Vector2::ZERO, |(a, d)| Vector2::new(a as f32, d as f32))
+    }
+
+    /// The advance of each glyph of a font of the file in 1024ths of the em,
+    /// by character code (int -> float). Empty when the id is not a font.
+    #[func]
+    fn font_advances(&self, id: i64) -> VarDictionary {
+        let mut advances = VarDictionary::new();
+        for (code, advance) in self.shared.art.font_advances(id as u16) {
+            advances.set(code as i64, advance);
+        }
+        advances
+    }
+
     /// Starts to draw these frames of a character at a scale on other threads,
     /// so that render() later only takes them. The frames that wait at
     /// another scale are not drawn: the game uses one scale at a time.

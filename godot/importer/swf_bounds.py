@@ -302,8 +302,9 @@ class SwfFile:
 	def edit_text(self, char_id):
 		"""Returns the settings of a text field (DefineEditText): its rectangle
 		[x, y, width, height] in pixels, font id and name, size in pixels, color
-		"#rrggbbaa", alignment ("left", "right", "center" or "justify"), whether it
-		has more lines, wraps words or reads HTML, and its initial text."""
+		"#rrggbbaa", alignment ("left", "right", "center" or "justify"), the
+		leading (the space between lines) in pixels, whether it has more lines,
+		wraps words or reads HTML, and its initial text."""
 		data = self.data
 		start = self.edit_texts[char_id]
 		rect, p = _read_rect(data, start + 2)
@@ -311,7 +312,7 @@ class SwfFile:
 		p += 2
 		result = {
 			"rect": [rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20],
-			"font_id": None, "font": None, "size": 12.0, "color": "#000000ff", "align": "left",
+			"font_id": None, "font": None, "size": 12.0, "color": "#000000ff", "align": "left", "leading": 0.0,
 			"multiline": bool(flags1 & 0x20), "word_wrap": bool(flags1 & 0x40), "html": bool(flags2 & 0x02), "text": "",
 		}
 		if flags1 & 0x01:
@@ -330,6 +331,8 @@ class SwfFile:
 			p += 2
 		if flags2 & 0x20:
 			result["align"] = ("left", "right", "center", "justify")[min(data[p], 3)]
+			# After the alignment: the left and right margins and the indent.
+			result["leading"] = struct.unpack_from('<h', data, p + 7)[0] / 20
 			p += 9
 		p = data.index(b'\0', p) + 1  # variable name
 		if flags1 & 0x80:

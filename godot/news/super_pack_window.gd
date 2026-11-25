@@ -110,7 +110,7 @@ func _show_item(display: UiClip, id: int, rarity: String) -> void:
 	var item := _config.get_item(id)
 	display.set_meta("item", id)
 	display.show_picture("pic", _ui.thumb(item.img_name) if item != null else null, false)
-	display.fit_text("lblName", item.name if item != null else "")
+	display.set_text("lblName", item.name if item != null else "")
 	display.set_text("lblFrequency", rarity)
 
 

@@ -21,6 +21,8 @@ pub struct FontData {
 struct GlyphData {
     code: u16,
     advance: i32,
+    /// The advance without the rounding of `advance`, in 1024ths of the em.
+    exact_advance: f32,
     records: Vec<ShapeRecord>,
 }
 
@@ -39,8 +41,19 @@ impl FontData {
             italic: font.flags.contains(swf::FontFlag::IS_ITALIC),
             ascent: layout.map_or(UNITS_PER_EM as i32, |l| l.ascent as i32 / scale),
             descent: layout.map_or(0, |l| l.descent as i32 / scale),
-            glyphs: font.glyphs.iter().map(|g| GlyphData { code: g.code, advance: g.advance as i32 / scale, records: g.shape_records.clone() }).collect(),
+            glyphs: font.glyphs.iter().map(|g| GlyphData { code: g.code, advance: g.advance as i32 / scale, exact_advance: g.advance as f32 / scale as f32, records: g.shape_records.clone() }).collect(),
         }
+    }
+
+    /// The ascent and the descent of the font layout, in 1024ths of the em,
+    /// which Flash uses for the height of a line of text.
+    pub fn line_metrics(&self) -> (i32, i32) {
+        (self.ascent, self.descent)
+    }
+
+    /// The character code and the advance of each glyph, in 1024ths of the em.
+    pub fn advances(&self) -> Vec<(u16, f32)> {
+        self.glyphs.iter().map(|g| (g.code, g.exact_advance)).collect()
     }
 
     /// The size of the em square of the glyph shapes: 1024 units, or 20 times more in DefineFont3.

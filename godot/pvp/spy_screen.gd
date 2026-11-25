@@ -95,8 +95,8 @@ func _layout() -> void:
 
 ## ButtonGenericTall.setTextSize makes the font of the label grow until the
 ## text nearly fills the button; then the label is in the middle, 5 pixels
-## higher. The port does not measure text as Flash does, so the caller gives
-## the size that the client shows in Ruffle.
+## higher. The port does not use this rule; the caller gives the size that
+## the client shows in Ruffle.
 static func grow_label(button: UiClip, font_size: int) -> void:
 	var label: Label = button.part("lbl")
 	label.autowrap_mode = TextServer.AUTOWRAP_OFF

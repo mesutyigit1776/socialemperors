@@ -14,6 +14,8 @@ signal pressed  ## The player clicked a clip that is a button, see make_button()
 
 ## Flash draws the text of a field 2 pixels inside its rectangle.
 const TEXT_GUTTER := 2.0
+## The smallest font size to which TextFieldUtil.resizeText makes a text smaller.
+const MIN_FIT_SIZE := 8
 ## A matrix whose axes are further than this from a right angle (the cosine
 ## of their angle) skews; see _is_skewed().
 const SKEW_LIMIT := 0.001
@@ -94,7 +96,7 @@ func show_frame(new_frame: int) -> void:
 		# the second frame of the result of the attack log. The client writes
 		# its texts again after a change of frame (the labels of its buttons),
 		# so a field with a text from the code keeps it, also with its font
-		# size from fit_text(). Only text fields: the port keeps the clips and
+		# size from set_text(). Only text fields: the port keeps the clips and
 		# buttons that the code holds.
 		var shown_before := true
 		if node is Label and int(node.get_meta("start", 0)) != int(part.get("start", 0)) and node.text == node.get_meta("art_text") and not node.has_meta("written"):
@@ -242,11 +244,62 @@ func show_label(label: String) -> void:
 		show_frame(labelled)
 
 
+## Writes a text into a field as the client's TextFieldUtil.setHTML does: the
+## font gets smaller, to MIN_FIT_SIZE at most, while the text does not fit the
+## field (see _fits()). The client writes most of its fields so. It starts from
+## the size that the field has now; the port starts from the size of the art,
+## so that a field that the port uses again for other texts (a page of a list)
+## does not keep the size of an earlier text.
 func set_text(path: String, text: String) -> void:
 	var label := part(path) as Label
-	if label != null:
+	if label == null:
+		return
+	label.set_meta("written", true)
+	var size: int = label.get_meta("art_font_size")
+	_show_text(label, text, size)
+	while size > MIN_FIT_SIZE and not _fits(label, size):
+		size -= 1
+		_show_text(label, text, size)
+
+
+## Shows a text in a field at a font size. In a field with word wrap, the
+## port breaks the lines as Flash does (FlashTextLayout), and the Label does
+## not wrap them again. The lines are as far apart as in Flash.
+static func _show_text(label: Label, text: String, size: int) -> void:
+	var layout: FlashTextLayout = label.get_meta("text_layout")
+	label.set_meta("flash_text", text)
+	label.add_theme_font_size_override("font_size", size)
+	var godot_line := label.get_theme_font("font").get_height(size)
+	label.add_theme_constant_override("line_spacing", roundi(layout.line_height(size, label.get_meta("leading")) - godot_line))
+	if label.get_meta("word_wrap"):
+		label.text = "\n".join(layout.wrap(text, size, label.get_meta("field_size").x))
+	else:
 		label.text = text
-		label.set_meta("written", true)
+
+
+## Whether the text of a field fits it at this font size, as Flash measures
+## it. TextFieldUtil.resizeText makes the font smaller while maxScrollH > 0,
+## that is a field without word wrap has a line at least 1 pixel wider than
+## the field, or maxScrollV > 1, that is the layout has more than one line and
+## the lines are higher than the field. In a field with more lines, the "</p>"
+## that setHTML puts after the text starts an empty last line, so one line of
+## text that is higher than the field is enough (Ruffle, html/layout.rs and
+## display_object/edit_text.rs).
+static func _fits(label: Label, size: int) -> bool:
+	var field: Vector2 = label.get_meta("field_size")
+	var layout: FlashTextLayout = label.get_meta("text_layout")
+	var text: String = label.get_meta("flash_text")
+	var line_count: int
+	if label.get_meta("word_wrap"):
+		line_count = layout.wrap(text, size, field.x).size()
+	else:
+		var lines := text.split("\n")
+		for line in lines:
+			if layout.width(line, size) - field.x >= 1.0:
+				return false
+		line_count = lines.size()
+	var layout_lines := line_count + (1 if label.get_meta("multiline") else 0)
+	return layout_lines < 2 or line_count * layout.line_height(size, label.get_meta("leading")) <= field.y
 
 
 ## The rectangle of a text field as Flash measures it, in the coordinates of
@@ -257,35 +310,6 @@ func field_rect(path: String) -> Rect2:
 		return Rect2()
 	var field: Vector2 = label.get_meta("field_size")
 	return Rect2(label.position - Vector2(TEXT_GUTTER, TEXT_GUTTER), field + Vector2(TEXT_GUTTER, TEXT_GUTTER) * 2)
-
-
-## Sets the text and makes its font smaller, to min_size at most, until the
-## text fits the rectangle of the field, as the client's TextFieldUtil.setHTML
-## does for most fields.
-func fit_text(path: String, text: String, min_size := 8) -> void:
-	var label := part(path) as Label
-	if label == null:
-		return
-	label.text = text
-	label.set_meta("written", true)
-	if not label.has_meta("font_size"):
-		label.set_meta("font_size", label.get_theme_font_size("font_size"))
-	var field: Vector2 = label.get_meta("field_size")
-	var font := label.get_theme_font("font")
-	var size: int = label.get_meta("font_size")
-	# Flash makes the font smaller while the text is wider than a field
-	# without wrap, or has more lines than a field with wrap shows.
-	while size > min_size:
-		if label.autowrap_mode == TextServer.AUTOWRAP_OFF:
-			if font.get_string_size(text, label.horizontal_alignment, -1.0, size).x <= field.x:
-				break
-		else:
-			var line_height := font.get_height(size)
-			var lines := roundi(font.get_multiline_string_size(text, label.horizontal_alignment, field.x, size).y / line_height)
-			if lines <= maxi(floori(field.y / line_height), 1):
-				break
-		size -= 1
-	label.add_theme_font_size_override("font_size", size)
 
 
 ## Puts a picture in the part at path, in place of the pictures there. The
@@ -419,18 +443,21 @@ func _make_part(part: Dictionary) -> Control:
 				color = Color.html(color_value.get_string(1))
 		text = RegEx.create_from_string("<[^>]*>").sub(text.replace("<br>", "\n").replace("</p><p", "\n<p"), "", true)
 		text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
-	# Flash does not count the spaces at the end of a line when it wraps the
-	# text; Godot does, and breaks "You've won \rthe battle" into three lines.
+	# Flash does not count the spaces at the end of a line; a Label does, for
+	# example in the place of a centred line.
 	var lines := text.replace("\r", "\n").split("\n")
 	for i in lines.size():
 		lines[i] = lines[i].rstrip(" ")
-	label.text = "\n".join(lines)
 	label.add_theme_font_override("font", library.font(settings["font_id"]))
-	label.add_theme_font_size_override("font_size", int(round(size)))
+	label.set_meta("art_font_size", int(round(size)))
+	label.set_meta("text_layout", library.text_layout(settings["font_id"]))
+	label.set_meta("leading", float(settings["leading"]))
+	label.set_meta("multiline", bool(settings["multiline"]))
+	label.set_meta("word_wrap", bool(settings["word_wrap"]))
+	_show_text(label, "\n".join(lines), int(round(size)))
 	label.add_theme_color_override("font_color", color)
 	label.set_meta("frame_colour", settings["color"])
 	label.horizontal_alignment = {"left": HORIZONTAL_ALIGNMENT_LEFT, "right": HORIZONTAL_ALIGNMENT_RIGHT, "center": HORIZONTAL_ALIGNMENT_CENTER}.get(settings["align"], HORIZONTAL_ALIGNMENT_FILL)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if settings["word_wrap"] else TextServer.AUTOWRAP_OFF
 	# The client makes most fields grow with their text (autoSize), so the port does not cut the text.
 	label.clip_text = false
 	if part.has("glow"):
