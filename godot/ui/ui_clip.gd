@@ -31,6 +31,7 @@ var library: UiLibrary
 var sprite_id: int
 var frame := 0
 var _base := TextureRect.new()
+var _layered := false  # The image of the frame has layers that mix with the screen.
 var _parts: Dictionary = {}  # Part name (or "#depth" for an unnamed text or button) -> Control.
 var _button := false
 var _hover_frame := false
@@ -80,6 +81,10 @@ func show_frame(new_frame: int) -> void:
 	frame = clampi(new_frame, 0, frame_count() - 1)
 	var origin: Variant = library.clip_origin(sprite_id)
 	_base.texture = library.clip_image(sprite_id, frame)
+	var layered := _base.texture != null and _base.texture.has_meta(&"blend_modes")
+	if layered or _layered:
+		FrameMaterial.apply(_base, _base.texture)
+		_layered = layered
 	_base.position = origin if origin != null else Vector2.ZERO
 	_base.size = _base.texture.get_size() if _base.texture != null else Vector2.ZERO
 	var shown := {}

@@ -1,5 +1,5 @@
 class_name FrameMaterial
-## Shows a frame of the map on a Sprite2D with the material that it needs: the
+## Shows a frame of the map or of a window with the material that it needs: the
 ## shader of the layers for a frame whose parts mix with the map (see
 ## FlashArt.render), and a colour that is added to the graphic.
 ##
@@ -19,6 +19,12 @@ static var _materials := {}  # [blend modes, added colour] -> ShaderMaterial
 ## Shows texture on node. added: the colour added to the graphic, black for none.
 static func show(node: Sprite2D, texture: Texture2D, added := Color.BLACK) -> void:
 	node.texture = texture
+	apply(node, texture, added)
+
+
+## Gives a node that shows texture (a Sprite2D or a TextureRect) the material
+## and the screen copy that the texture needs.
+static func apply(node: CanvasItem, texture: Texture2D, added := Color.BLACK) -> void:
 	var modes: PackedByteArray = texture.get_meta(&"blend_modes", PackedByteArray()) if texture != null else PackedByteArray()
 	node.material = _material(modes, added)
 	var copy: BackBufferCopy = node.get_node_or_null(NodePath(_COPY_NAME))

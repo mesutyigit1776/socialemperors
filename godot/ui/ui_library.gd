@@ -66,7 +66,10 @@ static func load_from(data_dir: String, frames: FrameCache, folder := "ui", on_m
 			"frames": clip["frames"],
 			"labels": clip.get("labels", {}) if clip.get("labels", {}) is Dictionary else {},
 		}
-	library._art = FlashArt.open(library._dir.path_join(WINDOWS_FILE)) if FileAccess.file_exists(library._dir.path_join(WINDOWS_FILE)) else null
+	# A few window graphics have parts that mix with what is behind the window
+	# (multiply, overlay and others): FlashArt draws them as layers, as for the
+	# map, and UiClip mixes them with the screen (FrameMaterial).
+	library._art = FlashArt.open_map(library._dir.path_join(WINDOWS_FILE)) if FileAccess.file_exists(library._dir.path_join(WINDOWS_FILE)) else null
 	if library._art == null:
 		push_error("'%s' is missing. Import the game files again." % library._dir.path_join(WINDOWS_FILE))
 		return null
