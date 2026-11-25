@@ -4,10 +4,8 @@ extends Control
 ## the pack with their rarity, 5 at a time, and three boxes for 1, 2 and 4
 ## items with their prices (Village.offer_pack_price). The mouse over a unit
 ## shows its card. After a purchase, show_prizes() moves the chosen box to the
-## middle, opens it, and the items fly from it to their places.
-##
-## The client also makes the box and the prizes bright and gives them a glow;
-## the port does not draw these effects.
+## middle, opens it, and the items fly from it to their places. The box and
+## the prizes become white and get a glow, which go away in a second.
 
 signal buy_requested(choice: int)
 signal closed
@@ -26,6 +24,17 @@ const FLY_SECONDS := 1.0
 const FLY_DELAY := 0.3
 const FLY_X := 30.0
 const CARD_GAP := 10.0
+## The client gives the box a red glow and the prizes a cyan glow
+## (GlowFilter with alpha 3 and blur 10), makes them white in BOX_BRIGHT_SECONDS
+## or PRIZE_BRIGHT_SECONDS, and then takes the white and the glow away in
+## FADE_SECONDS: the glow goes to cyan, alpha 0 and blur 0.
+const BOX_GLOW := Color(1, 0, 0)
+const PRIZE_GLOW := Color(0, 1, 1)
+const GLOW_ALPHA := 3.0
+const GLOW_BLUR := 10.0
+const BOX_BRIGHT_SECONDS := 0.5
+const PRIZE_BRIGHT_SECONDS := 0.1
+const FADE_SECONDS := 1.0
 const ARROW_DISABLED_ALPHA := 0.5
 
 var _ui: UiLibrary
@@ -147,6 +156,7 @@ func show_prizes(choice: int, prizes: Array[int]) -> void:
 	for index in 3:
 		_window.set_part_visible("box%d" % (index + 1), index == choice)
 	create_tween().tween_property(box, "position:x", middle.position.x, MOVE_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_flash(box, BOX_GLOW, BOX_BRIGHT_SECONDS)
 	_window.set_text("txtHeader", _config.text("POPUP_SUPER_MISTERY_HEADER_DONE"))
 	_window.set_part_visible("txtFooter", true)
 	var places: Array = PRIZE_X[choice]
@@ -160,6 +170,7 @@ func show_prizes(choice: int, prizes: Array[int]) -> void:
 		display.set_part_visible("lblName", false)
 		display.set_part_visible("lblFrequency", false)
 		create_tween().tween_property(display, "position:x", places[mini(index, places.size() - 1)], MOVE_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_flash(display, PRIZE_GLOW, PRIZE_BRIGHT_SECONDS)
 	await get_tree().create_timer(OPEN_DELAY).timeout
 	if not is_inside_tree():
 		return
@@ -185,7 +196,28 @@ func _fly(id: int, display: UiClip, from: Vector2, delay: float) -> void:
 		display.set_part_visible("question", false)
 		display.set_part_visible("lblName", true)
 		display.set_part_visible("lblFrequency", true)
-		picture.queue_free())
+		picture.queue_free()
+		var group := FlashFilters.of(display)
+		group.set_glow(PRIZE_GLOW, GLOW_ALPHA, GLOW_BLUR)
+		_fade_glow(create_tween(), group))
+
+
+## The box or a prize becomes white with a glow, then both go away (showPrizes
+## and removeBrightness).
+func _flash(node: Control, glow: Color, bright_seconds: float) -> void:
+	var group := FlashFilters.of(node)
+	group.set_glow(glow, GLOW_ALPHA, GLOW_BLUR)
+	var tween := create_tween()
+	tween.tween_property(group, "brightness", 1.0, bright_seconds).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(group, "brightness", 0.0, FADE_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	_fade_glow(tween.parallel(), group)
+
+
+func _fade_glow(tween: Tween, group: FlashFilters) -> void:
+	tween.set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.tween_property(group, "glow_color", PRIZE_GLOW, FADE_SECONDS)
+	tween.tween_property(group, "glow_alpha", 0.0, FADE_SECONDS)
+	tween.tween_property(group, "glow_blur", 0.0, FADE_SECONDS)
 
 
 func _rarity(id: int) -> String:

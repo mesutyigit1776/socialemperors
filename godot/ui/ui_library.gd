@@ -19,6 +19,7 @@ var _folder: String
 var _map_copy: UiLibrary  # See for_map().
 var _others := {}  # [folder, on map] -> UiLibrary, see other().
 var _frames: Dictionary = {}  # Sprite id -> SpriteLibrary.Frames.
+var _frame_rects: Dictionary = {}  # Sprite id -> Array[Rect2], see clip_rect().
 var _button_images: Dictionary = {}  # [button id, state, scale] -> Texture2D, or null.
 var _symbols: Dictionary = {}  # Symbol name -> sprite id.
 var _clips: Dictionary = {}  # Sprite id (int) -> {"origin": Vector2 or null, "frames": [[part, ...], ...], "labels": {label: frame}}
@@ -141,6 +142,17 @@ func button_image(button_id: int, state: String, scale: float) -> Texture2D:
 ## The top-left corner of the images of a button, relative to its registration point.
 func button_origin(button_id: int) -> Vector2:
 	return _buttons.get(button_id, Vector2.ZERO)
+
+
+## The bounds of frame (from 0) of the sprite without its parts, as Flash
+## measures them: only this frame, and without the space in which filters draw
+## outside the shapes. The image of clip_image() covers all frames and that
+## space. An empty Rect2 when the frame draws nothing.
+func clip_rect(sprite_id: int, frame: int) -> Rect2:
+	if not _frame_rects.has(sprite_id):
+		_frame_rects[sprite_id] = _art.frame_rects(sprite_id)
+	var rects: Array = _frame_rects[sprite_id]
+	return rects[frame] if frame < rects.size() else Rect2()
 
 
 ## The image of frame (from 0) of the sprite without its parts, or null.

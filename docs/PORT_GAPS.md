@@ -47,6 +47,7 @@ Do the save migration before the unit list, because the unit list reads `boughtU
 | [Bottom bar in battles](#bottom-bar-in-battles) | Done |
 | [Panel of the selected units](#panel-of-the-selected-units) | Done |
 | [Text fields](#text-fields) | Done |
+| [Sizes, glows and floating numbers](#sizes-glows-and-floating-numbers) | Done |
 
 
 ### Group 4: parts of a release that are not the launcher
@@ -148,7 +149,7 @@ Gift > Units opens the unit list (`PopupAllUnits`). The port now has it, with th
 
 The configuration has a cash price for each unit, and the client has the code that sells a unit (`buy_stored_item_cash`), but the client of 1.4.07 never calls it: in Ruffle a click on a unit did nothing. The port also does not sell the units.
 
-Compared with the original client in Ruffle on the same save: the list (11 / 504, the same grey and coloured units, the counts and "Get reward"), the cards in the first and second row, page 2, the reward (cash 53 to 54, `unitCollectionsCompleted` [1]) and the reward window. Small differences: the card of a unit in the first row is 8 pixels lower in the port, and a few long names get a slightly different font size.
+Compared with the original client in Ruffle on the same save: the list (11 / 504, the same grey and coloured units, the counts and "Get reward"), the cards in the first and second row, page 2, the reward (cash 53 to 54, `unitCollectionsCompleted` [1]) and the reward window. A small difference: a few long names get a slightly different font size. The card of a unit in the first row was 7 pixels lower in the port; see [Sizes, glows and floating numbers](#sizes-glows-and-floating-numbers).
 
 The client has a bug in its test before the alert: it looks for the index of the collection in the list of taken rewards, not its id. So the alert does not show when a taken reward has the same number as that index. The port tests the id only.
 
@@ -170,8 +171,7 @@ Gift > News opens the news window of the client (`PopupNews`). The port now has 
 
 Compared with the original client in Ruffle on the same save: the news window, the three pack windows, the card in the super pack, the purchases (super pack: cash 1000 to 800, +1000 experience, +5 mana, 4 items; normal pack: cash to 755, +750 experience, 4 items; random pack: cash to 695, +1000 experience, 1 item), the prize window, the store link, the story and the quests. Differences:
 
-- The client shows the gains as numbers that float up, and makes the box and the prizes of a super pack bright with a glow. The port does not draw these effects.
-- The card of a unit in the super pack is about 15 pixels lower in the port.
+- After a purchase, the box of the super pack shows a "Best value" star while it moves to the middle in the port, and not in Ruffle.
 - The store link shows the items of the port's own store rotation, so the items differ from those of the Ruffle run.
 - In Ruffle the first news picture was empty until it loaded; the port shows it at once.
 
@@ -268,7 +268,6 @@ A second comparison in Ruffle took 30 pictures of each prize card in the client 
 
 Differences that are left:
 
-- The client gives a complete item a white glow; the port does not.
 - The picture of a found item (`ForgeToken`) shows on the map of the village, of a village fight and of a PvP attack, but not on the map of a forge island, because the port gives the copper at the end of the quest. In the client the picture stays until the player clicks it; in the port the picture of a fight goes away with the fight screen.
 - The Invite button shows a message of the port. Without enough cash, the port shows the text of the client and says that it has no cash shop.
 - Not compared in Ruffle: the hammer animation, the prizes, Buy All, the pictures of found items, and a fight on a forge island.
@@ -421,6 +420,19 @@ Differences that stay:
 - The lines can be up to 0.5 pixel higher or lower each than in Ruffle (see above). In the help text of 11 lines, the last line was 5 pixels from its place in Ruffle.
 - A character without a glyph in the font has no width in Flash; the port draws the empty glyph of the font, which is half an em wide.
 - A text that the client writes with `TextField.text` or with an auto size does not get smaller in the client; the port makes it smaller when it does not fit. Such texts were not found among the fields that the port writes, but the 105 calls of the port that write fields with the same names as these texts were not all compared with the client.
+
+### Sizes, glows and floating numbers
+
+Done. Some unit cards were lower in the port than in Ruffle, and the port did not draw some glows and the numbers that float up.
+
+- The card lower than in Ruffle: `UiClip.bounds()` measured the image of a sprite, which covers all its frames and the space in which its filters draw. Flash measures only the shown frame, without filters. The background of the unit card has two frames of 201.35 pixels, with the arrow at the bottom or at the top, and its image is 216 pixels high. The client places the card in the super pack 10 pixels below the item plus the height of the card, and in the first row of the unit list at half the height of the card, so the cards were 14 and 7 pixels lower. `bounds()` now uses the bounds of the shown frame from the SWF file (`UiLibrary.clip_rect()`). The mouse area of a button stays the image of all frames, so that the area does not change when the frame under the mouse changes.
+- The same rule changed other places where the port measures a sprite: the rows of the attack log are 98.85 pixels apart and not 102, as in Ruffle; the pills of the store subcategories have the width of their text, as in Ruffle (before, the port scaled each pill by the width of all five frames, so most pills were too narrow); and many sizes changed by less than 1 pixel.
+- The numbers that float up (`NumberParticle` of the client, `ui/number_particle.gd`): one line for each value, in the colour of the resource and with its icon, up from the middle of the screen, over the windows. The port shows them for the purchase of a pack: the cash and the gains, twice the size, for 2 seconds (1 second for a super pack). The import adds the symbols `NumberParticle2MC` and `IconResourcesMC`. The client shows these numbers at 69 other places (collections, rewards, battles, purchases in other windows); the port does not show them there yet.
+- The glows (`ui/flash_filters.gd`): a GlowFilter of Flash (one box blur) and the `_brightness` of Tweener (adds up to 100 of 255 to each colour) on an item with all its parts. The box of a super pack gets a red glow and the prizes a cyan glow, then both go away in a second, and each prize gets a cyan glow again when it lands. A complete item of the Island Forge gets a white glow of blur 30.
+
+The import adds two symbols, so the windows must be imported again.
+
+Compared with Ruffle on the same save: the card in the super pack (white area from y 283 to 457 in Ruffle and 283 to 456 in the port; before 297 to 470), the card in the first row of the unit list (114 to 287 in both; before 121 to 294) and in the second row (within 1 pixel, as before), the attack log, the PvP window, the result window and the store subcategories. The numbers of a normal pack and of a super pack and the glows of a super pack have the same layout and colours as in Ruffle; their times were not compared, because Ruffle runs slower than real time in headless Chromium. The glow of a complete forge item was seen only in the port.
 
 ## Group 4: parts of a release
 

@@ -27,6 +27,9 @@ const DRAGON_BOX := Vector2(400, 300)
 ## The client calls a page of its own for the invitations; the port cannot invite.
 const NO_INVITE := "The port cannot invite friends. You can buy the horns."
 const HAMMER_FPS := 30.0
+## A complete item gets a white GlowFilter with blur 30 and strength 3.
+const COMPLETE_GLOW_BLUR := 30.0
+const COMPLETE_GLOW_STRENGTH := 3.0
 
 var _forge: IslandForge
 var _config: GameConfig
@@ -258,6 +261,7 @@ func _update_item(clip: UiClip, entry: Dictionary, now: int) -> void:
 	if amount >= entry["required"]:
 		for path: String in ["btnBuy", "btn", "btnSpeedup", "cooldown"]:
 			clip.set_part_visible(path, false)
+		FlashFilters.of(clip).set_glow(Color.WHITE, 1.0, COMPLETE_GLOW_BLUR, COMPLETE_GLOW_STRENGTH)
 		return
 	var price := _forge.price(item_id)
 	var wait := _forge.wait_left(item_id, now)

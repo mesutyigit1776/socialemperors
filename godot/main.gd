@@ -28,6 +28,11 @@ const SPELL_LAYER := 5
 const SURVIVAL_LEVEL := 20  ## MIN_LEVEL_SURVIVAL of the client.
 const TOURNAMENT_LEVEL := 15  ## MIN_LEVEL_TOURNAMENT of the client.
 const NEWS_LEVEL := 5  ## The client opens the news among the windows of the start from this level.
+## The numbers of a pack purchase: twice the size, for 60 frames (a normal or
+## random pack) or 30 frames (a super pack), see NumberParticle.
+const PACK_NUMBER_SCALE := 2.0
+const PACK_NUMBER_FRAMES := 60
+const SUPER_PACK_NUMBER_FRAMES := 30
 const SAVES_DIR := "user://saves"  ## The saves of the player, see StartScreen.
 
 var _options: Dictionary = {}
@@ -1365,7 +1370,8 @@ func _open_offer_pack(pack: Dictionary) -> void:
 				no_cash.call(super_window)
 				return
 			_after_offer_pack()
-			super_window.show_prizes(choice, prizes))
+			super_window.show_prizes(choice, prizes)
+			_show_pack_numbers(pack, choice, SUPER_PACK_NUMBER_FRAMES))
 		_windows.add_child(super_window)
 		return
 	var window := OfferPackWindow.new(_ui, _config, pack)
@@ -1377,13 +1383,24 @@ func _open_offer_pack(pack: Dictionary) -> void:
 		window.queue_free()
 		_after_offer_pack()
 		if pack["type"] == GameConfig.OFFER_RANDOM:
-			_windows.add_child(PackPrizeWindow.new(_ui, _config, _config.get_item(given[0]))))
+			_windows.add_child(PackPrizeWindow.new(_ui, _config, _config.get_item(given[0])))
+		_show_pack_numbers(pack, 0, PACK_NUMBER_FRAMES))
 	_windows.add_child(window)
 
 
 func _after_offer_pack() -> void:
 	_save()
 	_hud.refresh(_village)
+
+
+## The cash and the gains of a pack float up from the middle of the screen,
+## over the windows (PromotionPacks.buyPack and buySuperPack).
+func _show_pack_numbers(pack: Dictionary, choice: int, frames: int) -> void:
+	var values := [["c", -_village.offer_pack_price(pack, choice)], ["x", pack["xp"]]]
+	for code: String in ["g", "s", "f", "w"]:
+		values.append([code, pack["resources"][code]])
+	values.append(["m", pack["mana"]])
+	_windows.add_child(NumberParticle.new(_ui, values, PACK_NUMBER_SCALE, frames))
 
 
 ## The client opens the window of the login bonus when it loads the game, or

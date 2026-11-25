@@ -381,11 +381,19 @@ func take_mouse() -> void:
 	_base.mouse_filter = Control.MOUSE_FILTER_STOP
 
 
-## The rectangle of the images and parts in the coordinates of the clip.
-## with_pictures: also the pictures of show_picture(), without their masks,
-## as Flash measures the width and height of a display object.
+## The rectangle of the shown frame and its parts in the coordinates of the
+## clip, as Flash measures the width and height of a display object: without
+## the space of filters, and without the other frames. with_pictures: also the
+## pictures of show_picture(), without their masks.
 func bounds(with_pictures := false) -> Rect2:
-	var result := Rect2(_base.position, _base.size) if _base.texture != null else Rect2()
+	return _measure(with_pictures, false)
+
+
+## The rectangle of bounds(), or with images: of the frame images, which cover
+## all frames of a sprite and the space of its filters.
+func _measure(with_pictures: bool, images: bool) -> Rect2:
+	var own := Rect2(_base.position, _base.size) if images else library.clip_rect(sprite_id, frame)
+	var result := own if _base.texture != null else Rect2()
 	if with_pictures:
 		for child in get_children():
 			if child.has_meta("picture"):
@@ -396,7 +404,7 @@ func bounds(with_pictures := false) -> Rect2:
 	for node: Control in _parts.values():
 		if not node.visible:
 			continue
-		var rect: Rect2 = (node as UiClip).bounds(with_pictures) if node is UiClip else node.bounds() if node is UiButton else Rect2(Vector2.ZERO, node.size)
+		var rect: Rect2 = (node as UiClip)._measure(with_pictures, images) if node is UiClip else node.bounds() if node is UiButton else Rect2(Vector2.ZERO, node.size)
 		if rect.size != Vector2.ZERO:
 			rect = Transform2D(node.rotation, node.scale, 0.0, node.position) * rect
 			if _holder(node) != node:
@@ -405,8 +413,10 @@ func bounds(with_pictures := false) -> Rect2:
 	return result
 
 
+## The mouse is over a button in the rectangle of its frame images, so that
+## its area does not change when a frame under the mouse changes.
 func _has_point(point: Vector2) -> bool:
-	return _button and bounds().has_point(point)
+	return _button and _measure(false, true).has_point(point)
 
 
 func _gui_input(event: InputEvent) -> void:

@@ -175,6 +175,10 @@ SYMBOLS = [
 	"Loading2x2",
 	"Loading3x3",
 	"Loading4x4",
+	# The numbers that float up when the player gets or pays resources
+	# (NumberParticle), with the icons of the resources.
+	"NumberParticle2MC",
+	"IconResourcesMC",
 ]
 # The island window shows 7 pictures side by side; the start and end windows
 # show a picture for the kind of quest and for the result. The spell windows
