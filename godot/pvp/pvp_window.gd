@@ -42,8 +42,8 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village) -> void:
 	_window.set_part_visible("loadingAnim", false)
 	_window.set_part_visible("btnRanking", false)
 	var search := _window.clip("btnGetEnemy")
-	search.set_text("lbl", config.text("PVP_SEARCH_ENEMY"))
-	search.set_text("cost", str(village.pvp_search_cost()))
+	search.set_text("lbl", config.text("PVP_SEARCH_ENEMY"), false)
+	search.set_text("cost", str(village.pvp_search_cost()), false)
 	search.clip("icon").show_frame(StoreWindow.COST_FRAMES["g"])
 	search.make_button(true)
 	search.pressed.connect(func() -> void:
@@ -83,7 +83,7 @@ static func army_cell(ui: UiLibrary, item: GameConfig.ItemDef, count: int) -> Ui
 	const THUMB_SIZE := 66.0
 	var cell := ui.make("ArmyUnitCellMC")
 	cell.set_part_visible("qty", count != -1)
-	cell.set_text("qty", "x%d" % count)
+	cell.set_text("qty", "x%d" % count, false)
 	var thumb := ui.thumb(item.img_name) if item != null else null
 	if thumb != null:
 		var picture := cell.show_picture("thumb", thumb, false)

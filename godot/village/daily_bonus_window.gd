@@ -91,10 +91,10 @@ func _init(ui: UiLibrary, config: GameConfig, state: Dictionary) -> void:
 	_window.set_part_visible("unitReward", false)
 	var get_button := _window.clip("btnGet")
 	if _reward.is_empty():
-		get_button.set_text("lbl", config.text("AUX_CLOSE"))
+		get_button.set_text("lbl", config.text("AUX_CLOSE"), false)
 		get_button.clip("animatedBg").show_frame(CLOSE_BUTTON_FRAME)
 	else:
-		get_button.set_text("lbl", config.text("POPUP_NEW_DAILY_BONUS_GET"))
+		get_button.set_text("lbl", config.text("POPUP_NEW_DAILY_BONUS_GET"), false)
 	get_button.make_button()
 	get_button.pressed.connect(_close)
 	_window.button("btnClose").pressed.connect(_close)

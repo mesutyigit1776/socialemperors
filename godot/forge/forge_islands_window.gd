@@ -47,7 +47,7 @@ func _init(ui: UiLibrary, config: GameConfig, forge: IslandForge, village: Villa
 		var quest_id := IslandForge.QUEST_IDS[index]
 		var button := ui.make("NewQuestIslandButtonMC")
 		button.position = BUTTON_PLACES[index]
-		button.set_text("nombreIsla", QuestIsland.name_of(quest_id, config))
+		button.set_text("nombreIsla", QuestIsland.name_of(quest_id, config), false)
 		button.clip("stars").show_frame(village.quest_rank(quest_id))
 		button.set_part_visible("mcLevelLock", false)
 		var locked := index > 0 and village.quest_rank(IslandForge.QUEST_IDS[index - 1]) == 0
@@ -79,4 +79,4 @@ func _process(_delta: float) -> void:
 
 func _update_timer() -> void:
 	var wait := _forge.wait_left(IslandForge.QUEST, _clock.call())
-	_window.set_text("txtQuestTimer", "Play now" if wait == 0 else "NEXT QUEST IN \n" + VillageHud.dhms(wait))
+	_window.set_text("txtQuestTimer", "Play now" if wait == 0 else "NEXT QUEST IN \n" + VillageHud.dhms(wait), false)

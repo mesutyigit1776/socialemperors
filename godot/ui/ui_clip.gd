@@ -250,14 +250,17 @@ func show_label(label: String) -> void:
 ## the size that the field has now; the port starts from the size of the art,
 ## so that a field that the port uses again for other texts (a page of a list)
 ## does not keep the size of an earlier text.
-func set_text(path: String, text: String) -> void:
+## fit is false for a field that the client writes with TextField.text or with
+## an auto size: its font keeps the size of the art. An auto size field grows
+## with its text, so resizeText finds no text outside it.
+func set_text(path: String, text: String, fit := true) -> void:
 	var label := part(path) as Label
 	if label == null:
 		return
 	label.set_meta("written", true)
 	var size: int = label.get_meta("art_font_size")
 	_show_text(label, text, size)
-	while size > MIN_FIT_SIZE and not _fits(label, size):
+	while fit and size > MIN_FIT_SIZE and not _fits(label, size):
 		size -= 1
 		_show_text(label, text, size)
 

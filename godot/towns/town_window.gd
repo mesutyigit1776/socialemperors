@@ -43,7 +43,7 @@ func _init(ui: UiLibrary, village: Village, config: GameConfig) -> void:
 		_window.set_text("txGold", str(Village.TOWN_PRICE_GOLD))
 		_window.set_text("txCash", str(Village.TOWN_PRICE_CASH))
 		# The art of the client says level 30; the town opens at level 20.
-		_window.set_text("levelRequired", "(Level %d required)" % Village.SECOND_TOWN_LEVEL)
+		_window.set_text("levelRequired", "(Level %d required)" % Village.SECOND_TOWN_LEVEL, false)
 		_window.set_part_visible("levelRequired", village.get_level() < Village.SECOND_TOWN_LEVEL)
 		_add_picture(ui, "image_0", PICTURES[1])
 		_window.button("btGold").pressed.connect(func() -> void: buy_requested.emit(false))

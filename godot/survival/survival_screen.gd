@@ -154,7 +154,7 @@ func _update_bar() -> void:
 		red.scale.x = _relic_bar_width * (1.0 - float(maxi(relic.health, 0)) / relic.max_life())
 	if relic.dead or _attacked_until >= 0:
 		_bar.set_part_visible("attackedTxt", true)
-		_bar.set_text("attackedTxt", _config.text("SURVIVAL_BEEN_DESTROYED" if relic.dead else "SURVIVAL_BEEN_ATTACKED"))
+		_bar.set_text("attackedTxt", _config.text("SURVIVAL_BEEN_DESTROYED" if relic.dead else "SURVIVAL_BEEN_ATTACKED"), false)
 	if battle.info_text != _shown_info:
 		_shown_info = battle.info_text
 		_bar.set_text("infoTxt", _shown_info)

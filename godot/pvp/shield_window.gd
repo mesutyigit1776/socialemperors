@@ -70,7 +70,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	if _window.part("coolDown").visible:
-		_window.set_text("coolDown/remainingTime", _time_text(_village.shield_cooldown_seconds(_now.call())))
+		_window.set_text("coolDown/remainingTime", _time_text(_village.shield_cooldown_seconds(_now.call())), false)
 
 
 ## Shows the shields as the village has them now, for example after a purchase.
@@ -99,8 +99,8 @@ func _make_shield(shield: Dictionary, cooldown: bool, now: int) -> UiClip:
 	var item := _ui.make("PopupBuyShields.ShieldItemMC")
 	var owned := not _village.can_buy_shield(shield["id"], now)
 	item.show_picture("shieldAnchor", _ui.image(SHIELD_PICTURE % shield["id"]), false)
-	item.set_text("protectionTime", _days(shield["protection_time"], shield["protection_time"] > SECONDS_PER_DAY))
-	item.set_text("lblProtection", _config.text("POPUP_SHIELDS_PROTECTION"))
+	item.set_text("protectionTime", _days(shield["protection_time"], shield["protection_time"] > SECONDS_PER_DAY), false)
+	item.set_text("lblProtection", _config.text("POPUP_SHIELDS_PROTECTION"), false)
 	var cooldown_days := roundi(float(shield["cooldown"]) / SECONDS_PER_DAY)
 	item.set_text("lblCoolDown", "%s %d %s" % [_config.text("POPUP_SHIELDS_COOLDOWN"), cooldown_days, _config.text("AUX_DAY" if cooldown_days == 1 else "AUX_DAYS")])
 	item.set_text("price/lbl", str(shield["price"]))

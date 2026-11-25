@@ -411,7 +411,7 @@ func show_shield(level: int, seconds: int) -> void:
 		_gui.part("topRight/hudShield/shieldAnchor").add_child(_shield)
 	var days := seconds / 86400
 	var rest := seconds % 86400
-	_gui.set_text("topRight/hudShield/timer/time", "No shield" if seconds <= 0 else "%s%02d:%02d:%02d" % ["%dd " % days if days > 0 else "", rest / 3600, rest % 3600 / 60, rest % 60])
+	_gui.set_text("topRight/hudShield/timer/time", "No shield" if seconds <= 0 else "%s%02d:%02d:%02d" % ["%dd " % days if days > 0 else "", rest / 3600, rest % 3600 / 60, rest % 60], false)
 
 
 ## Writes numbers as the client does, with a comma between groups of three digits.

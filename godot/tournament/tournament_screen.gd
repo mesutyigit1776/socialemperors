@@ -95,7 +95,7 @@ func _ready() -> void:
 	window.set_part_visible("helpText", not _config.text("POPUP_LOADING_TOURNAMENT_TEXT").begins_with("["))
 	window.set_text("helpText", _config.text("POPUP_LOADING_TOURNAMENT_TEXT"))
 	var start := window.clip("ok_btn")
-	start.set_text("txtLabel", "Start Battle")
+	start.set_text("txtLabel", "Start Battle", false)
 	start.make_button()
 	start.pressed.connect(func() -> void:
 		cover.queue_free()
@@ -163,7 +163,7 @@ func _show_result() -> void:
 	window.set_text("txInfo", _config.text("TOURNAMENT_RESULT_WIN_TEXT" if battle.won else "TOURNAMENT_RESULT_LOSE_TEXT"))
 	window.set_text("lblScore", "%.2f" % battle.score())
 	var ok := window.clip("ok_btn")
-	ok.set_text("txtLabel", _config.text("AUX_OK"))
+	ok.set_text("txtLabel", _config.text("AUX_OK"), false)
 	ok.make_button()
 	ok.pressed.connect(func() -> void: closed.emit(battle.score(), battle.won))
 

@@ -24,7 +24,7 @@ func _init(ui: UiLibrary, config: GameConfig, cash: int) -> void:
 	add_child(window)
 	window.name = "window"
 	window.set_text("txTitle", config.text("POPUP_UNIT_COLLECTION_COMPLETE_TITLE"))
-	window.set_text("txInfo", config.text("POPUP_UNIT_COLLECTION_COMPLETE_TEXT"))
+	window.set_text("txInfo", config.text("POPUP_UNIT_COLLECTION_COMPLETE_TEXT"), false)
 	window.set_text("txCash", str(cash))
 	window.set_part_visible("t1", false)
 	window.set_part_visible("t2", false)

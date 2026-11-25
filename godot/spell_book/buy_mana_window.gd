@@ -24,7 +24,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_window.set_text("popupTitle", config.text("POPUP_COMPRAR_MANA_TITULO"))
 	_window.set_text("header", config.text("POPUP_COMPRAR_MANA_CABECERA"))
 	_window.set_text("manaQtyGold", str(config.mana_per_purchase))
-	_window.set_text("manaQtyCash", str(config.mana_per_purchase))
+	_window.set_text("manaQtyCash", str(config.mana_per_purchase), false)
 	_window.set_text("goldQty", str(config.mana_price_gold))
 	_window.set_text("cashQty", str(config.mana_price_cash))
 	var wizard := TextureRect.new()

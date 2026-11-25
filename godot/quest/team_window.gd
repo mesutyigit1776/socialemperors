@@ -79,7 +79,7 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, army: Diction
 	add_child(_window)
 	_window.set_text("title_txt", config.text("POPUP_TEAM_SELECTION_TITLE"))
 	_window.set_text("subtitle2_txt", config.text("POPUP_TEAM_SELECTION_SUBTITLE_2"))
-	_window.set_text("ok_btn/txtLabel", "OK")
+	_window.set_text("ok_btn/txtLabel", "OK", false)
 	_window.set_part_visible("tourSelecBtn", false)
 	for part in ["formation_buttons", "formation_txt", "formation_desc", FORMATION_TITLE]:
 		_window.set_part_visible(part, mode == Mode.TOURNAMENT)
@@ -229,8 +229,8 @@ func _choose_formation(formation: int) -> void:
 		if button != null:
 			button.show_frame(FORMATION_SELECTED if i == formation else FORMATION_NORMAL)
 	var texts: Array = _config.tournament_formations[formation]
-	_window.set_text("formation_txt", _config.text(texts[0]))
-	_window.set_text("formation_desc", _config.text(texts[1]))
+	_window.set_text("formation_txt", _config.text(texts[0]), false)
+	_window.set_text("formation_desc", _config.text(texts[1]), false)
 
 
 ## The text of the client that names the groups that the island asks for.

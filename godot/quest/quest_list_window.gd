@@ -84,7 +84,7 @@ func _init(ui: UiLibrary, book: QuestBook, config: GameConfig, now: Callable) ->
 	_window.clip("btnPrev").pressed.connect(_scroll.bind(-1))
 	_window.clip("btnNext").pressed.connect(_scroll.bind(1))
 	_window.clip("btnClose").pressed.connect(func() -> void: closed.emit())
-	_window.set_text("txtCompletedStars", "%d/%d" % [book.won_stars(), BUTTON_PLACES.size() * QuestBook.MAX_STARS])
+	_window.set_text("txtCompletedStars", "%d/%d" % [book.won_stars(), BUTTON_PLACES.size() * QuestBook.MAX_STARS], false)
 	# The window opens on the page of the last island that the player reached.
 	var current := clampi(book.current_island(), 0, mini(islands.size(), BUTTON_PLACES.size()) - 1)
 	_page = int(BUTTON_PLACES[current].x / PAGE_WIDTH) + 1
@@ -105,7 +105,7 @@ func _ready() -> void:
 func _island_button(ui: UiLibrary, quest_id: String, place: Vector2) -> UiClip:
 	var button := ui.make("NewQuestIslandButtonMC")
 	button.position = place
-	button.set_text("nombreIsla", QuestIsland.name_of(quest_id, _config))
+	button.set_text("nombreIsla", QuestIsland.name_of(quest_id, _config), false)
 	var open := _book.is_open(quest_id)
 	var in_port := QuestIsland.is_in_port(quest_id)
 	var level_locked := _book.is_level_locked(quest_id)
@@ -162,9 +162,9 @@ func _update_timer() -> void:
 	var now: int = _now.call()
 	var left := _book.quests_left(now)
 	if left > 0:
-		_window.set_text("txtQuestTimer", "REMAINING QUESTS: %d" % left)
+		_window.set_text("txtQuestTimer", "REMAINING QUESTS: %d" % left, false)
 		return
 	var seconds := _book.seconds_to_next_quest(now)
 	var hours := seconds / 3600
 	var text := "%02d : %02d : %02d" % [hours, seconds % 3600 / 60, seconds % 60] if hours > 0 else "%02d : %02d" % [seconds % 3600 / 60, seconds % 60]
-	_window.set_text("txtQuestTimer", "NEXT QUEST IN \n" + text)
+	_window.set_text("txtQuestTimer", "NEXT QUEST IN \n" + text, false)

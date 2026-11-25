@@ -59,7 +59,7 @@ Kind:
 | Difference | Kind | Notes |
 |---|---|---|
 | Each line can be up to 0.5 pixel higher or lower than in Ruffle. In the help text of 11 lines, the last line was 5 pixels from its place in Ruffle. | Limit | Godot uses whole pixels between lines. |
-| A text that the client writes with `TextField.text` or with an auto size does not get smaller in the client. The port makes every text smaller when it does not fit. | Open | Not found in the fields that the port writes, but 105 calls of the port were not all compared with the client. |
+| The texts of the mini-game get smaller when they do not fit. The client code of `SagaOTDC.swf` was not read for this. | Open | In the windows and HUDs, 33 calls of `UiClip.set_text` now keep the size of the art (`fit` false), as the client writes these fields with `TextField.text` or with an auto size. The art of the client has no field with an auto size. A field without an auto size cuts a text that is too long in the client; the port shows all of it. |
 
 ### Art
 
