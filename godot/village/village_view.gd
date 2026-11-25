@@ -97,6 +97,12 @@ var _selected_dome: DomeRange  # The range of a selected dome building, see show
 var _marks := Node2D.new()
 
 
+## The client takes the layer of the items (buildingLayer) off the screen
+## while the mini-game is open; the land stays.
+func set_items_visible(shown: bool) -> void:
+	_item_layer.visible = shown
+
+
 func _ready() -> void:
 	add_child(_land_layer)
 	_item_layer.y_sort_enabled = true  # Items further down the screen are in front.

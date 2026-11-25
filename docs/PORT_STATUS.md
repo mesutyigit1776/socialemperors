@@ -38,7 +38,6 @@ Kind:
 | Tutorial steps 15 to 31: the port shows a short text with the arrow; the client shows only the arrow. | Port rule | Decision 3. `ARROW_TEXTS` in `tutorial/tutorial.gd`. |
 | The bottom bar is 3 pixels higher than in Ruffle at 760 × 600. | Port rule | The port uses the full-screen layout of the client (`StateNormal.setFullScreen`) at every window size. |
 | When the spy screen or the tournament sets its own zoom, the knob of the zoom slider shows that zoom. The knob of the client stays where it was. | Port rule | The knob of the client is wrong there. |
-| The village does not stop while the mini-game is open; the client stops it. | Open | |
 | The window of the Harbor or the Zeppelin Tower opens at the page of the current island. The client opens page 1 or 3 first, then moves to that page. | Port rule | The page that shows at the end is the same. |
 
 ### Windows

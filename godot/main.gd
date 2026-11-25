@@ -78,6 +78,7 @@ var _tournament_screen: TournamentScreen
 var _tournament_scores := {}  # Bot index -> [score, won] of the last match in this session.
 var _enemies: VillageEnemies  # The idle enemies and the attacks of the village, see VillageAttacks.
 var _village_fight: VillageBattleScreen  # A fight in the village, or null.
+var _rider_game: RiderGameWindow  # The open mini-game, or null; see _play_rider_game().
 ## The special units of the player that the player selected since the map
 ## loaded; they keep a portrait above the panel (addSpecialUnitSelectorPortrait).
 var _special_units: Array[Village.PlacedItem] = []
@@ -625,8 +626,9 @@ func _show_village(shown: bool) -> void:
 	# fight in the village is no other map.
 	if not shown and _village_fight == null:
 		_special_units.clear()
-	for node: Node in [_view, _orders, _camera, _enemies] + ([_spell_book] if _spell_book != null else []):
-		node.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
+	_set_map_paused(not shown)
+	if _spell_book != null:
+		_spell_book.process_mode = Node.PROCESS_MODE_INHERIT if shown else Node.PROCESS_MODE_DISABLED
 	_view.visible = shown
 	# The client keeps the HUD of the village during a fight in the village.
 	var hud_shown := shown or _village_fight != null
@@ -975,7 +977,7 @@ func _check_town_quest() -> void:
 	if _town_quests == null or _tutorial.is_active():
 		return
 	var now := _now()
-	if _village_fight == null and _view.visible:
+	if _village_fight == null and _rider_game == null and _view.visible:
 		_update_town_quest(now)
 	if _town_quests.is_active():
 		_hud.show_town_quest(_town_quests.progress_text(), _village.race == "t")
@@ -1080,7 +1082,11 @@ func _on_action_requested(id: String) -> void:
 
 ## The Rider Academy and the Dragon Riding play the mini-game first, as the
 ## client does: the next training step of the rider, or level 8 (the dragon)
-## for taming. A win does the action; a loss changes nothing.
+## for taming. A win does the action; a loss changes nothing. While the
+## mini-game is open, the map of the village stops (bGamePaused of the
+## client): the units, the enemies, the graphics and the camera, and its items
+## do not show. The times of production and training go on, because they are
+## times of the server.
 func _play_rider_game(id: String) -> void:
 	var building := _selected
 	var level := RiderGame.DRAGON_LEVEL if id == "tame" else _village.rider_steps_done(_now()) + 1
@@ -1090,9 +1096,20 @@ func _play_rider_game(id: String) -> void:
 		_hud.show_message("The mini-game needs the files of the client. Import the game files again; see godot/README.md.")
 		return
 	window.finished.connect(func(won: bool) -> void:
+		_rider_game = null
+		_set_map_paused(false)
+		_view.set_items_visible(true)
 		if won:
 			_run_action(id, building))
+	_rider_game = window
+	_set_map_paused(true)
+	_view.set_items_visible(false)
 	_windows.add_child(window)
+
+
+func _set_map_paused(paused: bool) -> void:
+	for node: Node in [_view, _orders, _camera, _enemies]:
+		node.process_mode = Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
 
 
 func _run_action(id: String, building: Village.PlacedItem) -> void:
