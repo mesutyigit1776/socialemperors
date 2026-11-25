@@ -1,14 +1,14 @@
 class_name TournamentAlert
 extends ColorRect
-## The alert of the team window and the tournament (Alert of the client,
-## AlertTournamentMC): a text with OK, or with Yes and No. It covers the
-## screen until the player answers.
+## The alert of the team window (Alert of the client, AlertTournamentMC): a
+## text with OK, or with Yes and No. It takes the clicks of the screen until the
+## player answers. The client opens it without a cover, so it does not darken.
 
 
 ## A new alert at position (the centre of the window) with OK, or with Yes and
 ## No when on_yes is given: Yes calls on_yes.
 func _init(ui: UiLibrary, config: GameConfig, text: String, position_in_parent: Vector2, on_yes := Callable()) -> void:
-	color = Color(0, 0, 0, 0.3)
+	color = Color.TRANSPARENT
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var alert := ui.make("AlertTournamentMC")
 	alert.position = position_in_parent

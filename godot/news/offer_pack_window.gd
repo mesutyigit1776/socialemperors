@@ -15,10 +15,7 @@ var _window: UiClip
 
 func _init(ui: UiLibrary, config: GameConfig, pack: Dictionary) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	var random: bool = pack["type"] == GameConfig.OFFER_RANDOM
 	_window = ui.make("PopupMisteryMC" if random else "PopupGetPackMC")
 	add_child(_window)

@@ -42,10 +42,7 @@ func _init(ui: UiLibrary, config: GameConfig, attacks: Array[Dictionary], player
 	_pictures = pictures
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupAttackLogMC")
 	add_child(_window)
 	_window.show_picture("bg/bgAnchor", ui.image(BACKGROUND), false)

@@ -14,10 +14,7 @@ var _window: UiClip
 ## image: a picture of the import in ui/images, see UiLibrary.image().
 func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, image: String) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.3)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopUpAlertaMC")
 	add_child(_window)
 	_window.set_text("txTitle", title)

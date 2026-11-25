@@ -30,10 +30,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village) -> void:
 	_ui = ui
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new(GuiCover.Place.OVER_WINDOWS))
 	_window = ui.make("PopupPvpMC")
 	add_child(_window)
 	_window.show_picture("bg/bgAnchor", ui.image(BACKGROUND), false)
@@ -57,7 +54,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village) -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
 		attack_log_requested.emit())
 	_window.button("btnHelp").pressed.connect(func() -> void:
-		PvpHelp.open(self, _ui, _config, PvpHelp.ATTACK_TIPS, PvpHelp.ATTACK_PICTURES))
+		PvpHelp.open(self, _ui, _config, PvpHelp.ATTACK_TIPS, PvpHelp.ATTACK_PICTURES, Callable(), true))
 	_window.button("btnClose").pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)
 		closed.emit()

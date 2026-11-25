@@ -38,10 +38,7 @@ var _time := 0.0
 func _init(ui: UiLibrary, config: GameConfig, result: Dictionary, timed_out: bool, lost: Dictionary, honour: int,
 		player: Dictionary, enemy: Dictionary) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupPVPFInishedMC")
 	add_child(_window)
 	_window.set_text("popupTitle", config.text("POPUP_ATAQUE_ACABADO_TITULO"))

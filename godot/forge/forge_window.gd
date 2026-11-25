@@ -52,10 +52,7 @@ func _init(ui: UiLibrary, bar_ui: UiLibrary, hammer_ui: UiLibrary, config: GameC
 	_ui = ui
 	_clock = clock
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PoupIslandForgeMC")
 	add_child(_window)
 	_window.set_part_visible("popupCover", false)

@@ -37,10 +37,7 @@ var _reward: Dictionary = {}
 ## state: Village.start_daily_bonus().
 func _init(ui: UiLibrary, config: GameConfig, state: Dictionary) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupNewDailyBonusMC")
 	add_child(_window)
 	var background := ui.image("DailyBonus/bg.png")
@@ -98,7 +95,7 @@ func _init(ui: UiLibrary, config: GameConfig, state: Dictionary) -> void:
 	get_button.make_button()
 	get_button.pressed.connect(_close)
 	_window.button("btnClose").pressed.connect(_close)
-	_window.button("btnHelp").pressed.connect(func() -> void: add_child(AlertWindow.new(ui, config, config.text("POPUP_NEW_DAILY_BONUS_HELP"))))
+	_window.button("btnHelp").pressed.connect(func() -> void: add_child(AlertWindow.new(ui, config, config.text("POPUP_NEW_DAILY_BONUS_HELP"), GuiCover.Place.OVER_WINDOWS)))
 
 
 func _ready() -> void:

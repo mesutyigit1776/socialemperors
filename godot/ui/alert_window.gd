@@ -7,12 +7,11 @@ signal closed
 var _window: UiClip
 
 
-func _init(ui: UiLibrary, config: GameConfig, text: String) -> void:
+## place: the cover of an alert is under the open windows, except for the help
+## alerts of some windows, which the client opens on the popup layer.
+func _init(ui: UiLibrary, config: GameConfig, text: String, place := GuiCover.Place.UNDER_WINDOWS) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.3)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new(place))
 	_window = ui.make("PopupAlertMC")
 	add_child(_window)
 	_window.set_text("alertText", text)

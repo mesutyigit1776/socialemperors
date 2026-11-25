@@ -16,10 +16,7 @@ const CASH_SHIFT := 100.0
 
 func _init(ui: UiLibrary, config: GameConfig, cash: int) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	var window := ui.make("PopupNextIslandAttackMC")
 	add_child(window)
 	window.name = "window"

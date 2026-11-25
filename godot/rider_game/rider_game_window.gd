@@ -24,10 +24,7 @@ static func open(data_dir: String, ui: UiLibrary, frames: FrameCache, level: int
 func _build(ui: UiLibrary, game: RiderGame) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.3)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("WindowMiniGameDragonRiderMC")
 	add_child(_window)
 	_window.set_part_visible("help", false)

@@ -12,10 +12,7 @@ var _window: UiClip
 
 func _init(ui: UiLibrary, config: GameConfig, item: GameConfig.ItemDef) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupGotPackMC")
 	add_child(_window)
 	_window.set_text("txTitle", config.text("POPUP_GOTPACK_TITLE"))

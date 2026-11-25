@@ -19,28 +19,34 @@ var _config: GameConfig
 var _window: UiClip
 var _page := 0
 var _centre_offset := Vector2.ZERO  # The point of the window that is in the middle of the screen.
+## Under one goal: the black part "fons" of the goal popup at alpha 0.75
+## (MissionPopup), which the client scales to the whole screen.
+var _fons := ColorRect.new()
+var _cover := GuiCover.new()  # Under the goal list (openPopupGoals).
 
 
-## dark: the client darkens the screen behind the window, except in the
-## tutorial (MissionPopup hides "fons"). The cover takes the clicks in both cases.
+## dark: the client darkens the screen behind one goal, except in the
+## tutorial (MissionPopup hides "fons"). The port takes the clicks in both cases.
 func _init(ui: UiLibrary, goals: GoalBook, config: GameConfig, dark := true) -> void:
 	_ui = ui
 	_goals = goals
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5 if dark else 0.0)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	_fons.color = Color(0, 0, 0, 0.75 if dark else 0.0)
+	_fons.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_fons)
+	add_child(_cover)
 
 
 func show_goal(goal: GameConfig.GoalDef) -> void:
 	_replace(_ui.make("popUpMissionsMC"))
+	_fons.visible = true
+	_cover.visible = false
 	for part: String in GoalBox.HIDDEN + ["mcGoal1", "mcGoal2", "btnHelp"]:
 		if part != "popupInfo":
 			_window.set_part_visible(part, false)
 	var info := _window.clip("popupInfo")
-	# The client covers the screen with the dark background "fons"; the port has its cover.
+	# The port draws "fons" as _fons, over the whole screen.
 	info.set_part_visible("fons", false)
 	info.set_part_visible("btnPay", false)
 	info.set_text("popupTitle", _config.text("POPUP_MISION_TITULO"))
@@ -62,6 +68,8 @@ func show_goal(goal: GameConfig.GoalDef) -> void:
 
 func show_list() -> void:
 	_replace(_ui.make("PopupGoalListMC"))
+	_fons.visible = false
+	_cover.visible = true
 	_window.set_text("lblTitle", _config.text("AUX_OBJETIVOS"))
 	_window.button("btnClose").pressed.connect(_close)
 	for pair: Array in [["butPrev", -1], ["butNext", 1]]:

@@ -17,10 +17,7 @@ var _window: UiClip
 
 func _init(ui: UiLibrary, village: Village, config: GameConfig) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupRaceSelectorMC")
 	add_child(_window)
 	_window.button("closeButt").pressed.connect(queue_free)

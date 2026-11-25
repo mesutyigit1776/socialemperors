@@ -58,10 +58,7 @@ func _init(ui: UiLibrary, config: GameConfig, sprites: SpriteLibrary, collection
 	_grey.shader = Shader.new()
 	_grey.shader.code = GREY_SHADER
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupAllUnitsMC")
 	add_child(_window)
 	_window.set_text("txTitle", config.text("POPUP_ALL_UNITS_TITLE"))

@@ -8,12 +8,13 @@ signal declined
 var _window: UiClip
 
 
-func _init(ui: UiLibrary, config: GameConfig, question: String) -> void:
+## covered: PopupConfirm opens with the cover over the open windows
+## (PopupUtils.openPopup). The port also asks with this window where the client
+## shows a popup without a cover (the assist of a neighbour, infoFriendAssistPopup).
+func _init(ui: UiLibrary, config: GameConfig, question: String, covered := true) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.3)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	if covered:
+		add_child(GuiCover.new(GuiCover.Place.OVER_WINDOWS))
 	_window = ui.make("PopupConfirmMC")
 	add_child(_window)
 	_window.set_text("confirmText", question)

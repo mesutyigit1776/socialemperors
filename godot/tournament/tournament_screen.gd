@@ -77,7 +77,10 @@ func _init(match_battle: TournamentBattle, map: Village, bot: Dictionary, villag
 	_windows.add_child(bar)
 	bar.show_withdraw().pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall
-		_windows.add_child(TournamentAlert.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER"), _screen_size() / 2, battle.withdraw)))
+		# StateTournament asks with PopupConfirm.
+		var question := ConfirmWindow.new(_ui, _config, _config.text("AUX_SURE_WANT_TO_SURRENDER").strip_edges())
+		question.confirmed.connect(battle.withdraw)
+		_windows.add_child(question))
 
 
 ## The map of the battle, on which other screens can show things.
@@ -168,10 +171,8 @@ func _show_result() -> void:
 	ok.pressed.connect(func() -> void: closed.emit(battle.score(), battle.won))
 
 
-func _cover() -> ColorRect:
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+func _cover() -> GuiCover:
+	var cover := GuiCover.new()
 	cover.size = _screen_size()
 	_windows.add_child(cover)
 	return cover

@@ -58,10 +58,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_ui = ui
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("StoreMC")
 	add_child(_window)
 	_window.button("closeButt").pressed.connect(hide)

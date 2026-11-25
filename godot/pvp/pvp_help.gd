@@ -1,7 +1,10 @@
 class_name PvpHelp
 ## The help window of the PvP windows (PopupPvpHelp with TipsWithImagesParams
 ## of the client): four tips, each a picture with its text above it, over the
-## background of the generic windows. A cover under it takes the clicks.
+## background of the generic windows. A cover under it takes the clicks. It
+## darkens the screen only when covered is true: the client opens the help
+## from PopupPvp with its cover, but from popupLoadingAssault and
+## PopupBuyShields without one.
 
 const BACKGROUND := "generic_bg.png"
 ## The tips of an attack (PopupPvp, popupLoadingAssault) and of the shields (PopupBuyShields).
@@ -15,11 +18,13 @@ const TEXT_GAP := 3.0
 
 ## Opens the help over parent; closed runs when the player closes it.
 ## pictures: the path of the picture of tip n, with %d for n (from 1).
-static func open(parent: Node, ui: UiLibrary, config: GameConfig, tips: Array[String], pictures: String, closed := Callable()) -> void:
+static func open(parent: Node, ui: UiLibrary, config: GameConfig, tips: Array[String], pictures: String, closed := Callable(), covered := false) -> void:
 	SoundPlayer.play(SoundEffect.BUTTON_CLICK)
 	var cover := Control.new()
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	if covered:
+		cover.add_child(GuiCover.new(GuiCover.Place.OVER_WINDOWS))
 	var help := ui.make("PopupPvpHelpMC")
 	help.keep_centred()
 	help.show_picture("bg/bgAnchor", ui.image(BACKGROUND), false)

@@ -22,10 +22,7 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, rank: int, ma
 	_config = config
 	_max_stars = max_stars
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupLoadingQuestMC")
 	add_child(_window)
 	_window.set_text("title", config.text("POPUP_STARTING_QUEST_TITLE"))

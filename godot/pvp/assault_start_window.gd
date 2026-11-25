@@ -45,8 +45,7 @@ func _init(ui: UiLibrary, config: GameConfig) -> void:
 	_ui = ui
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	# The client locks the map while the window is open; it does not darken it.
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(GuiCover.new())
 	_window = ui.make("PopupLoadingAssaultMC")
 	add_child(_window)
 	_window.set_text("title", config.text("POPUP_ASALTO_TITULO"))

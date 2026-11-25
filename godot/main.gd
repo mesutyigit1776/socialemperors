@@ -1960,7 +1960,7 @@ func _offer_received_assists() -> void:
 	for entry in _neighbours.neighbours(_village.player_id()):
 		if entry["pid"] == pid:
 			name = entry["name"]
-	var window := ConfirmWindow.new(_ui, _config, "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()])
+	var window := ConfirmWindow.new(_ui, _config, "%s: %s" % [name, _config.text("POPUP_AYUDA_AMIGO").strip_edges()], false)
 	window.confirmed.connect(func() -> void:
 		var helped := _village.accept_assist(pid)
 		if not helped.is_empty():

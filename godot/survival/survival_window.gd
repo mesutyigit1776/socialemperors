@@ -38,10 +38,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village, now: Callable) -
 	_village = village
 	_now = now
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupSurvivalMC")
 	add_child(_window)
 	_window.set_text("txTitle", config.text("POPUP_SURVIVAL_SELECT_MAP"))

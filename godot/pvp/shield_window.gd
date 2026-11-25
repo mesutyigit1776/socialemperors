@@ -47,10 +47,7 @@ func _init(ui: UiLibrary, config: GameConfig, village: Village, now: Callable) -
 	_disabled.shader = Shader.new()
 	_disabled.shader.code = DISABLED_SHADER
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new(GuiCover.Place.OVER_WINDOWS))
 	_window = ui.make("PopupBuyShieldsMC")
 	add_child(_window)
 	_window.show_picture("bg/bgAnchor", ui.image(BACKGROUND), false)

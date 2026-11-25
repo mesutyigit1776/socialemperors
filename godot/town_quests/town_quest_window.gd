@@ -17,10 +17,7 @@ var _completed := false
 ## picture: a file of TownQuestBook.PICTURES, or "" for none.
 func _init(ui: UiLibrary, config: GameConfig, title: String, text: String, picture: String, completed: bool) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupQuestInfo2MC")
 	add_child(_window)
 	_window.set_text("txTitle", title)

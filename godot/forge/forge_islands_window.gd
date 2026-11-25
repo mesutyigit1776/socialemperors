@@ -22,10 +22,7 @@ func _init(ui: UiLibrary, config: GameConfig, forge: IslandForge, village: Villa
 	_forge = forge
 	_clock = clock
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupQuestsManagerMC")
 	add_child(_window)
 	var mask := Control.new()

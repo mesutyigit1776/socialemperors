@@ -50,10 +50,7 @@ func _init(ui: UiLibrary, book: QuestBook, config: GameConfig, now: Callable) ->
 	_config = config
 	_now = now
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupQuestsManagerMC")
 	add_child(_window)
 

@@ -208,10 +208,8 @@ static func _centre(picture: TextureRect) -> void:
 		picture.position = -picture.texture.get_size() * picture.scale / 2
 
 
-func _cover() -> ColorRect:
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+func _cover() -> GuiCover:
+	var cover := GuiCover.new()
 	cover.size = _screen_size()
 	_windows.add_child(cover)
 	return cover

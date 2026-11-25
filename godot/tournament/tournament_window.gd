@@ -24,10 +24,7 @@ var _config: GameConfig
 func _init(ui: UiLibrary, config: GameConfig, places: Array[int], formation: int, scores: Dictionary) -> void:
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	# A CenterContainer keeps the panel in the middle after a change of the window size or of UiScale.
 	var centre := CenterContainer.new()
 	centre.set_anchors_preset(Control.PRESET_FULL_RECT)

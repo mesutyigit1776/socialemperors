@@ -36,10 +36,7 @@ func _init(ui: UiLibrary, config: GameConfig, cash: int) -> void:
 	_ui = ui
 	_config = config
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var cover := ColorRect.new()
-	cover.color = Color(0, 0, 0, 0.5)
-	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(cover)
+	add_child(GuiCover.new())
 	_window = ui.make("PopupNewsMC")
 	add_child(_window)
 	for pair: Array in [["popupTitle", "POPUP_NEWS_TITLE"], ["secHints", "POPUP_NEWS_SEC_HINTS"], ["secLatest", "POPUP_NEWS_SEC_LATEST"], ["secSpecials", "POPUP_NEWS_SPECIAL_OFFERS"]]:
