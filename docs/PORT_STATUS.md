@@ -52,7 +52,6 @@ Kind:
 | The cash buttons show a message of the port. | Limit | Decision 8: no cash shop. |
 | Tournament: the port builds the formations from their texts and button pictures, hides the help of the start window, and writes "YOU LOST" as the title of a lost match. The window of the bots is the port's own. | Limit | The configuration has no formation layouts and none of these texts. The client windows show server data. |
 | Team window in a quest: the port sorts the units by life. The client asks to sort by life but does not give the value, so its order comes from a Flash object. | Port rule | |
-| The second dragon island: the client draws blue dotted lines on the borders of the land blocks; the port does not. | Open | Only the picture changes. The lines are not drawn by the code of the client (no `lineStyle`), and the port draws the same frames of the land graphic, so their cause is not found. A screenshot in Ruffle is needed. |
 
 ### Text
 
@@ -85,6 +84,8 @@ Kind:
 ### Not a difference
 
 Neither game can draw these: the 33 graphics with no SWF file in `assets/` (both show the loading placeholder), and the effect `b.cerberusSkullBlast`. The Dummy (`DummyDelegate`, item 1533) is not in the configuration, so neither game has it.
+
+The dotted lines on the borders of the land blocks of the second dragon island (quest 100000033) are an effect of the Ruffle picture at a small scale, not a difference of the port. A new empire played this island in Ruffle with the setup of `tools/ruffle_quest.js` (viewport 1000 x 900, frame clock). At 1 and 2 pixels for each CSS pixel there is no line anywhere on the island. At 0.5 pixel for each CSS pixel, a dotted line shows on the borders of the land blocks. Its pixels are black (0, 0, 0), the colour of the background of this island, so they are seams between the land bitmaps that Ruffle leaves when it draws at this scale. The client code draws no line there, and the port at its own scale draws no seam.
 
 ## 2. Parts not compared with the original game
 
