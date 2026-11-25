@@ -44,7 +44,6 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| After a purchase in a super pack, the box shows a "Best value" star while it moves to the middle. Ruffle shows no star. | Open | |
 | In the unit list a few long names get a slightly different font size. | Open | Cause not found. |
 | Spy screen: the client shows the assault HUD behind the start window; the port shows the enemy village without the bar. | Open | |
 | Spy screen, attack log, Withdraw: the client grows the button labels until they fill the button (`ButtonGenericTall`). The port uses the sizes that Ruffle showed (Attack: 34). | Open | A text of another length gets the wrong size. |
@@ -113,7 +112,7 @@ For each part: what was done, and what a comparison needs. "From the code" means
 | Part | What was done | What a comparison needs |
 |---|---|---|
 | Island Forge: the hammer animation, the prizes, Buy All, the pictures of found items, a fight on a forge island, the glow of a complete item | From the code; `village_check.gd` and `quest_check.gd`; port screenshots. The window, the dragon card and the island list were compared. | Ruffle with the event running and items given in the save. |
-| The timing of the floating numbers and of the glows of a super pack | Layout and colours compared; times not. | A Ruffle run in real time. Headless Ruffle runs too slowly. |
+| The timing of the floating numbers and of the glows of a super pack, and the "Best value" star of the box of 4 items while it moves to the middle | Layout and colours compared; times not. The client code keeps the frame with the star for 1.5 seconds, as the port does. The Ruffle screenshot was taken after the box opened, and the port screenshots before, so they do not show a difference. | A Ruffle run in real time. Headless Ruffle runs too slowly. |
 | The floating numbers other than those of a pack: collections, purchases, sales, training, repairs, neighbour help, rewards, battle damage and heals, PvP loot, spells and the special-building windows | From the code; a port screenshot of the kinds of values and one of a fight in the village. | Ruffle runs of these actions. |
 | The place of the host on a stage larger than 760 × 600 | Not compared. | Ruffle in a larger page. |
 | The news window opening at the start of a session | From the code. It did not open in the Ruffle runs, because no window of a town quest opened first. | A Ruffle session that starts with a town quest window, at level 5 or higher. |
