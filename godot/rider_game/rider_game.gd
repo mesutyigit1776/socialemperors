@@ -118,7 +118,7 @@ func _init(rider_art: RiderArt, ui_library: UiLibrary, data_dir: String, level_t
 	level_text.add_theme_font_override("font", ui.named_font("Eras Bold ITC"))
 	level_text.add_theme_font_size_override("font_size", 18)
 	level_text.add_theme_color_override("font_color", LEVEL_TEXT_COLOR)
-	level_text.text = RiderHud.drawable(level_text, "Training Level %d" % level_number)
+	level_text.text = UiClip.drawable(level_text, "Training Level %d" % level_number)
 	add_child(level_text)
 	add_child(level.details)
 	hud = RiderHud.new(ui, level_number, rider_type)

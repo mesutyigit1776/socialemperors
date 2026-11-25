@@ -20,7 +20,7 @@ func _init(ui: UiLibrary, text: String) -> void:
 	# right with the text, and the text keeps the size of the art.
 	var layout: FlashTextLayout = label.get_meta("text_layout")
 	var field_width := layout.width(text, label.get_meta("art_font_size")) + 2 * UiClip.TEXT_GUTTER
-	label.text = text
+	label.text = UiClip.drawable(label, text)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	label.size.x = field_width
 	var contour := clip.clip("contour")

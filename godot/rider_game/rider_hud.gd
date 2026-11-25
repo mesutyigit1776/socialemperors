@@ -86,30 +86,14 @@ func update(hero: RiderHero) -> void:
 		end_screen.show_frame(end_screen.frame + 1)
 
 
-## The text without the characters that the font of the label does not have:
-## the file embeds only the glyphs of the texts in its art, and Flash leaves
-## out the others (for example "Level  failed" for "Level 4 failed").
-static func drawable(label: Label, text: String) -> String:
-	var font := label.get_theme_font("font")
-	var result := ""
-	for character in text:
-		if font == null or font.has_char(character.unicode_at(0)):
-			result += character
-	return result
-
-
-func _write(clip: UiClip, path: String, text: String) -> void:
-	clip.set_text(path, drawable(clip.part(path) as Label, text))
-
-
 func show_health(health: float, max_health: float) -> void:
 	health_bar.clip("healthBar").scale.x = clampf(health / max_health, 0.0, 1.0)
-	_write(health_bar, "currentHealth_txt", "%d/%d" % [health, max_health])
+	health_bar.set_text("currentHealth_txt", "%d/%d" % [health, max_health])
 
 
 ## The text of a hit (-) or a heal (+) at the health bar; it starts at x and fades.
 func show_change(name: String, text: String, x: float) -> void:
-	_write(health_bar, name, text)
+	health_bar.set_text(name, text)
 	_texts[name] = [1.4, x]
 	health_bar.part(name).position.x = x
 
@@ -119,12 +103,12 @@ func show_end(kind: String, level: int) -> UiClip:
 	match kind:
 		"won":
 			end_screen = _ui.make("main.game_won")
-			_write(end_screen, "congratztext", "Level %d completed" % level)
+			end_screen.set_text("congratztext", "Level %d completed" % level)
 			for name in ["next_level_button", "level_select_button", "more_games_button"]:
 				end_screen.set_part_visible(name, false)
 		"lost":
 			end_screen = _ui.make("main.game_over")
-			_write(end_screen, "overtext", "Level %d failed" % level)
+			end_screen.set_text("overtext", "Level %d failed" % level)
 			for name in ["play_again_button", "level_select_button", "more_games_button"]:
 				end_screen.set_part_visible(name, false)
 		_:

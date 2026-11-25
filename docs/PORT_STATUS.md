@@ -59,7 +59,6 @@ Kind:
 | Difference | Kind | Notes |
 |---|---|---|
 | Each line can be up to 0.5 pixel higher or lower than in Ruffle. In the help text of 11 lines, the last line was 5 pixels from its place in Ruffle. | Limit | Godot uses whole pixels between lines. |
-| A character without a glyph in the font: Flash gives it no width; the port draws the empty glyph, half an em wide. | Open | |
 | A text that the client writes with `TextField.text` or with an auto size does not get smaller in the client. The port makes every text smaller when it does not fit. | Open | Not found in the fields that the port writes, but 105 calls of the port were not all compared with the client. |
 
 ### Art

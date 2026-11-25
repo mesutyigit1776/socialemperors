@@ -272,9 +272,23 @@ static func _show_text(label: Label, text: String, size: int) -> void:
 	var godot_line := label.get_theme_font("font").get_height(size)
 	label.add_theme_constant_override("line_spacing", roundi(layout.line_height(size, label.get_meta("leading")) - godot_line))
 	if label.get_meta("word_wrap"):
-		label.text = "\n".join(layout.wrap(text, size, label.get_meta("field_size").x))
+		label.text = drawable(label, "\n".join(layout.wrap(text, size, label.get_meta("field_size").x)))
 	else:
-		label.text = text
+		label.text = drawable(label, text)
+
+
+## The text without the characters that the font of the label does not have.
+## Flash gives such a character no width and draws nothing (FlashTextLayout
+## measures it so); Godot would draw another font's glyph or an empty box.
+## The fonts of the client embed only some glyphs; for example the font of the
+## mini-game has no digits, so "Level 4 failed" shows as "Level  failed".
+static func drawable(label: Label, text: String) -> String:
+	var font := label.get_theme_font("font")
+	var result := ""
+	for character in text:
+		if character == "\n" or font.has_char(character.unicode_at(0)):
+			result += character
+	return result
 
 
 ## Whether the text of a field fits it at this font size, as Flash measures
