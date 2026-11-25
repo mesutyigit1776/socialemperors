@@ -28,7 +28,7 @@ func _init(config: GameConfig, village: Village) -> void:
 	for id in village.bought_units():
 		_count(id)
 	for placed in village.items:
-		if village.is_own_unit(placed):
+		if village.is_own_unit(placed) and not village.is_summoned(placed):
 			_count(placed.item_id)
 
 

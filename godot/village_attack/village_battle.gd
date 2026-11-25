@@ -14,7 +14,11 @@ extends RefCounted
 ##   unit fights, no shot flies, no unit of an attack walks, no step of an
 ##   attack is due, and no special attack of the player casts or cools down.
 ##   The player can start a fight without enemies with an attack button of a
-##   special unit; its summoned units are not saved and go with the fight.
+##   special unit.
+## - The units that summons of the player bring stay in the village after the
+##   fight, as in the client, until the map loads again; the save does not
+##   get them (Village.add_summoned()). In a later fight they are summoned
+##   units again and count as minions of their summoner.
 ## - apply() writes the result to the village, as the commands of the client
 ##   do: units of the player that died leave the map ("sell" with the reason
 ##   KILL), enemies that died give their reward ("kill"), and the units of the
@@ -62,10 +66,18 @@ func _init(village: Village, attacks: Array[VillageAttacks.Group], config: GameC
 		var def := config.get_item(placed.item_id)
 		if def != null and not is_busy.call(placed):
 			var fighter := _add(def, placed.tile, _team_of(placed, def), placed.frame)
+			if village.is_summoned(placed):
+				fighter.summoned = true
+				fighter.max_health = village.max_life(placed)
 			# A building that burned down stays with a little life, see apply().
 			fighter.health = maxi(village.health(placed), 1)
 			fighter.units_inside = village.units_in(placed).size()
 			_placed[fighter] = placed
+	for fighter: BattleFighter in _placed:
+		var owner := village.summoner(_placed[fighter])
+		var summoner := fighter_of(owner) if owner != null else null
+		if summoner != null and summoner.ability != null:
+			summoner.ability.add_minion(sim, fighter)
 	for group in groups:
 		_add_group(group)
 	sim.died.connect(_on_died)
@@ -182,6 +194,7 @@ func apply() -> Array[VillageAttacks.Group]:
 					_village.move_unit(placed, fighter.tile, placed.frame)
 		elif fighter.dead and _team_of(placed, fighter.def) == BattleFighter.Team.ENEMY:
 			_village.kill_enemy(fighter.def, placed)
+	_keep_summoned()
 	var staying: Array[VillageAttacks.Group] = []
 	for group in groups:
 		group.attackers.clear()
@@ -205,6 +218,19 @@ func apply() -> Array[VillageAttacks.Group]:
 		if group.attackers.any(func(attacker: VillageAttacks.Attacker) -> bool: return attacker.team == BattleFighter.Team.ENEMY):
 			staying.append(group)
 	return staying
+
+
+## Puts the units that summons of the player brought in this fight on the map
+## of the village.
+func _keep_summoned() -> void:
+	var summoners := {}  # Minion BattleFighter -> Village.PlacedItem
+	for fighter: BattleFighter in _placed:
+		if fighter.ability != null:
+			for minion in fighter.ability.minions:
+				summoners[minion] = _placed[fighter]
+	for fighter in sim.fighters:
+		if fighter.summoned and fighter.is_unit() and not fighter.dead and fighter.team == BattleFighter.Team.PLAYER and not _placed.has(fighter):
+			_village.add_summoned(fighter.def, fighter.tile, fighter.frame, fighter.max_health, fighter.health, summoners.get(fighter))
 
 
 ## True when an enemy in the village and the player are near enough to fight,

@@ -166,6 +166,11 @@ const SOUL_MIXER := 1529
 var _captured: Dictionary = {}
 var _health: Dictionary = {}  # PlacedItem -> life below the full life, see health().
 var _construction_ends: Dictionary = {}  # PlacedItem -> unix time, see start_construction().
+## Units that summons bring in a fight in the village. The client keeps them on
+## the map as units of the player (IsoUnit.summoned) until the map loads again,
+## without a server command, so the save does not have them (add_unsaved()).
+## They do not go into buildings, on quests or into the unit collections.
+var _summoned: Dictionary = {}  # PlacedItem -> [life that the summon gave, summoner PlacedItem or null]
 
 
 ## Wild animals on the owned land belong to the player when the client loads the map.
@@ -189,6 +194,7 @@ func _remove(placed: PlacedItem) -> void:
 	_captured.erase(placed)
 	_health.erase(placed)
 	_construction_ends.erase(placed)
+	_summoned.erase(placed)
 	super(placed)
 
 
@@ -197,12 +203,16 @@ func _remove(placed: PlacedItem) -> void:
 ## building, a healing spring heals the unit, or the game loads again. The
 ## save does not have it.
 func health(placed: PlacedItem) -> int:
-	return _health.get(placed, _config.get_item(placed.item_id).life)
+	return _health.get(placed, max_life(placed))
+
+
+## The full life of the item; a summoned unit has the life of its summon.
+func max_life(placed: PlacedItem) -> int:
+	return _summoned[placed][0] if _summoned.has(placed) else _config.get_item(placed.item_id).life
 
 
 func set_health(placed: PlacedItem, value: int) -> void:
-	var life := _config.get_item(placed.item_id).life
-	if value >= life:
+	if value >= max_life(placed):
 		_health.erase(placed)
 	else:
 		_health[placed] = maxi(value, 0)
@@ -437,7 +447,33 @@ func is_crowded(unit: PlacedItem) -> bool:
 ## Wild animals belong to the player after a capture, see _captured.
 func is_own_unit(placed: PlacedItem) -> bool:
 	var item := _config.get_item(placed.item_id)
-	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL or _captured.has(placed))
+	return item != null and item.is_unit() and (item.race == race or item.race == RACE_ALL or _captured.has(placed) or _summoned.has(placed))
+
+
+## Puts a unit of the player that a summon brought in a fight in the village
+## on the map, see _summoned. summoner is the unit whose attack brought it, or
+## null for a spell.
+func add_summoned(unit: GameConfig.ItemDef, tile: Vector2i, frame: int, life: int, health: int, summoner: PlacedItem) -> PlacedItem:
+	var placed := add_unsaved(unit, tile)
+	_set_frame(placed, frame)
+	_summoned[placed] = [life, summoner]
+	set_health(placed, health)
+	return placed
+
+
+func is_summoned(placed: PlacedItem) -> bool:
+	return _summoned.has(placed)
+
+
+## The unit whose attack brought the summoned unit, or null.
+func summoner(placed: PlacedItem) -> PlacedItem:
+	return _summoned[placed][1] if _summoned.has(placed) else null
+
+
+## The map loads again: the summoned units go.
+func remove_summoned() -> void:
+	for placed: PlacedItem in _summoned.keys():
+		remove_unsaved(placed)
 
 
 ## The pixels per frame that a unit walks, see IsoGrid.step_toward().
@@ -663,7 +699,7 @@ func move_unit(unit: PlacedItem, tile: Vector2i, frame: int) -> Placement:
 func can_enter(unit: PlacedItem, building: PlacedItem) -> bool:
 	var unit_item := _config.get_item(unit.item_id)
 	var building_item := _config.get_item(building.item_id)
-	if not is_own_unit(unit) or building_item == null or building_item.is_unit() or is_being_built(building):
+	if not is_own_unit(unit) or _summoned.has(unit) or building_item == null or building_item.is_unit() or is_being_built(building):
 		return false
 	if can_mount(unit, building):
 		return true

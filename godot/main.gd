@@ -1246,6 +1246,7 @@ func _on_placement_confirmed(item: GameConfig.ItemDef, tile: Vector2i, frame: in
 ## which takes back the experience that the server gave for these items.
 func _init_map() -> void:
 	var now := _now()
+	_village.remove_summoned()
 	_known_level = _village.get_level()
 	# The client checks the goals first, with the items before the clean.
 	_goals.on_map_loaded()

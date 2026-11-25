@@ -1754,8 +1754,9 @@ func _check_town_quests() -> bool:
 
 
 ## The attack buttons of a special unit work in the village without enemies,
-## as in the client: the fight stays while the attack casts and cools down,
-## and the summoned units are not saved.
+## as in the client: the fight stays while the attack casts and cools down.
+## The summoned units stay in the village as units of the player until the map
+## loads again, as in the client, and the save does not get them.
 func _check_special_attack_in_village() -> bool:
 	var path := _write_fixture("special_attack", 20, _config.levels[19].exp_required, 1000)
 	var village := Village.load_from_file(path, _config)
@@ -1783,8 +1784,21 @@ func _check_special_attack_in_village() -> bool:
 		summoned = maxi(summoned, battle.sim.fighters.filter(func(unit: BattleFighter) -> bool: return unit.summoned and not unit.dead).size())
 		ended_busy = ended_busy or (ended[0] and fighter.ability.button_state != BattleAbility.ButtonState.IDLE)
 	_check(summoned > 0 and ended[0] and not ended_busy, "minions come, and the fight ends when the buttons are ready again")
+	var alive := battle.sim.fighters.filter(func(unit: BattleFighter) -> bool: return unit.summoned and not unit.dead and unit.team == BattleFighter.Team.PLAYER).size()
+	var army := village.quest_army()
 	battle.apply()
-	_check(village.items.size() == items, "the summoned units are not saved")
+	var kept := village.items.filter(village.is_summoned)
+	_check(alive > 0 and kept.size() == alive and village.items.size() == items + alive and kept.all(func(placed: Village.PlacedItem) -> bool: return village.is_own_unit(placed) and village.summoner(placed) == dragon),
+			"the summoned units stay in the village as units of the dragon")
+	_check(village.quest_army() == army and not village.can_enter(kept[0], village.town_hall()), "summoned units do not go on quests or into buildings")
+	var saved := "user://checks/special_attack_saved.json"
+	_check(village.save_to_file(saved) == OK and Village.load_from_file(saved, _config).items.size() == Village.load_from_file(path, _config).items.size() + 1,
+			"the save does not get the summoned units")
+	var next := VillageBattle.new(village, [], _config, null, rng, func(_placed: Village.PlacedItem) -> bool: return false)
+	var minion := next.fighter_of(kept[0])
+	_check(minion != null and minion.summoned and next.fighter_of(dragon).ability.minions_alive == alive, "in the next fight they are summoned units and minions of the dragon")
+	village.remove_summoned()
+	_check(village.items.size() == items, "the summoned units go when the map loads again")
 	return true
 
 

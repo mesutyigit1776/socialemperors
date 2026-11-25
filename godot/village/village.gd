@@ -733,12 +733,13 @@ func quest_start_times() -> Array[int]:
 
 
 ## The units that go on a quest: unit id -> number. The client takes all units
-## of the player on the map, except villagers, animals, settlers and carts.
+## of the player on the map, except villagers, animals, settlers, carts and
+## summoned units (getCurrentArmy).
 func quest_army() -> Dictionary:
 	var army := {}
 	for placed in items:
 		var item := _config.get_item(placed.item_id)
-		if is_own_unit(placed) and not item.subcat_functional in QUEST_HOME_SUBCATS:
+		if is_own_unit(placed) and not is_summoned(placed) and not item.subcat_functional in QUEST_HOME_SUBCATS:
 			army[item.id] = int(army.get(item.id, 0)) + 1
 	return army
 
@@ -948,10 +949,12 @@ func kill_enemy(item: GameConfig.ItemDef, placed: PlacedItem = null) -> void:
 
 ## A unit of the player died in a battle in the village. The client sends
 ## "sell" with the reason KILL: the unit leaves the map and the server puts it
-## in the graveyard, see _bury().
+## in the graveyard, see _bury(). A summoned unit only leaves the map.
 func lose_unit(placed: PlacedItem) -> void:
+	var buried := not is_summoned(placed)
 	_remove(placed)
-	_bury(placed.item_id)
+	if buried:
+		_bury(placed.item_id)
 
 
 ## The name of the player.

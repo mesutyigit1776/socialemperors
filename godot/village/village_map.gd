@@ -118,8 +118,9 @@ var neighbour_ids: Array[String] = []
 ## save does not keep it. The player cannot move, sell or store these items.
 var quest_roles := {}  # PlacedItem -> QuestRole
 ## Items that the client puts on the map without a server command, so that the
-## save does not have them: the forge island (IslandForge). They belong to no
-## side, and the player cannot move, sell or store them.
+## save does not have them: the forge island (IslandForge), which belongs to no
+## side, and the summoned units (VillageUnits.add_summoned()). The player
+## cannot move, sell or store them as buildings.
 var _unsaved := {}  # PlacedItem -> true
 var _document: Dictionary  # The whole save.
 var _map: Dictionary  # The map in _document that this village shows.
