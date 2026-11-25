@@ -25,7 +25,14 @@ func _init(ui: UiLibrary, spell: GameConfig.SpellDef) -> void:
 	_banner.clip("cast").show_frame(COLOR_FRAMES.get(spell.id, 0))
 
 
+## In a window the client scales its whole stage to the window, so the
+## banner keeps its place at the bottom also when the size changes.
 func _ready() -> void:
+	get_viewport().size_changed.connect(_place)
+	_place()
+
+
+func _place() -> void:
 	var screen := get_viewport_rect().size
 	_banner.position = Vector2((screen.x - STAGE_SIZE.x) / 2, screen.y - STAGE_SIZE.y) + PLACE
 
