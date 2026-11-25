@@ -34,6 +34,10 @@ class Shot:
 	func on_frame(_frame: int) -> void:
 		pass
 
+	## True for a thrown object that has not stuck yet.
+	func in_flight() -> bool:
+		return false
+
 	func touches_hero() -> bool:
 		return clip.rect_in(game.stage).intersects(game.hero.rect())
 
@@ -59,6 +63,9 @@ class Missile:
 		if tip.has_area() and tip.get_center().y >= game.level.ground_y(tip.get_center().x):
 			stuck = true
 		return clip.position.y < RiderEnemy.FALL_LIMIT
+
+	func in_flight() -> bool:
+		return not stuck
 
 	func _fly() -> void:
 		pass

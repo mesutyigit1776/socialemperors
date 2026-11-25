@@ -80,7 +80,6 @@ Kind:
 | A kill comes up to about 10 % earlier or later than in Ruffle. | Limit | Random numbers in both games, and the path search of the client in Ruffle, which stops after 50 ms of real time. |
 | The client shows Start Battle when the island has loaded, about 1.5 s after the first second in which it finds it loaded (`PopupLoadingQuest.onTestIfLoaded`, `onLoaded`). The port loads at once and shows it after 1.5 s. After that, the player chooses when to start in both games. | Limit | The comparison scripts waited a fixed real time, so their frame counts under the window (client 200 to 950, port about 575) depended on the speed of the run, not on a rule of the game. |
 | Mini-game: the client tests the pixels of the hero and the enemies against the terrain. The port tests the bottom of their bounds against the top of the terrain. | Port rule | |
-| Mini-game: in the client, flying spears and arrows also move with the hero while the screen does not follow him (at the start and end of a level). In the port they do not. | Open | |
 
 ### Not a difference
 
