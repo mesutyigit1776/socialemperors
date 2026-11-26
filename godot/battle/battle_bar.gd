@@ -23,9 +23,6 @@ const HIDDEN_BAR_PARTS := ["storeButton", "achievementsButton", "giftButton", "g
 		"iconMenu", "iconMenuGift", "iconMenuWorld", "iconMenuGames", "bulldozer", "recolectaRapido", "mcTrolls", "giftCounter"]
 ## GuiManager.btnMouseOverScale: Select All and Select Specials grow by 5 % under the mouse.
 const HOVER_SCALE := 1.05
-## The size of the Withdraw label that the client shows in Ruffle
-## (SpyScreen.grow_label), before the scale of the button in the art.
-const WITHDRAW_FONT_SIZE := 21
 
 var _config: GameConfig
 var _gui: UiClip
@@ -101,7 +98,7 @@ func show_withdraw() -> UiClip:
 	var exit := _bar.clip("btnExit")
 	exit.visible = true
 	exit.set_text("lbl", _config.text("AUX_WITHDRAW"))
-	SpyScreen.grow_label(exit, WITHDRAW_FONT_SIZE)
+	SpyScreen.grow_label(exit)
 	exit.make_button(true)
 	return exit
 

@@ -23,9 +23,6 @@ const BAR_FRAME := 7  ## Frame 8 of the attack bar holds pvpHud.
 const RESOURCE_FIELDS := {"g": "lblGold", "w": "lblWood", "s": "lblStone", "f": "lblFood"}
 ## StateAssault.adjustScreen puts Withdraw 150 pixels above the bottom of the screen.
 const EXIT_FROM_BOTTOM := 150.0
-## The size of the Withdraw label that the client shows in Ruffle
-## (SpyScreen.grow_label), before the scale of the button in the art (0.73).
-const WITHDRAW_FONT_SIZE := 21
 ## PVPManager colours the time red in the last 30 seconds.
 const ENDING_SECONDS := 30
 const TIMER_COLOUR := Color.WHITE
@@ -88,7 +85,7 @@ func _init(pvp: PvpBattle, map: Village, enemy_name: String, camera_position: Ve
 	_hud.set_text("lblDefenderName", enemy_name)
 	var withdraw := _hud.clip("btnExit")
 	withdraw.set_text("lbl", config.text("AUX_WITHDRAW"))
-	SpyScreen.grow_label(withdraw, WITHDRAW_FONT_SIZE)
+	SpyScreen.grow_label(withdraw)
 	withdraw.make_button(true)
 	withdraw.pressed.connect(func() -> void:
 		SoundPlayer.play(SoundEffect.BUTTON_CLICK)  # ButtonGenericTall

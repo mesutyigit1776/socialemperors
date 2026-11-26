@@ -431,7 +431,7 @@ Differences found and fixed:
 
 Differences that stay:
 
-- The client draws blue dotted lines on the borders of the land blocks of the second dragon island; the port does not. Only the picture changes. (The black background of this island and the red background of the forge islands are now in the port.)
+- The dotted lines on the borders of the land blocks of the second dragon island in the client run are seams of Ruffle at the scale of 0.5 pixel for each CSS pixel (the pixels are the black background); at a scale of 1 or 2 they do not show. This is not a difference of the port, see `docs/PORT_STATUS.md`, "Not a difference". (The black background of this island and the red background of the forge islands are now in the port.)
 - The order of the units in the team window: in quest mode the client sorts the list by `life`, but it does not put `life` into the list in this mode, so its order comes from the order of a Flash object. The port sorts by life (as the client does in the tournament mode).
 - The time under the start window was different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it were not at the same point at the start. This is not a rule of the game. The client shows Start Battle only when the island has loaded and two timers have run (`PopupLoadingQuest`, `onTestIfLoaded` and `onLoaded`), and the scripts then waited a fixed real time, so the frame count depended on the speed of the run. The port now also shows Start Battle after 1.5 s, the earliest time of the client.
 - Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
