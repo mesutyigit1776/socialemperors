@@ -100,7 +100,7 @@ The 1.4.07 client has a chain of 30 quests on the player's own map, but it never
 **6. Release**
 
 1. A comparison of the whole game with the original, and its fixes. Done. Four saves ran for 4 minutes in the original client (Ruffle with the server) and in the port, and the saves after the run were compared item by item. The port got the rules that the comparison found: the login bonus of the server; at each start of the map, the clean of the border and the trolls, deposits, trees and animals on the land that the player does not own; and the experience rule of `rt_publish_score`. Screens were compared at 760 × 600; the port got the start zoom of the client, the scaffold of a new building, the host of the goal box and the shield animations. After the fixes, the four saves give the same login bonus values, goals and experience as the client after the load; later differences come only from the fights of the units.
-2. The launcher, and builds for Windows, macOS and Linux. Mobile builds come much later, if the owner decides so (touch changes the unit control in battles). Until then the port runs from the Godot editor or the command line.
+2. The launcher, and builds for Windows, macOS and Linux. The import runs inside the port, without Python and without the server code (decision 9 in `docs/PORT_STATUS.md`). Mobile builds come much later, if the owner decides so (touch changes the unit control in battles). Until then the port runs from the Godot editor or the command line.
 
 `docs/PORT_STATUS.md` lists what is still different or not compared.
 

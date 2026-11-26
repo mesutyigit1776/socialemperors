@@ -130,7 +130,7 @@ For each part: what was done, and what a comparison needs. "From the code" means
 
 Step 6.2 of `docs/NATIVE_PORT.md`:
 
-- **Launcher and import.** The import (`godot/importer/import_assets.py`) needs Python 3, the server requirements and a copy of the socialemperors folder, and runs from the command line. The player must supply the game files (the legal rule of option C). The launcher must do this for the player, or the import must change.
+- **Launcher and import.** The import (`godot/importer/import_assets.py`) needs Python 3, the server requirements and a copy of the socialemperors folder, and runs from the command line. The player must supply the game files (the legal rule of option C). The launcher must do this for the player, or the import must change. Decision 9 sets how the import changes.
 - **Builds.** The project has no export presets. The extension `flash_art` must be built for each platform; the Windows cross build compiles, but the port was never run on Windows or macOS.
 
 ## Decisions of the owner
@@ -143,6 +143,7 @@ Step 6.2 of `docs/NATIVE_PORT.md`:
 6. The Island Forge is in the port. The event uses the date of the server configuration, or `island_forge_date` and `island_forge_days` in `[events]` of `user://settings.cfg`. Horns are bought for cash only.
 7. The server bugs found while reading the server code are fixed.
 8. No cash shop and no new cash source. The cash comes from the start (20), most new levels (1), the login bonus (10 on day 3), unit collections (1 each), and the PvP shields, which give back twice their price.
+9. The import runs inside the port, in GDScript and the extension `flash_art`, without Python and without the server code. The player selects a socialemperors folder, and the import reads only its data: `assets/`, `config/`, `mods/`, `villages/`, `server_config.json` and `templates/img/profile/`. The port then has its own copy of the configuration rules of `get_game_config.py` (patches, mods, events), which must give the same configuration as the server.
 
 The battle decisions (quest limit, Sacred Rain, Ether Shield, the tournament against bots without ranking or prizes) are in `docs/GODOT_BATTLES.md`.
 
