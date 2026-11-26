@@ -1377,6 +1377,27 @@ func _check_allies_buildings() -> bool:
 	var round_table_tile := _free_tile(village, ROUND_TABLE, Rect2i(40, 40, 20, 20))
 	_buy(village, ROUND_TABLE, round_table_tile, Village.Placement.OK)
 	_check(village.hire_worker(village.item_at(round_table_tile)) == Village.Placement.NOT_ALLOWED, "the Round Table takes only neighbours")
+	var table := village.item_at(round_table_tile)
+	var rng := RandomNumberGenerator.new()
+	var gold_before := village.get_resource("g")
+	var xp_before := village.get_xp()
+	table._entry[4] = NOW
+	table._entry[7]["si"] = ["n1", "n2", "n3"]
+	table._entry[7]["sif"] = {"u9": NOW}
+	var ready := NOW + 86400
+	_check(village.open_round_table(table, ready - 1, rng).is_empty(), "the Round Table gives nothing before its day is over")
+	_check(village.open_round_table(table, ready, rng) == {"gold": 0, "xp": 0, "hero": 0} and village.get_resource("g") == gold_before and village.get_xp() == xp_before, "with 3 helpers the Round Table gives no reward")
+	_check(table._entry[7]["si"] == [] and table._entry[7]["sif"] == {} and village.round_table_seconds(table, ready) == 86400, "it still clears the lists and starts the day again")
+	table._entry[7]["si"] = ["n1", "n2", "n3", "n4", "n5"]
+	_check(village.open_round_table(table, ready + 86400, rng) == {"gold": 1000, "xp": 0, "hero": 0} and village.get_resource("g") == gold_before + 1000 and village.get_xp() == xp_before, "with 5 helpers it gives 1000 gold")
+	table._entry[7]["si"] = ["n1", "n2", "n3", "n4", "n5", "n6"]
+	table._entry[7]["sif"] = {"u9": NOW}
+	var heroes_before := village.stored_items().size()
+	_check(village.open_round_table(table, ready + 172800, rng) == {"gold": 1000, "xp": 100, "hero": 0} and village.get_xp() == xp_before + 100 and village.stored_items().size() == heroes_before and village.get_resource("g") == gold_before + 2000, "with 6 helpers it gives 1000 gold and 100 experience")
+	_check(table._entry[7]["si"] == [] and table._entry[7]["sif"] == {}, "the reward clears the helpers and the asked friends")
+	table._entry[7]["si"] = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"]
+	var hero_reward := village.open_round_table(table, ready + 259200, rng)
+	_check(hero_reward["hero"] in Village.ROUND_TABLE_HEROES and village.stored_items().get(hero_reward["hero"]) == 1 and hero_reward["gold"] == 1000 and hero_reward["xp"] == 100, "with 8 helpers it also gives a hero into the item store")
 	return true
 
 

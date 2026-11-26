@@ -238,6 +238,16 @@ func run(id: String, building: Village.PlacedItem, now: int) -> Outcome:
 			if result == Village.Placement.OK:
 				outcome.text = "%s gave %d %s." % [name, amount, VillageHud.RESOURCE_NAMES[code]]
 				_set_numbers(outcome, [[code, amount]], NumbersAt.BUILDING)  # IsoElement.collect
+		"round_table":
+			var reward := _village.open_round_table(building, now, _rng)
+			result = Village.Placement.OK if not reward.is_empty() else Village.Placement.NOT_ALLOWED
+			if result == Village.Placement.OK:
+				outcome.text = "%s gave %d gold and %d experience." % [name, reward["gold"], reward["xp"]]
+				if reward["hero"] > 0:
+					outcome.text += " %s is in your item store." % _config.get_item(reward["hero"]).name
+				outcome.sound = SoundEffect.COLLECTION
+				if reward["gold"] > 0:
+					_set_numbers(outcome, [["g", reward["gold"]], [NumberParticle.XP, reward["xp"]]], NumbersAt.BUILDING, 3.0)  # PopupSocialFeeds
 		"recruit_prize":
 			var prizes := _village.open_recruitment_prizes().filter(func(prize: Dictionary) -> bool: return prize["id"] == argument)
 			result = _village.take_recruitment_prize(building, prizes[0]) if not prizes.is_empty() else Village.Placement.NOT_ALLOWED
@@ -397,7 +407,19 @@ func _describe_allies(building: Village.PlacedItem, now: int) -> Array:
 	var cost: int = _config.worker_item_ids.get(building.item_id, [0, 0])[0]
 	var hire := ["hire", "Hire a worker for %d cash" % cost if cost > 0 else "Take a recruit", counts[0] < counts[1] and _village.get_resource("c") >= cost]
 	if building.item_id == Village.ROUND_TABLE:
-		return ["%s: %d of %d neighbours. Only neighbours who help your village join it; the neighbours of the port do not." % [name, counts[0], counts[1]], []]
+		var text := "%s: %d of %d neighbours. Only neighbours who help your village join it; the neighbours of the port do not." % [name, counts[0], counts[1]]
+		var seconds := _village.round_table_seconds(building, now)
+		if seconds > 0:
+			return ["%s The reward comes in %s." % [text, VillageHud.duration(seconds)], []]
+		var reward := Village.round_table_reward(counts[0])
+		var parts: Array[String] = []
+		if reward["gold"] > 0:
+			parts.append("%d gold" % reward["gold"])
+		if reward["xp"] > 0:
+			parts.append("%d experience" % reward["xp"])
+		if reward["hero"]:
+			parts.append("a hero")
+		return [text, [["round_table", "Take the reward: %s" % ", ".join(parts) if not parts.is_empty() else "Start the table again (4 helpers give a reward)", true]]]
 	if building.item_id in Village.SUMMITS:
 		if counts[0] >= counts[1]:
 			return ["%s has all %d allies." % [name, counts[1]], [["allies_open", "Call the %d %s" % [Village.SUMMIT_KNIGHTS, _config.get_item(Village.ALLIANCE_KNIGHT).name], true]]]

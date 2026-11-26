@@ -10,6 +10,10 @@ signal started(stars: int)
 ## Frame 2 of a star shows it chosen.
 const STAR_ON := 1
 const STAR_OFF := 0
+## The client checks each second whether the island has loaded and then waits
+## half a second more before it shows the army text and Start Battle
+## (onTestIfLoaded, onLoaded); the port loads at once.
+const READY_SECONDS := 1.5
 
 var _window: UiClip
 var _config: GameConfig
@@ -53,10 +57,16 @@ func _init(ui: UiLibrary, config: GameConfig, island: QuestIsland, rank: int, ma
 	var start := _window.clip("btnStartBattle")
 	start.make_button(true)
 	start.pressed.connect(func() -> void: started.emit(_stars))
+	_window.set_part_visible("armyReady", false)
+	_window.set_part_visible("btnStartBattle", false)
 
 
 func _ready() -> void:
 	_window.keep_centred()
+	await get_tree().create_timer(READY_SECONDS).timeout
+	if is_inside_tree():
+		_window.set_part_visible("armyReady", true)
+		_window.set_part_visible("btnStartBattle", true)
 
 
 func _choose(star: int) -> void:

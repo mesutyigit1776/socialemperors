@@ -393,7 +393,7 @@ A scratch script played all 28 islands through the game window (`main.tscn` with
 | `100000092` | 3 | 12162 | 37714 | 1962 |
 
   With more stars the enemies are more (a copy of each enemy unit for each extra star) and the gold is more: on `100000002` 4494 gold at 1 star and 6741 at 2 stars.
-- On each island, about 570 frames ran under the start window, and the portrait buttons were used 21 to 153 times. No script error occurred.
+- On each island, about 570 frames ran under the start window (the wait of the scratch script), and the portrait buttons were used 21 to 153 times. No script error occurred.
 - The first runs found no error of the port. They found three weak points of the test script: it attacked walls before the town hall, it sent units to enemies behind closed doors, and it attacked the Deadly Dragon, which attacks cannot hurt, instead of the eggs. A player does not do these things; the script was changed.
 
 Not tested: a play by a person. A script, not a person, played all the runs above.
@@ -433,7 +433,7 @@ Differences that stay:
 
 - The client draws blue dotted lines on the borders of the land blocks of the second dragon island; the port does not. Only the picture changes. (The black background of this island and the red background of the forge islands are now in the port.)
 - The order of the units in the team window: in quest mode the client sorts the list by `life`, but it does not put `life` into the list in this mode, so its order comes from the order of a Flash object. The port sorts by life (as the client does in the tournament mode).
-- The time under the start window is different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it are not at the same point at the start.
+- The time under the start window was different (about 200 to 950 frames in the client, about 575 in the port), so the fights that start under it were not at the same point at the start. This is not a rule of the game. The client shows Start Battle only when the island has loaded and two timers have run (`PopupLoadingQuest`, `onTestIfLoaded` and `onLoaded`), and the scripts then waited a fixed real time, so the frame count depended on the speed of the run. The port now also shows Start Battle after 1.5 s, the earliest time of the client.
 - Some items have no SWF file in `assets/` (for example `2025_fire_draggy`, `2097_black_phoenix`, `639_aguila`), and the effect `b.cerberusSkullBlast` is not in the effects of the client. Neither game can draw them.
 
 ### One order on each island

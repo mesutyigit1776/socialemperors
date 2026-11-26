@@ -28,7 +28,7 @@ Kind:
 
 | Difference | Kind | Notes |
 |---|---|---|
-| The floating numbers (`NumberParticle`): the client calls them at 68 places. The port calls them for all parts that it has; `ui/number_layer.gd` lists the rules. The calls of parts that the port does not have are missing: darts, Kompu, the Arabic deals, the admin panel, building upgrades, the sale of stored items, the Heavy Siege window, graveyard capacity, the population of the recruitment, the hurry-up help of friends, the Round Table rewards and the quest bars (`FauxBar`). | Limit | These parts are not in the port. |
+| The floating numbers (`NumberParticle`): the client calls them at 68 places. The port calls them for all parts that it has; `ui/number_layer.gd` lists the rules. The calls of parts that the port does not have are missing: darts, Kompu, the Arabic deals, the admin panel, building upgrades, the sale of stored items, the Heavy Siege window, graveyard capacity, the population of the recruitment, the hurry-up help of friends and the quest bars (`FauxBar`). | Limit | These parts are not in the port. |
 | The floating numbers of the actions of special buildings (graveyard, Soul Mixer, Time Machine, nests) start at the middle of the screen. The client starts some of them at a button of its window. | Port rule | The port shows these actions in a panel of the HUD, not in the client windows. |
 | The numbers of the purchase of the troll town do not show: the port loads the new town at once. | Port rule | |
 | "Teleport not ready yet" and the Dragon Hunter text show over the unit. The client adds half the stage size instead of the place of the map, so it shows them at a wrong place when the map has moved. | Port rule | A fault of the client. |
@@ -78,9 +78,8 @@ Kind:
 |---|---|---|
 | The client shows other lines in the speech bubble of a unit (`IsoUnit.say`) that the port does not show: the farewell of the cart of the allies (`ASALTO_CARRO_DESPEDIDA`), the messenger of a quest (`CustomQuest`, `CustomQuestNew`), the end of a mummy (`UNIT_MOMIA_EXPIRADO`), the boss of the dragon quest of `CQuestChinosDragon` and the Greater Demon. | Open | Found with the lines of the captains. The port shows the bubble with `BattleView.say()`. |
 | A kill comes up to about 10 % earlier or later than in Ruffle. | Limit | Random numbers in both games, and the path search of the client in Ruffle, which stops after 50 ms of real time. |
-| The time under the start window of a quest differs (client 200 to 950 frames, port about 575), so the fights that start under it are at another point. | Open | |
+| The client shows Start Battle when the island has loaded, about 1.5 s after the first second in which it finds it loaded (`PopupLoadingQuest.onTestIfLoaded`, `onLoaded`). The port loads at once and shows it after 1.5 s. After that, the player chooses when to start in both games. | Limit | The comparison scripts waited a fixed real time, so their frame counts under the window (client 200 to 950, port about 575) depended on the speed of the run, not on a rule of the game. |
 | Mini-game: the client tests the pixels of the hero and the enemies against the terrain. The port tests the bottom of their bounds against the top of the terrain. | Port rule | |
-| Mini-game: in the client, flying spears and arrows also move with the hero while the screen does not follow him (at the start and end of a level). In the port they do not. | Open | |
 
 ### Not a difference
 

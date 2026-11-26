@@ -199,8 +199,6 @@ func _move() -> void:
 		level.scroll(-dx)
 		for body in _bodies:
 			body.clip.position.x -= dx
-		for shot: RiderShots.Shot in _shots:
-			shot.clip.position.x -= dx
 	else:
 		var x := hero.x + dx
 		if x < HERO_MIN_X or x > HERO_MAX_X:
@@ -211,6 +209,10 @@ func _move() -> void:
 			_level_end = true
 			_show_end("won")
 			hero.walk_out()
+	# A spear or an arrow in flight moves with the hero also when the screen does not follow him.
+	for shot: RiderShots.Shot in _shots:
+		if follows or shot.in_flight():
+			shot.clip.position.x -= hero.vx
 	_x0 += hero.vx
 
 
