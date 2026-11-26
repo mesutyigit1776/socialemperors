@@ -179,6 +179,7 @@ func show_battle(sim: BattleSim, config: GameConfig, sprites: SpriteLibrary, eff
 		if target.def.id in FLASH_ON_HIT and not _flashes.has(target):
 			_flashes[target] = [HIT_FLASH, 0.0])
 	sim.highlighted.connect(func(unit: BattleFighter) -> void: _flashes[unit] = [HIGHLIGHT_FLASH, 0.0])
+	sim.said.connect(say)
 	sim.particle_added.connect(_on_particle_added)
 	sim.spell_created.connect(show_spell)
 	sim.effect_played.connect(func(graphic: String, tile: Vector2i) -> void:

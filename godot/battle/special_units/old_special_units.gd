@@ -359,6 +359,7 @@ static func make(sim: BattleSim, unit: BattleFighter, ability: BattleAbility, ki
 		"greater_demon":
 			# 5 demons (item 659) come beside the Greater Demon for 20 seconds.
 			add(ability, 0, "Dark Ritual", "botonDarkRitual", SpecialAttacks.Frames.new(sim, unit, SP1, [16], func() -> void:
+				sim.said.emit(unit, "Blood for the Blood God!")
 				var demons: Array[BattleFighter] = []
 				for step in DEMON_STEPS:
 					var demon := sim.spawn(sim.config_item(DEMON), unit.tile + step, unit.team)
@@ -683,6 +684,8 @@ static func _mummy_oil(sim: BattleSim, unit: BattleFighter) -> void:
 ## reads the tiles column by column and stops at the first building, because
 ## it treats each target as a unit and fails there.
 static func _demon_earthquake(sim: BattleSim, unit: BattleFighter) -> void:
+	# The client says the line again at each quake, so the bubble stays until the last one.
+	sim.said.emit(unit, "Death to the servants of the false Emperor!")
 	for x in range(-10, 11):
 		for y in range(-10, 11):
 			var target := tile_target(sim, unit, unit.tile + Vector2i(x, y))

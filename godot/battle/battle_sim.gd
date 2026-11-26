@@ -50,6 +50,8 @@ signal converted(unit: BattleFighter, new_team: BattleFighter.Team)
 signal sound_played(effect: int, delay_ms: int)
 ## A spell flashes the unit white (highlightElement of the client); only the view uses it.
 signal highlighted(unit: BattleFighter)
+## A unit says a line in its speech bubble (IsoUnit.say); only the view uses it.
+signal said(unit: BattleFighter, text: String)
 ## The client shows these values over the item as floating numbers (see
 ## NumberParticle): the damage and the absorbed part of a hit, a heal, or a
 ## text such as the name of a special attack. shift moves the start point on
