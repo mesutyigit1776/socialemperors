@@ -88,12 +88,12 @@ func update(hero: RiderHero) -> void:
 
 func show_health(health: float, max_health: float) -> void:
 	health_bar.clip("healthBar").scale.x = clampf(health / max_health, 0.0, 1.0)
-	health_bar.set_text("currentHealth_txt", "%d/%d" % [health, max_health], false, true)
+	health_bar.set_text("currentHealth_txt", "%d/%d" % [health, max_health], false)
 
 
 ## The text of a hit (-) or a heal (+) at the health bar; it starts at x and fades.
 func show_change(name: String, text: String, x: float) -> void:
-	health_bar.set_text(name, text, false, true)
+	health_bar.set_text(name, text, false)
 	_texts[name] = [1.4, x]
 	health_bar.part(name).position.x = x
 
@@ -103,12 +103,12 @@ func show_end(kind: String, level: int) -> UiClip:
 	match kind:
 		"won":
 			end_screen = _ui.make("main.game_won")
-			end_screen.set_text("congratztext", "Level %d completed" % level, false, true)
+			end_screen.set_text("congratztext", "Level %d completed" % level, false)
 			for name in ["next_level_button", "level_select_button", "more_games_button"]:
 				end_screen.set_part_visible(name, false)
 		"lost":
 			end_screen = _ui.make("main.game_over")
-			end_screen.set_text("overtext", "Level %d failed" % level, false, true)
+			end_screen.set_text("overtext", "Level %d failed" % level, false)
 			for name in ["play_again_button", "level_select_button", "more_games_button"]:
 				end_screen.set_part_visible(name, false)
 		_:

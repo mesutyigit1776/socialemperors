@@ -44,7 +44,8 @@ func _init(ui: UiLibrary, config: GameConfig, forge: IslandForge, village: Villa
 		var quest_id := IslandForge.QUEST_IDS[index]
 		var button := ui.make("NewQuestIslandButtonMC")
 		button.position = BUTTON_PLACES[index]
-		button.set_text("nombreIsla", QuestIsland.name_of(quest_id, config), false)
+		# The client writes nombreIsla with setHTML and autoSize CENTER.
+		button.set_text("nombreIsla", QuestIsland.name_of(quest_id, config), false, false)
 		button.clip("stars").show_frame(village.quest_rank(quest_id))
 		button.set_part_visible("mcLevelLock", false)
 		var locked := index > 0 and village.quest_rank(IslandForge.QUEST_IDS[index - 1]) == 0

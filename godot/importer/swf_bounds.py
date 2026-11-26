@@ -304,7 +304,8 @@ class SwfFile:
 		[x, y, width, height] in pixels, font id and name, size in pixels, color
 		"#rrggbbaa", alignment ("left", "right", "center" or "justify"), the
 		leading (the space between lines) in pixels, whether it has more lines,
-		wraps words or reads HTML, and its initial text."""
+		wraps words or reads HTML, whether it has an auto size (it grows with its
+		text), and its initial text."""
 		data = self.data
 		start = self.edit_texts[char_id]
 		rect, p = _read_rect(data, start + 2)
@@ -313,7 +314,7 @@ class SwfFile:
 		result = {
 			"rect": [rect[0] / 20, rect[1] / 20, (rect[2] - rect[0]) / 20, (rect[3] - rect[1]) / 20],
 			"font_id": None, "font": None, "size": 12.0, "color": "#000000ff", "align": "left", "leading": 0.0,
-			"multiline": bool(flags1 & 0x20), "word_wrap": bool(flags1 & 0x40), "html": bool(flags2 & 0x02), "text": "",
+			"multiline": bool(flags1 & 0x20), "word_wrap": bool(flags1 & 0x40), "html": bool(flags2 & 0x02), "auto_size": bool(flags2 & 0x40), "text": "",
 		}
 		if flags1 & 0x01:
 			result["font_id"] = struct.unpack_from('<H', data, p)[0]

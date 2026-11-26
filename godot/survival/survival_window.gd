@@ -113,7 +113,8 @@ func _refresh() -> void:
 	for i in _maps.size():
 		var best := _village.survival_best_time(SurvivalMap.IDS[i])
 		if best >= 0:
-			_maps[i].set_text("infoTxt", _config.text("SURVIVAL_BEST_TIME").replace("#0#", time_text(best)), false)
+			# PopupSurvival sets autoSize CENTER on infoTxt.
+			_maps[i].set_text("infoTxt", _config.text("SURVIVAL_BEST_TIME").replace("#0#", time_text(best)), false, false)
 		_maps[i].clip("image").modulate = Color.WHITE if _can_play(i) else LOCKED_TINT
 
 
@@ -130,7 +131,8 @@ func _show_lives() -> void:
 	var wait := _village.survival_life_wait(now)
 	_window.set_part_visible("txNext", wait > 0)
 	if wait > 0:
-		_window.set_text("txNext", _config.text("SURVIVAL_NEXT_LIFE").replace("#0#", time_text(wait)), false)
+		# PopupSurvival sets autoSize LEFT on txNext.
+		_window.set_text("txNext", _config.text("SURVIVAL_NEXT_LIFE").replace("#0#", time_text(wait)), false, false)
 
 
 func _buy_life() -> void:

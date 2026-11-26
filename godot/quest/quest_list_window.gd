@@ -102,7 +102,8 @@ func _ready() -> void:
 func _island_button(ui: UiLibrary, quest_id: String, place: Vector2) -> UiClip:
 	var button := ui.make("NewQuestIslandButtonMC")
 	button.position = place
-	button.set_text("nombreIsla", QuestIsland.name_of(quest_id, _config), false)
+	# The client writes nombreIsla with setHTML and autoSize CENTER.
+	button.set_text("nombreIsla", QuestIsland.name_of(quest_id, _config), false, false)
 	var open := _book.is_open(quest_id)
 	var in_port := QuestIsland.is_in_port(quest_id)
 	var level_locked := _book.is_level_locked(quest_id)

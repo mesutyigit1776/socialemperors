@@ -260,26 +260,41 @@ func show_label(label: String) -> void:
 ## fit is false for a field that the client writes with TextField.text or with
 ## an auto size: its font keeps the size of the art. An auto size field grows
 ## with its text, so resizeText finds no text outside it.
-## clip is true for a field that has no auto size and that the client writes
-## with TextField.text: Flash shows only the part of the text inside the
-## field, so a line that is too wide is cut at the right edge and the lines
-## below the bottom are not shown. Other fields show all of their text.
-func set_text(path: String, text: String, fit := true, clip := false) -> void:
+## A field that does not fit the text and has no auto size cuts the text:
+## Flash shows only the part of the text inside the field, so a line that is
+## too wide is cut at the right edge and the lines below the bottom are not
+## shown. The importer reads the auto size flag of the field. clip is false
+## for a field that the client gives an auto size at run time, with
+## TextField.autoSize or the third argument of TextFieldUtil.setHTML. No field
+## in the client SWFs has the flag, so data imported before the flag existed
+## counts as without it.
+func set_text(path: String, text: String, fit := true, clip := true) -> void:
 	var label := part(path) as Label
 	if label == null:
 		return
 	label.set_meta("written", true)
+	clip = clip and not fit and not label.get_meta("auto_size")
 	label.clip_text = clip
+	label.max_lines_visible = -1
 	var size: int = label.get_meta("art_font_size")
 	_show_text(label, text, size)
 	while fit and size > MIN_FIT_SIZE and not _fits(label, size):
 		size -= 1
 		_show_text(label, text, size)
 	if clip:
+		# A Label is never lower than all of its visible lines, so clip_text cuts only the width.
+		# Show the lines that fit the field; the port does not draw a line that is cut at the bottom.
+		var field: Vector2 = label.get_meta("field_size")
+		var line_height: float = label.get_meta("text_layout").line_height(label.get_theme_font_size("font_size"), label.get_meta("leading"))
+		label.max_lines_visible = maxi(1, floori(field.y / line_height))
 		# The minimum size of the Label can have made it larger than the field.
-		label.size = label.get_meta("field_size")
+		label.size = field
 		# A line that is wider than its field starts at the left edge in Flash, also in a centred field.
-		var too_wide: bool = not label.get_meta("word_wrap") and not _fits(label, label.get_theme_font_size("font_size"))
+		var too_wide := false
+		if not label.get_meta("word_wrap"):
+			var layout: FlashTextLayout = label.get_meta("text_layout")
+			for line in text.split("\n"):
+				too_wide = too_wide or layout.width(line, label.get_theme_font_size("font_size")) - field.x >= 1.0
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if too_wide else label.get_meta("art_align")
 
 
@@ -533,7 +548,7 @@ func _make_part(part: Dictionary) -> Control:
 	label.set_meta("frame_colour", settings["color"])
 	label.horizontal_alignment = {"left": HORIZONTAL_ALIGNMENT_LEFT, "right": HORIZONTAL_ALIGNMENT_RIGHT, "center": HORIZONTAL_ALIGNMENT_CENTER}.get(settings["align"], HORIZONTAL_ALIGNMENT_FILL)
 	label.set_meta("art_align", label.horizontal_alignment)
-	# The client makes most fields grow with their text (autoSize), so the port does not cut the text.
+	label.set_meta("auto_size", bool(settings.get("auto_size", false)))
 	label.clip_text = false
 	if part.has("glow"):
 		# A glow filter with a high strength draws an outline around the text.
