@@ -364,17 +364,22 @@ func _show_start_screen() -> bool:
 			screen.show_error("Cannot make the new empire in %s." % ProjectSettings.globalize_path(SAVES_DIR))
 		else:
 			_start_with_save(path))
+	screen.import_requested.connect(func() -> void:
+		layer.queue_free()
+		_show_import_screen())
 	layer.add_child(screen)
 	return true
 
 
-## The first start: the data folder is not there or not complete. The scene
-## starts again when the import is done.
+## The first start (the data folder is not there or not complete), or an
+## import again from the start screen. The scene starts again when the import
+## is done or the player goes back.
 func _show_import_screen() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var screen := ImportScreen.new(_data_dir)
 	screen.finished.connect(get_tree().reload_current_scene)
+	screen.cancelled.connect(get_tree().reload_current_scene)
 	layer.add_child(screen)
 
 

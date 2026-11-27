@@ -4,9 +4,12 @@ extends Control
 ## (templates/login.html and new_empire.html): the saves of the player, each
 ## with a button to continue it, and a name field to start a new empire. The
 ## owner makes the empire (Village.new_empire()) and loads the chosen save.
+## A button opens the import screen again, for example after an update of the
+## port that needs new files.
 
 signal save_chosen(path: String)
 signal empire_requested(player_name: String)
+signal import_requested
 
 ## The text of the server's check_player_name().
 const NAME_RULE := "The name must have 3 to 16 characters: letters, numbers and spaces."
@@ -90,6 +93,11 @@ func _init(ui: UiLibrary, save_dir: String) -> void:
 	_error.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_error.visible = false
 	rows.add_child(_error)
+	var import := Button.new()
+	import.text = "Import the game files again"
+	import.tooltip_text = "Brings the data folder up to date after an update of the port. The import skips the graphics that are up to date."
+	import.pressed.connect(import_requested.emit)
+	rows.add_child(import)
 
 
 ## The saves in save_dir, the last changed first, as the login page of the

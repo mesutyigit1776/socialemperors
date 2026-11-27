@@ -23,4 +23,5 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = "0.10"
 
 [profile.release]
+strip = true  # The symbols made the Windows DLL 28 MB.
 debug = false

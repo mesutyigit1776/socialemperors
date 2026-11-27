@@ -1,13 +1,15 @@
 class_name ImportScreen
 extends Control
 ## The screen of the first start: the port has no data folder yet, or an
-## import into it did not finish. The player selects the socialemperors folder
+## import into it did not finish. The start screen also opens it to import
+## into a complete data folder again; then Back returns without an import. The player selects the socialemperors folder
 ## (a clone or a release download); the screen runs the import (AssetImport)
 ## with a progress bar, and then emits finished. The import runs some steps
 ## in each frame (FRAME_MSEC), so that the window stays open to input. The
 ## client art is not there yet, so the screen uses the controls of Godot.
 
 signal finished
+signal cancelled  ## Back: the data folder was complete, and no import ran.
 
 const TEXT := "Social Empires needs the game files of the original game. Select your socialemperors folder (a clone or a release download of the server). The port reads the game files from it and writes its data folder:\n%s"
 const CONTINUE_TEXT := "The last import did not finish. Select the same folder to continue it."
@@ -19,6 +21,7 @@ var _folder := LineEdit.new()
 var _browse := Button.new()
 var _start := Button.new()
 var _stop := Button.new()
+var _back := Button.new()
 var _progress := ProgressBar.new()
 var _status := Label.new()
 var _dialog := FileDialog.new()
@@ -84,6 +87,10 @@ func _init(data_dir: String) -> void:
 		_stop.disabled = true
 		_status.text = "Stopping...")
 	buttons.add_child(_stop)
+	_back.text = "Back"
+	_back.visible = not AssetImport.needs_import(data_dir)
+	_back.pressed.connect(cancelled.emit)
+	buttons.add_child(_back)
 	rows.add_child(buttons)
 	_progress.custom_minimum_size = Vector2(0, 24)
 	rows.add_child(_progress)
@@ -110,7 +117,7 @@ func _on_start() -> void:
 	if not error.is_empty():
 		_status.text = error
 		return
-	for control: BaseButton in [_start, _browse]:
+	for control: BaseButton in [_start, _browse, _back]:
 		control.disabled = true
 	_folder.editable = false
 	_status.text = "Reading the configuration..."
@@ -143,6 +150,8 @@ func _process(_delta: float) -> void:
 func _on_done(error: String) -> void:
 	for control: BaseButton in [_start, _browse]:
 		control.disabled = false
+	# After a stop the data folder is not complete, so the game cannot start without an import.
+	_back.disabled = AssetImport.needs_import(_data_dir)
 	_folder.editable = true
 	_stop.disabled = true
 	var import := _import
