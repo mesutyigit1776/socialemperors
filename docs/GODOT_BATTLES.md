@@ -108,7 +108,7 @@ The importer reads the quest maps, so that their items have graphics, and the gr
 | `quest/quest_list_window.gd`, `quest_start_window.gd`, `quest_end_window.gd`, `quest_hud.gd` | The windows of the client for the quests. |
 | `ui/ui_library.gd`, `ui/ui_clip.gd`, `ui/alert_window.gd` | The windows of the client: images without their named parts, and the parts (buttons, stars, locks, text fields with the fonts of the client) as nodes. |
 | `village/village.gd` | `start_quest()`, `end_quest()`: the save changes of the server commands `start_quest`, `start_quest_new` and `end_quest`. |
-| `importer/ui_import.py` | Exports the windows from the client file `SocialEmpires1.4.07sec_fixed.swf`, with their fonts, pictures and the pictures of the units. |
+| `importer/ui_import.gd`, `flash_art/src/swf_import.rs` | Exports the windows from the client file `SocialEmpires1.4.07sec_fixed.swf`, with their fonts, pictures and the pictures of the units. |
 
 The rules come from the client:
 
@@ -139,7 +139,7 @@ Registration point: the client puts the registration point of a building graphic
 | `battle/battle_sim.gd` | Timers in frames, `items_near()`, and the states: `stun()`, `freeze()`, `poison()`, `enlarge()`, `swallow()`, `summon()`, shields. |
 | `quest/quest_battle.gd` | Summoned units do not count in a quest. |
 | `battle/spells/` | `BattleSpell` and one class for each spell, with the numbers of the client. A battle makes its own spells with `BattleSpell.create()`. |
-| `importer/import_assets.py`, `importer/swf_bounds.py` | `spells.json`: the frame with the label "attack" in the graphic of each spell, at which the spell acts. |
+| `importer/asset_import.gd`, `flash_art/src/swf_import.rs` | `spells.json`: the frame with the label "attack" in the graphic of each spell, at which the spell acts. |
 | `checks/spell_check.gd` | Checks of the spell rules of the save and of each spell in a battle. |
 
 The rules come from the client:
@@ -187,7 +187,7 @@ The screens of the spells use the art of the client:
 | `spell_book/spell_shop_window.gd` | The spell window (PopupWizardry): the spells by level, their prices, texts, stars and casts to the next level. |
 | `spell_book/buy_mana_window.gd`, `cast_banner.gd`, `spell_particle.gd` | The mana window, the banner with the name of a cast spell, and a particle of a spell on the map. |
 | `battle/battle_view.gd` | The particles of the spells, the colours of frozen and poisoned units, the size of enlarged units, the jump of stunned units, the shrinking of swallowed items and the glow of the items that a spell marks. |
-| `ui/ui_button.gd`, `ui/ui_clip.gd`, `ui/ui_library.gd`, `importer/ui_import.py` | Named buttons of the windows, frame labels, turned parts and fading parts. |
+| `ui/ui_button.gd`, `ui/ui_clip.gd`, `ui/ui_library.gd`, `importer/ui_import.gd` | Named buttons of the windows, frame labels, turned parts and fading parts. |
 
 The rules of the screens come from the client:
 

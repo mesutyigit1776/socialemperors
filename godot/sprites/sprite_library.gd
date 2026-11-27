@@ -2,7 +2,7 @@ class_name SpriteLibrary
 extends RefCounted
 ## Graphics that the importer writes: the items in <data>/sprites/<img_name>/,
 ## the shots and effects of battles in <data>/fx/<name>/. Each folder has a
-## copy of the SWF file of the graphic and meta.json, see importer/import_assets.py.
+## copy of the SWF file of the graphic and meta.json, see AssetImport.
 ##
 ## The port draws the frames from the SWF file while it runs, with the
 ## extension FlashArt (flash_art/), at the zoom of the camera. A frame is

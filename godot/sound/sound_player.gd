@@ -1,7 +1,7 @@
 class_name SoundPlayer
 extends Node
 ## Plays the music and the sound effects of the client (SoundManager), from
-## the files that importer/sound_import.py wrote to <data>/sound.
+## the files that the import (AssetImport) wrote to <data>/sound.
 ##
 ## The project has one SoundPlayer as the autoload "Sounds", as the client has
 ## one SoundManager (Base.Sound) for all screens: the map, the windows and the

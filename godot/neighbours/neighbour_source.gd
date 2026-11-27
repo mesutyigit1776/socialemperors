@@ -10,7 +10,7 @@ extends RefCounted
 ##   neighbour list and of PvP, and the client visits them as its host.
 ## - "friend": as the friend/ folder of the server, with villages/friend_static.
 ## - "enemy": as the enemy/ folder of the server; only for PvP.
-## - "mock": the mock neighbours of the port (importer/mock_villages.py). They
+## - "mock": the mock neighbours of the port (MockVillages, importer/mock_villages.gd). They
 ##   count as friends. Delete the folder to remove them.
 ##
 ## This class is the only part of the port that knows where the other

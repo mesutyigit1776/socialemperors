@@ -1,12 +1,12 @@
 class_name UiLibrary
 extends RefCounted
-## The windows of the client that importer/ui_import.py wrote to <data>/ui:
+## The windows of the client that the import (UiImport) wrote to <data>/ui:
 ## their sprites without the named parts, the named parts, the named buttons,
 ## the fonts of the text fields and the pictures of the windows. The port draws
 ## the sprites, buttons and fonts from windows.swf with the extension FlashArt.
 ## UiClip shows a window.
 
-## The copy of the SWF file with the windows, see importer/ui_import.py.
+## The copy of the SWF file with the windows, see UiImport.
 const WINDOWS_FILE := "windows.swf"
 const BUTTON_STATES := {"up": 0, "over": 1, "down": 2}
 
@@ -93,7 +93,7 @@ func has_symbol(name: String) -> bool:
 	return _symbols.has(name)
 
 
-## A new node that shows the window or part of the client with this name, see importer/ui_import.py.
+## A new node that shows the window or part of the client with this name, see UiImport.
 func make(symbol: String) -> UiClip:
 	return UiClip.new(self, _symbols[symbol])
 

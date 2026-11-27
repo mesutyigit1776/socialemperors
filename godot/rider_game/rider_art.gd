@@ -1,7 +1,7 @@
 class_name RiderArt
 extends RefCounted
 ## The art of the mini-game of the Dragon Riding and the Rider Academy: the
-## copy of its SWF file that importer/rider_game_import.py wrote to
+## copy of its SWF file that the import (AssetImport) wrote to
 ## <data>/rider_game/game.swf, read with the extension FlashArt. FlashClip
 ## plays its sprites; the frames are drawn at the scale of the windows (see FrameCache).
 

@@ -181,7 +181,7 @@ func _holder(node: Control) -> CanvasItem:
 	return node.get_parent() if node.get_parent() is Node2D else node
 
 
-## The shapes under a named mask (see importer/ui_import.py) show only
+## The shapes under a named mask (see UiImport) show only
 ## inside the rectangle of the mask, which the client moves or scales, for
 ## example to fill a bar.
 func _show_masked(key: String, mask: Control, layer_id: int) -> void:

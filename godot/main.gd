@@ -2,8 +2,9 @@ extends Node2D
 ## Loads the imported data and shows a village.
 ##
 ## Command line options (after "--"):
-##   --data <dir>          folder that importer/import_assets.py wrote
-##                         (default: the SE_DATA_DIR environment variable, then user://imported)
+##   --data <dir>          the data folder of the import (AssetImport)
+##                         (default: the SE_DATA_DIR environment variable, then user://imported);
+##                         without a complete data folder the port shows ImportScreen
 ##   --village <file>      village save; without it the start screen shows
 ##                         the saves in SAVES_DIR and makes new empires
 ##   --screenshot <png>    save the first frames as an image and quit; used for checks
@@ -153,6 +154,12 @@ func _ready() -> void:
 	if data_dir.is_empty():
 		data_dir = "user://imported"
 	_data_dir = data_dir
+	if AssetImport.needs_import(data_dir):
+		_show_import_screen()
+		if _options.has("screenshot"):
+			await _save_screenshot(_options["screenshot"])
+			get_tree().quit()
+		return
 	SoundPlayer.load_from(data_dir)
 	add_child(_frames)
 	_village_path = _options.get("village", _chosen_save)
@@ -359,6 +366,16 @@ func _show_start_screen() -> bool:
 			_start_with_save(path))
 	layer.add_child(screen)
 	return true
+
+
+## The first start: the data folder is not there or not complete. The scene
+## starts again when the import is done.
+func _show_import_screen() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var screen := ImportScreen.new(_data_dir)
+	screen.finished.connect(get_tree().reload_current_scene)
+	layer.add_child(screen)
 
 
 func _start_with_save(path: String) -> void:

@@ -18,6 +18,9 @@ flate2 = "1.1"
 jpeg-decoder = { version = "0.3.2", default-features = false }
 png = "0.18"
 godot = { version = "0.5.5", features = ["api-4-7"], optional = true }
+indexmap = { version = "2", features = ["serde"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.10"
 
 [profile.release]
 debug = false
