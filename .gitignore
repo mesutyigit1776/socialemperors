@@ -17,3 +17,6 @@ Include/
 Lib/
 Scripts/
 pyvenv.cfg
+
+# Godot exports (godot/export_presets.cfg).
+dist/

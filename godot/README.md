@@ -134,7 +134,7 @@ cargo build --release --manifest-path godot/flash_art/Cargo.toml
 
 The windows of the client come from the same extension: it draws their sprites, buttons and static texts, and it turns the fonts of their text fields into TrueType fonts for Godot.
 
-`flash_art.gdextension` loads the library from `flash_art/target/release/`. The build is tested on Linux; for Windows, the cross build with `--target x86_64-pc-windows-gnu` compiles, but the port was not run on Windows or macOS. The examples of the crate help to compare the frames with other programs: `render` writes the frames of a symbol to PNG files, `dump` prints the display list of a frame, `layout` prints the data of the frames as JSON, `stage` writes a SWF file that shows one symbol, so that the Ruffle exporter draws the same frames, and `compare` compares the two sets of frames.
+`flash_art.gdextension` loads the library from `flash_art/target/release/`, on Windows from `flash_art/target/x86_64-pc-windows-gnu/release/` (see "Export" below). The port was run on Linux only. The examples of the crate help to compare the frames with other programs: `render` writes the frames of a symbol to PNG files, `dump` prints the display list of a frame, `layout` prints the data of the frames as JSON, `stage` writes a SWF file that shows one symbol, so that the Ruffle exporter draws the same frames, and `compare` compares the two sets of frames.
 
 `docs/FLASH_ART.md` records the import failures, the differences from other renderers and the open items of the extension.
 
@@ -153,6 +153,20 @@ Without a data folder, the port shows the import screen (see "Import the game fi
 Without `--village`, the port opens a start screen. It lists the saves in `user://saves`, each with a Play button, and has a name field to start a new empire. As on the server, the name has 3 to 16 letters, numbers and spaces, and the new empire is a copy of `<data>/villages/initial.json` with a new player id. The saves have the format and the file names of the server (`<USERID>.save.json`), and the previous version of each save goes to `<USERID>.save.json.bak`. So you can copy a save between `user://saves` and the `saves/` folder of the server. On Linux, `user://` is `~/.local/share/godot/app_userdata/Social Empires/`.
 
 With `--village <file>`, the port opens that file and writes each change to it, for example `--village saves/<USERID>.save.json` for a save of the server. Do not run the server with the same save at the same time.
+
+## Export
+
+`export_presets.cfg` has the presets Linux, Windows and macOS. They write to `dist/<platform>/` in the repository (Git ignores `dist/`). Install the export templates of Godot 4.7 (in the editor: Editor > Manage Export Templates), build the extension for the platform, and export, for example:
+
+```bash
+godot --headless --path godot --export-release Linux ../dist/linux/social_empires.x86_64
+```
+
+- Linux: build the extension with `cargo build --release` (see "Graphics"). The export is the program, `social_empires.pck` and `libflash_art.so`; keep the three files together.
+- Windows: build the extension with `cargo build --release --target x86_64-pc-windows-gnu --manifest-path godot/flash_art/Cargo.toml`. On Linux this needs the Rust target (`rustup target add x86_64-pc-windows-gnu`) and MinGW-w64 (`x86_64-w64-mingw32-gcc`). The DLL needs only system DLLs of Windows. The export is `social_empires.exe`, `social_empires.pck` and `flash_art.dll`.
+- macOS: the preset makes a universal app (x86_64 and arm64), signed ad hoc and not notarized. Build the extension on a Mac for both targets (`x86_64-apple-darwin` and `aarch64-apple-darwin`) and join them with `lipo -create` into `flash_art/target/release/libflash_art.dylib`. Without the library the export stops with an error.
+
+The exports leave out `checks/` and `importer/import_cli.gd`: the export templates of Godot have no `--script` option, so these scripts run only with the editor (`godot --path godot --script ...`). In an export, the import runs from the import screen. The exported game keeps the scripts as tokens, not as source, so the hash of the import code in the records of the import (`meta.json`, `import.json`) differs from the hash of the editor. An exported game uses a data folder that the editor wrote, but when it imports into that folder again, it imports all graphics again (about 10 seconds).
 
 ## Check the rules
 
